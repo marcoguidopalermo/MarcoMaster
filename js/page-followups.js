@@ -37,44 +37,35 @@ function renderFollowups(){
       <span class="x" data-fudel="${f.id}">×</span>
     </div>`;
   return `
-  <div class="phead">
-    <div class="kicker">Open loops</div>
-    <h2>Follow-ups</h2>
-    <p>Things waiting on a reply or a next nudge. They stay here until you resolve them — not scheduled, not recurring.</p>
-  </div>
-
-  <div class="card">
-    <div class="proj-add">
+  <div class="card fu-card">
+    <div class="card-h"><h3>Follow-ups</h3><span class="sub">${open.length} open</span></div>
+    <div class="proj-add fu-add">
       <input type="text" id="newFollowup" value="${esc(newFollowupText)}" placeholder="New follow-up (e.g. Chase invoice with Acme)…">
       <button class="btn" id="addFollowup">Add</button>
     </div>
-  </div>
-
-  <div class="card">
-    <div class="card-h"><h3>Open</h3><span class="sub">${open.length}</span></div>
     ${open.length?`<div class="fu-list">${open.map(row).join('')}</div>`:'<div class="empty">No open follow-ups — all loops closed. ✓</div>'}
-  </div>
 
-  ${resolved.length?`
-  <div class="panel ${followupsResolvedOpen?'open':''}">
-    <button class="panel-h" data-fupanel="resolved">
-      <span class="panel-caret">${followupsResolvedOpen?'▾':'▸'}</span>
-      <span class="panel-title">Resolved</span>
-      <span class="panel-meta">${resolved.length}</span>
-    </button>
-    ${followupsResolvedOpen?`<div class="panel-body"><div class="fu-list">
-      ${resolved.map(f=>`
-        <div class="fu-row done">
-          <span class="fu-dot">✓</span>
-          <div class="fu-main">
-            <span class="fu-txt-static">${esc(f.txt)}</span>
-            ${f.note?`<span class="fu-note-static">${esc(f.note)}</span>`:''}
-          </div>
-          <span class="fu-act reopen" data-fureopen="${f.id}" title="Reopen">↩</span>
-          <span class="x" data-fudel="${f.id}">×</span>
-        </div>`).join('')}
-    </div></div>`:''}
-  </div>`:''}
+    ${resolved.length?`
+    <div class="panel ${followupsResolvedOpen?'open':''}" style="margin-top:12px">
+      <button class="panel-h" data-fupanel="resolved">
+        <span class="panel-caret">${followupsResolvedOpen?'▾':'▸'}</span>
+        <span class="panel-title">Resolved</span>
+        <span class="panel-meta">${resolved.length}</span>
+      </button>
+      ${followupsResolvedOpen?`<div class="panel-body"><div class="fu-list">
+        ${resolved.map(f=>`
+          <div class="fu-row done">
+            <span class="fu-dot">✓</span>
+            <div class="fu-main">
+              <span class="fu-txt-static">${esc(f.txt)}</span>
+              ${f.note?`<span class="fu-note-static">${esc(f.note)}</span>`:''}
+            </div>
+            <span class="fu-act reopen" data-fureopen="${f.id}" title="Reopen">↩</span>
+            <span class="x" data-fudel="${f.id}">×</span>
+          </div>`).join('')}
+      </div></div>`:''}
+    </div>`:''}
+  </div>
   `;
 }
 

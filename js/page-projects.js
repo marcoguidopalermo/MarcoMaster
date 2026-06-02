@@ -4,7 +4,7 @@
    bucket when you want to work them. Progress rolls up from the
    project's own task list (done / total).
    ============================================================ */
-const PROJ_COLORS=['#58a6ff','#3fb950','#e3b341','#ff5c2b','#bc8cff','#f778ba','#56d4dd'];
+const PROJ_COLORS=['#58a6ff','#3fb950','#e3b341','#14b8a6','#bc8cff','#f778ba','#56d4dd'];
 let newProjName='';
 let projDraftText={};   // {projectId: in-progress new-task text}
 
@@ -28,7 +28,7 @@ function renderProjects(){
     return `
     <div class="proj-card ${p.done?'fin':''}">
       <div class="proj-bar-top">
-        <span class="proj-swatch" style="background:${p.color}"></span>
+        <input type="color" class="proj-color" data-pcolor="${p.id}" value="${p.color}" title="project colour">
         <input type="text" class="proj-name-in" data-pname="${p.id}" value="${esc(p.name)}">
         <span class="proj-stat">${s.done}/${s.total}</span>
         <span class="proj-act" data-pdone="${p.id}" title="${p.done?'reopen':'mark finished'}">${p.done?'↩':'✓'}</span>
@@ -81,6 +81,7 @@ function renderProjects(){
 
 function bindProjects(){
   q('[data-pname]','all').forEach(el=>el.oninput=()=>{ const p=S.projects.find(x=>x.id===el.dataset.pname); if(p){ p.name=el.value; save(); } });
+  q('[data-pcolor]','all').forEach(el=>el.onchange=()=>{ const p=S.projects.find(x=>x.id===el.dataset.pcolor); if(p){ p.color=el.value; save(); rerender(); } });
   q('[data-pdone]','all').forEach(el=>el.onclick=()=>{ const p=S.projects.find(x=>x.id===el.dataset.pdone); if(p){ p.done=!p.done; save(); rerender(); } });
   q('[data-pdel]','all').forEach(el=>el.onclick=()=>{
     const p=S.projects.find(x=>x.id===el.dataset.pdel); if(!p) return;

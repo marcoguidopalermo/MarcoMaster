@@ -11,22 +11,16 @@ function toggleTheme(){ S.theme=(S.theme==='light')?'dark':'light'; applyTheme()
 /* ============================================================
    ROUTER
    ============================================================ */
+/* Two-tab app. Other render functions (projects, recurring, insights, board,
+   parking, rules, scorecard, shutdown, settings, followups, plan) still exist in
+   their files and are REUSED inside these two tabs — they just no longer have
+   their own routes/nav. */
 const PAGES={
-  today:{render:renderToday,bind:bindToday},
-  plan:{render:renderPlan,bind:bindPlan},
-  insights:{render:renderInsights,bind:bindInsights},
-  recurring:{render:renderRecurring,bind:bindRecurring},
-  projects:{render:renderProjects,bind:bindProjects},
-  review:{render:renderReview,bind:bindReview},
-  scorecard:{render:renderScorecard,bind:bindScorecard},
-  board:{render:renderBoard,bind:bindBoard},
-  parking:{render:renderParking,bind:bindParking},
-  rules:{render:renderRules,bind:bindRules},
-  followups:{render:renderFollowups,bind:bindFollowups},
-  shutdown:{render:renderShutdown,bind:bindShutdown},
+  dashboard:{render:renderDashboard,bind:bindDashboard},
+  journal:{render:renderJournal,bind:bindJournal},
   settings:{render:renderSettings,bind:bindSettings},
 };
-let current='today';
+let current='dashboard';
 
 function rerender(){
   const main=q('#main');
@@ -36,6 +30,7 @@ function rerender(){
   const selStart=active?.selectionStart;
   const scroll=window.scrollY;
 
+  main.setAttribute('data-page', current);   // lets CSS widen the dashboard only
   main.innerHTML=PAGES[current].render();
   injectTomorrowFlag();
   PAGES[current].bind();
@@ -49,42 +44,23 @@ function rerender(){
   window.scrollTo(0,scroll);
 }
 
-/* nav definition: daily essentials always shown; rest behind "More" */
+/* two tabs: Dashboard (execution) + Journal (reflection) */
 const NAV_DAILY=[
-  ['today','◎','Today'],
-  ['plan','▦','Time Blocker'],
-  ['shutdown','☾','Night'],
-];
-const NAV_MORE=[
-  ['projects','◳','Projects'],
-  ['followups','↪','Follow-ups'],
-  ['recurring','↻','Recurring Tasks'],
-  ['insights','◈','MarcoInsights'],
-  ['review','▤','Weekly CEO Review'],
-  ['scorecard','◧','Life Scorecard'],
-  ['board','⊞','Priority Board'],
-  ['parking','⊟','Parking Lot'],
-  ['rules','§','Rules / Future Self'],
+  ['dashboard','◧','Dashboard'],
+  ['journal','✦','Journal'],
+  ['settings','⚙','Settings'],
 ];
 function renderNav(){
-  const showMore=S.settings&&S.settings.showMore;
-  const link=([page,ic,label])=>`<button class="navbtn ${current===page?'active':''}" data-page="${page}"><span class="ic">${ic}</span>${label}${page==='today'?'<span class="badge" id="navTodayBadge" style="display:none">0</span>':''}</button>`;
-  let html=NAV_DAILY.map(link).join('');
-  html+=`<button class="navbtn nav-more-toggle ${showMore?'open':''}" id="navMoreToggle"><span class="ic">${showMore?'▾':'▸'}</span>More</button>`;
-  if(showMore){
-    html+=`<div class="nav-more">${NAV_MORE.map(link).join('')}</div>`;
-  }
-  html+=link(['settings','⚙','Settings']);
-  const c=q('#navLinks'); c.innerHTML=html;
+  const link=([page,ic,label])=>`<button class="navbtn ${current===page?'active':''}" data-page="${page}"><span class="ic">${ic}</span>${label}</button>`;
+  const c=q('#navLinks'); c.innerHTML=NAV_DAILY.map(link).join('');
   q('#navLinks .navbtn','all').forEach(btn=>{ if(btn.dataset.page) btn.onclick=()=>go(btn.dataset.page); });
-  const mt=q('#navMoreToggle'); if(mt) mt.onclick=()=>{ S.settings.showMore=!showMore; save(false); renderNav(); };
-  updateNavBadge();
 }
 
 function go(page){
   current=page;
   renderNav();
   const main=q('#main');
+  main.setAttribute('data-page', page);   // lets CSS widen the dashboard only
   main.innerHTML=PAGES[page].render();
   injectTomorrowFlag();
   PAGES[page].bind();
@@ -113,12 +89,7 @@ function injectTomorrowFlag(){
 }
 
 function updateNavBadge(){
-  const d=day();
-  const remaining=RESET_STEPS.filter(s=>!d.reset[s[0]]).length;
-  const badge=q('#navTodayBadge');
-  if(remaining>0 && remaining<RESET_STEPS.length){ badge.style.display=''; badge.textContent=remaining; }
-  else if(remaining===RESET_STEPS.length){ badge.style.display=''; badge.textContent=RESET_STEPS.length; }
-  else badge.style.display='none';
+  const badge=q('#navTodayBadge'); if(!badge) return;   // no badge in the two-tab nav
 }
 
 /* ============================================================
@@ -163,7 +134,7 @@ function openReset(){
     if(park){ S.board.parking.push({id:b(),txt:park}); }
     save();
     closeReset();
-    go('today');
+    go('dashboard');
     toast('Back in. One step at a time.');
   };
 }

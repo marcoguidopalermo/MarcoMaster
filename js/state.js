@@ -41,7 +41,8 @@ function seedDefaults(){
   S._projectsSeeded = true;
   // migrate: ensure every project has a tasks array
   S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; });
-  if(!S.followups) S.followups = [];   // persistent open loops (new + existing accounts)
+  if(!S.followups) S.followups = [];      // persistent open loops (new + existing accounts)
+  if(!S.appointments) S.appointments = []; // fixed date/time commitments
   if(!S.theme) S.theme='dark';
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
   if(!S.days) S.days = {};        // per-day "today" data
@@ -91,6 +92,7 @@ function day(){
   if(!S.days[k]) S.days[k]={
     reset:{}, focus:{biz:'',health:'',lev:'',content:'',not:''},
     workout:'', shutdownTime:'', energy:'', mood:'', sleep:'', stress:'',
+    meds:'', feelings:'', fulfillment:'',   // journal fields (reflection tab)
     tasks:[],          // {id, txt, kind:'quick'|'project', done, mins, start:null, recurringId?}
     pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; RESETS daily
     archive:[],        // completed tasks swept here: {id, txt, kind, mins, doneAt}
@@ -111,6 +113,9 @@ function day(){
   if(!d.tomorrow) d.tomorrow=[];
   if(!d.recurringAdded) d.recurringAdded={};
   if(!d.skipped) d.skipped={};
+  if(d.meds==null) d.meds='';
+  if(d.feelings==null) d.feelings='';
+  if(d.fulfillment==null) d.fulfillment='';
   if(d.dayStart==null) d.dayStart=(S.settings&&S.settings.dayStart)||8;
   if(d.dayEnd==null) d.dayEnd=(S.settings&&S.settings.dayEnd)||21;
   // migrate: a task that had a start hour but no schedDate was scheduled for its own day

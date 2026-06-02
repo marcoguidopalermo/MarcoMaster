@@ -19,99 +19,57 @@ let ciDraft={energy:'Medium',mood:''};
 /* which collapsible panels are open on Today (reset each load = all closed) */
 let todayOpen={reset:false,wins:false,mood:false};
 
-function renderToday(){
-  const d=day();
-  const steps=(S.settings&&S.settings.resetSteps)||DEFAULT_RESET_STEPS.map(s=>({id:s[0],label:s[1]}));
-  const total=steps.length;
-  const done=steps.filter(s=>d.reset[s.id]).length;
-  const pct=total?Math.round(done/total*100):0;
-  const focusRow=(tag,cls,label,ph)=>`
-    <div class="focusrow">
-      <span class="tag ${cls}">${tag}</span>
-      <input type="text" data-focus="${cls==='not'?'not':cls}" value="${esc(d.focus[focusKey(cls)]||'')}" placeholder="${ph}">
-    </div>`;
-  const bizFocus=d.focus.biz||'';
-  const dueCount=dueRecurring().filter(r=>!d.skipped[r.id]).length;
+/* ============================================================
+   DASHBOARD — execution. Compact, card-based, fits one screen.
+   Pipeline on top, then a grid of compact (scrollable) cards, a
+   horizontal project strip, and a collapsible day-view Time Blocker.
+   ============================================================ */
+let dashPlanExpanded=false;   // Time Blocker: false = compact day view, true = full plan
 
-  // collapsible panel helper
-  const panel=(key,title,meta,body)=>`
-    <div class="panel ${todayOpen[key]?'open':''}">
-      <button class="panel-h" data-panel="${key}">
-        <span class="panel-caret">${todayOpen[key]?'▾':'▸'}</span>
-        <span class="panel-title">${title}</span>
-        <span class="panel-meta">${meta}</span>
-      </button>
-      ${todayOpen[key]?`<div class="panel-body">${body}</div>`:''}
-    </div>`;
-
+function renderDashboard(){
   return `
   <div class="phead compact">
     <div class="kicker">${prettyDate()}</div>
-    <h2>Today</h2>
+    <h2>Dashboard</h2>
   </div>
 
-  <div class="today-layout">
-    <div class="ga-pipe">${renderPipeline()}</div>
+  ${renderPipeline()}
 
-    <div class="ga-proj">${renderActiveProjects()}</div>
+  ${renderAppointments()}
 
-    <div class="ga-side">${renderFollowups()}</div>
-
-    <div class="ga-quiet">
-      <div class="quiet-divider"><span>everything else</span></div>
-
-      <div class="focus-hero focus-hero-sm">
-        <span class="fh-lab">Today's #1</span>
-        <input type="text" data-focus="biz" value="${esc(bizFocus)}" placeholder="The one thing that matters most today">
-      </div>
-
+  <div class="dash-grid">
+    <div class="dash-col">
       ${renderTaskInbox()}
-
-      ${panel('reset','Morning Routine', `${done}/${total} ${pct===100?'✓':''}`, `
-        ${steps.map(s=>`
-          <div class="check ${d.reset[s.id]?'done':''}" data-reset="${s.id}">
-            <div class="box">✓</div><div class="lbl">${esc(s.label)}</div>
-          </div>`).join('')}
-      `)}
-
-      ${panel('wins','Four Wins + One No', winsSummary(d), `
-        ${focusRow('Health','health','#1 HEALTH','Health win')}
-        ${focusRow('Leverage','lev','#1 SYSTEMS','Systems / leverage win')}
-        ${focusRow('Content','content','#1 CONTENT','Content / brand win')}
-        ${focusRow('NOT today','not','NOT DOING','What you are NOT doing today')}
-        <div class="grid2" style="margin-top:14px">
-          <div class="field" style="margin-bottom:0"><label>Workout</label>
-            <input type="text" data-state="workout" value="${esc(d.workout||'')}" placeholder="e.g. 5:30pm"></div>
-          <div class="field" style="margin-bottom:0"><label>Shutdown</label>
-            <input type="text" data-state="shutdownTime" value="${esc(d.shutdownTime||'')}" placeholder="e.g. 9:30pm"></div>
-        </div>
-      `)}
-
-      ${panel('mood','Energy & Mood', `${d.checkins.length} logged${d.sleep?' · slept '+esc(d.sleep):''}`, `
-        <div class="checkin-add">
-          <div class="energy-pills" data-checkinenergy>
-            ${['Low','Medium','High'].map(v=>`<button data-cke="${v}" class="${ciDraft.energy===v?'sel':''}">${v}</button>`).join('')}
-          </div>
-          <input type="text" id="ckMood" value="${esc(ciDraft.mood)}" placeholder="mood word">
-          <button class="btn sm" id="ckLog">+ Log</button>
-        </div>
-        <div class="field" style="margin:12px 0 0"><label>Sleep last night</label>
-          <input type="text" data-state="sleep" value="${esc(d.sleep||'')}" placeholder="e.g. 7h, solid"></div>
-        ${d.checkins.length?`<div class="checkin-list" style="margin-top:12px">
-          ${[...d.checkins].reverse().map(c=>`
-            <div class="checkin-row">
-              <span class="ck-time">${c.t}</span>
-              <span class="ck-energy e${energyToNum(c.energy)}">${['','Low','Med','High'][energyToNum(c.energy)]||c.energy}</span>
-              <span class="ck-mood">${esc(c.mood||'—')}</span>
-              <span class="x" data-ckdel="${c.ts}">×</span>
-            </div>`).join('')}
-        </div>`:''}
-      `)}
-
-      <p class="list-note"><span class="serif">"Don't react until you run MarcoMaster."</span></p>
+    </div>
+    <div class="dash-col">
+      ${renderFollowups()}
+      ${renderThinkAbout()}
     </div>
   </div>
+
+  ${renderActiveProjects()}
+
+  <div class="card dash-plan-card">
+    <div class="card-h">
+      <h3>Time Blocker</h3>
+      <button class="btn ghost sm" id="planExpand">${dashPlanExpanded?'▾ Collapse':'⤢ Expand'}</button>
+    </div>
+    <div id="dash-plan">${dashPlanExpanded?renderPlan():renderDayView()}</div>
+  </div>
   `;
+}
+
+/* THINGS TO THINK ABOUT — reuses the Parking Lot data */
+function renderThinkAbout(){
+  const p=(S.board&&S.board.parking)||[];
+  return `
+  <div class="card">
+    <div class="card-h"><h3>Things to think about</h3><span class="sub">${p.length}</span></div>
+    <div class="think-list">
+      ${p.length?p.map(it=>`<div class="think-row"><span>${esc(it.txt)}</span><span class="x" data-thinkdel="${it.id}">×</span></div>`).join(''):'<div class="empty sm">Nothing parked.</div>'}
+    </div>
+    <div class="mini-add"><input type="text" id="thinkInput" placeholder="Park a thought to revisit later…"><button class="btn sm" id="thinkAdd">+</button></div>
+  </div>`;
 }
 
 /* ---------- THE PIPELINE — today's top 3, the dominant element ---------- */
@@ -153,6 +111,7 @@ function renderPipeline(){
       slots+=`<div class="pl-slot empty"><span class="pl-num">${i+1}</span><span class="pl-empty-lbl">—</span></div>`;
     }
   }
+  const allDone = pipe.length===3 && pipe.every(pipelineDone);
   return `
   <div class="pipeline-card">
     <div class="pipeline-head">
@@ -160,7 +119,14 @@ function renderPipeline(){
       <span class="pl-sub">your 3 for today · resets each morning</span>
     </div>
     <div class="pipeline-slots">${slots}</div>
+    ${allDone?`<button class="btn pl-refill" id="plRefill">✓ All 3 done — clear &amp; pick 3 more</button>`:''}
   </div>`;
+}
+/* clear the completed pipeline items so the slots reopen for the next 3 */
+function clearDonePipeline(){
+  const d=day(); if(!d.pipeline) return;
+  d.pipeline = d.pipeline.filter(it=>!pipelineDone(it));
+  save(); toast('Pipeline cleared — pick 3 more'); rerender();
 }
 /* promote a today task / project task into the next open pipeline slot */
 function promoteTaskToPipeline(taskId){
@@ -208,6 +174,7 @@ function bindPipeline(){
     };
     pin.onblur=()=>{ pin.onblur=null; if(pin.value.trim()) addPipelineText(pin.value); else { pipelineAdding=false; rerender(); } };
   }
+  const rf=q('#plRefill'); if(rf) rf.onclick=clearDonePipeline;
 }
 function winsSummary(d){
   const set=['health','lev','content','not'].filter(k=>d.focus[k]&&d.focus[k].trim()).length;
@@ -296,58 +263,85 @@ function projTaskState(pid, t){
   if(e && e.t.schedDate!=null) return {state:'scheduled', tb:e.t};
   return {state:'unscheduled'};
 }
+/* Active Projects — horizontal strip of cards (name + progress + count).
+   Tap a card → openProjectModal for full task management + drag-reorder. */
 function renderActiveProjects(){
   const active=(S.projects||[]).filter(p=>!p.done);
-  if(!active.length){
-    return `
-    <div class="card">
-      <div class="card-h"><h3>Active Projects</h3><span class="sub">0</span></div>
-      <div class="empty">No active projects yet — add one on the Projects page.</div>
-    </div>`;
-  }
-  const taskRow=(p,t)=>{
-    const st=projTaskState(p.id,t);
-    if(st.state==='done'){              // complete → crossed out (reuses .ptask-row.done)
-      return `<div class="ptask-row done">
-        <span class="box" data-aptdone="${p.id}|${t.id}">✓</span>
-        <span class="ptxt">${esc(t.txt)}</span></div>`;
-    }
-    if(st.state==='scheduled'){         // scheduled → yellow tag with date + time
-      return `<div class="ptask-row scheduled">
-        <span class="box" data-aptdone="${p.id}|${t.id}">✓</span>
-        <span class="ptxt">${esc(t.txt)}</span>
-        <span class="sched-tag yellow">${schedLabel(st.tb)}</span>
-        <span class="to-pipe" data-plpromote-proj="${p.id}|${t.id}" title="Promote to pipeline">↑</span></div>`;
-    }
-    return `<div class="ptask-row">     <!-- unscheduled → tap to schedule -->
-      <span class="box" data-aptdone="${p.id}|${t.id}">✓</span>
-      <span class="ptxt" data-aptsched="${p.id}|${t.id}" style="cursor:pointer">${esc(t.txt)}</span>
-      <span class="to-pipe" data-plpromote-proj="${p.id}|${t.id}" title="Promote to pipeline">↑</span>
-      <span class="to-today" data-aptsched="${p.id}|${t.id}">⏱ schedule</span></div>`;
-  };
-  const projRow=(p)=>{
-    const s=projectStats(p); const open=!!projOpen[p.id]; const tasks=p.tasks||[];
-    return `
-    <div class="panel ${open?'open':''}">
-      <button class="panel-h" data-projpanel="${p.id}">
-        <span class="panel-caret">${open?'▾':'▸'}</span>
-        <span class="proj-swatch" style="background:${p.color}"></span>
-        <span class="panel-title">${esc(p.name)}</span>
-        <span class="panel-meta">${s.done}/${s.total}</span>
-      </button>
-      <div class="proj-track" style="margin:0 16px 12px"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
-      ${open?`<div class="panel-body" style="padding-top:0">
-        <div class="proj-tasks">
-          ${tasks.length?tasks.map(t=>taskRow(p,t)).join(''):'<div class="empty sm">No tasks yet.</div>'}
-        </div>
-      </div>`:''}
-    </div>`;
-  };
   return `
-  <div class="card">
+  <div class="card dash-projects">
     <div class="card-h"><h3>Active Projects</h3><span class="sub">${active.length}</span></div>
-    ${active.map(projRow).join('')}
+    ${active.length?`<div class="proj-strip">
+      ${active.map(p=>{ const s=projectStats(p); return `
+        <button class="proj-card-mini" data-projopen="${p.id}">
+          <span class="pcm-top"><span class="proj-swatch" style="background:${p.color}"></span><span class="pcm-name">${esc(p.name)}</span></span>
+          <div class="proj-track"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
+          <span class="pcm-count">${s.done}/${s.total} done</span>
+        </button>`; }).join('')}
+    </div>`:'<div class="empty sm">No active projects — add one in Settings.</div>'}
   </div>`;
+}
+
+/* ---------- project task modal: manage + drag-reorder tasks ---------- */
+let projModalId=null;
+let projModalDraft='';
+function openProjectModal(pid){ projModalId=pid; projModalDraft=''; renderProjectModal(); }
+function renderProjectModal(){
+  const p=(S.projects||[]).find(x=>x.id===projModalId); if(!p){ closeReset(); return; }
+  const tasks=p.tasks||[]; const s=projectStats(p);
+  const m=q('#resetModal');
+  m.innerHTML=`
+    <div class="modal">
+      <span class="modal-close" id="pmClose">×</span>
+      <h3><span class="proj-swatch" style="background:${p.color};display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(p.name)}</h3>
+      <div class="proj-track" style="margin:10px 0 16px"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
+      <div class="pm-tasks">
+        ${tasks.length?tasks.map(t=>{
+          const st=projTaskState(p.id,t);
+          const tag = st.state==='scheduled'?`<span class="sched-tag yellow">${schedLabel(st.tb)}</span>`
+                    : (st.state==='unscheduled'?`<span class="to-today" data-pmsched="${t.id}">⏱ schedule</span>`:'');
+          return `<div class="pm-row ${t.done?'done':''}" draggable="true" data-pmdrag="${t.id}">
+            <span class="pm-grip" title="drag to reorder">⋮⋮</span>
+            <span class="box" data-pmdone="${t.id}">✓</span>
+            <span class="pm-txt">${esc(t.txt)}</span>
+            ${tag}
+            ${!t.done?`<span class="to-pipe" data-pmpipe="${t.id}" title="Promote to pipeline">↑</span>`:''}
+            <span class="x" data-pmdel="${t.id}">×</span>
+          </div>`;
+        }).join(''):'<div class="empty sm">No tasks yet — add one below.</div>'}
+      </div>
+      <div class="proj-add-task" style="margin-top:12px">
+        <input type="text" id="pmAdd" value="${esc(projModalDraft)}" placeholder="Add a task to ${esc(p.name)}…">
+        <button class="btn sm" id="pmAddBtn">+ Add</button>
+      </div>
+      <p class="list-note" style="margin-top:10px">Drag ⋮⋮ to reorder · ✓ complete · ⏱ schedule · ↑ pipeline</p>
+    </div>`;
+  m.classList.add('show');
+  bindProjectModal();
+}
+function bindProjectModal(){
+  const p=(S.projects||[]).find(x=>x.id===projModalId); if(!p) return;
+  const close=q('#pmClose'); if(close) close.onclick=()=>{ projModalId=null; closeReset(); };
+  q('[data-pmdone]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmdone); if(t){ setProjTaskDone(p.id,t.id,!t.done); save(false); renderProjectModal(); rerender(); } });
+  q('[data-pmdel]','all').forEach(el=>el.onclick=()=>{ p.tasks=p.tasks.filter(x=>x.id!==el.dataset.pmdel); save(); renderProjectModal(); rerender(); });
+  q('[data-pmpipe]','all').forEach(el=>el.onclick=()=>{ promoteProjToPipeline(p.id, el.dataset.pmpipe); renderProjectModal(); });
+  q('[data-pmsched]','all').forEach(el=>el.onclick=()=>{ openProjSchedule(p.id, el.dataset.pmsched); });  // replaces modal with scheduler
+  const ai=q('#pmAdd'); if(ai) ai.oninput=()=>{ projModalDraft=ai.value; };
+  const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
+  const ab=q('#pmAddBtn'); if(ab) ab.onclick=addT;
+  if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addT(); };
+  // drag-to-reorder within p.tasks
+  let dragId=null;
+  q('[data-pmdrag]','all').forEach(row=>{
+    row.ondragstart=e=>{ dragId=row.dataset.pmdrag; row.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',dragId);}catch(_){} };
+    row.ondragend=()=>{ dragId=null; row.classList.remove('dragging'); };
+    row.ondragover=e=>{ e.preventDefault(); };
+    row.ondrop=e=>{ e.preventDefault();
+      const overId=row.dataset.pmdrag; const dg=dragId||(e.dataTransfer&&e.dataTransfer.getData('text/plain'));
+      if(!dg||dg===overId) return;
+      const arr=p.tasks; const from=arr.findIndex(x=>x.id===dg); const to=arr.findIndex(x=>x.id===overId);
+      if(from<0||to<0) return; const [moved]=arr.splice(from,1); arr.splice(to,0,moved); save(); renderProjectModal(); rerender();
+    };
+  });
 }
 
 /* ---------- project-task scheduler (duration + date) ----------
@@ -466,7 +460,7 @@ function bindTaskInbox(){
   q('[data-tmins]','all').forEach(el=>el.onclick=()=>{
     openDurationPicker(el.dataset.tmins);
   });
-  const gp=q('#goPlan'); if(gp) gp.onclick=()=>go('plan');
+  const gp=q('#goPlan'); if(gp) gp.onclick=()=>{ const el=q('#dash-plan'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); };
   const cc=q('#clearCompleted'); if(cc) cc.onclick=()=>{
     archiveCompleted(); toast('Cleared & archived'); rerender();
   };
@@ -489,45 +483,26 @@ function bindTaskInbox(){
     save(); toast('Skipped this cycle'); rerender();
   });
 }
-function bindToday(){
-  // collapsible panel toggles
-  q('[data-panel]','all').forEach(el=>el.onclick=()=>{
-    const k=el.dataset.panel; todayOpen[k]=!todayOpen[k]; rerender();
-  });
-  q('[data-reset]','all').forEach(el=>el.onclick=()=>{
-    const id=el.dataset.reset; const d=day(); d.reset[id]=!d.reset[id];
-    save(false); rerender();
-  });
-  q('[data-focus]','all').forEach(el=>el.oninput=()=>{ day().focus[el.dataset.focus]=el.value; save(); });
-  q('[data-state]','all').forEach(el=>el.oninput=()=>{ day()[el.dataset.state]=el.value; save(); });
-  // throughout-day energy/mood logger
-  q('[data-checkinenergy] [data-cke]','all').forEach(el=>el.onclick=()=>{
-    ciDraft.energy=el.dataset.cke;
-    q('[data-checkinenergy] [data-cke]','all').forEach(b=>b.classList.toggle('sel',b===el));
-  });
-  const ckMood=q('#ckMood'); if(ckMood) ckMood.oninput=()=>{ ciDraft.mood=ckMood.value; };
-  const ckLog=q('#ckLog'); if(ckLog) ckLog.onclick=()=>{
-    day().checkins.push({t:nowHM(),ts:Date.now(),energy:ciDraft.energy,mood:ciDraft.mood.trim()});
-    ciDraft={energy:'Medium',mood:''}; save(); rerender();
-  };
-  q('[data-ckdel]','all').forEach(el=>el.onclick=()=>{
-    day().checkins=day().checkins.filter(c=>String(c.ts)!==el.dataset.ckdel); save(); rerender();
-  });
-  // Active Projects: expand/collapse, schedule an unscheduled task, toggle done
-  q('[data-projpanel]','all').forEach(el=>el.onclick=()=>{ const id=el.dataset.projpanel; projOpen[id]=!projOpen[id]; rerender(); });
-  q('[data-aptsched]','all').forEach(el=>el.onclick=(e)=>{
-    e.stopPropagation(); const [pid,tid]=el.dataset.aptsched.split('|'); openProjSchedule(pid,tid);
-  });
-  q('[data-aptdone]','all').forEach(el=>el.onclick=(e)=>{
-    e.stopPropagation(); const [pid,tid]=el.dataset.aptdone.split('|');
-    const p=(S.projects||[]).find(x=>x.id===pid); const t=p&&p.tasks.find(x=>x.id===tid);
-    if(t){ setProjTaskDone(pid,tid,!t.done); save(false); rerender(); }
-  });
-  // promote actions (from inbox tasks and project tasks) → pipeline
+function bindDashboard(){
+  // Things to think about (Parking Lot data)
+  const ta=q('#thinkAdd'); const ti=q('#thinkInput');
+  const addThink=()=>{ const v=(ti&&ti.value||'').trim(); if(!v) return; if(!S.board) S.board={mustwin:[],scheduled:[],parking:[]}; if(!S.board.parking) S.board.parking=[]; S.board.parking.push({id:b(),txt:v}); save(); rerender(); };
+  if(ta) ta.onclick=addThink; if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addThink(); };
+  q('[data-thinkdel]','all').forEach(el=>el.onclick=()=>{ S.board.parking=(S.board.parking||[]).filter(x=>x.id!==el.dataset.thinkdel); save(); rerender(); });
+
+  // Active Projects: tap a card → open the project task modal
+  q('[data-projopen]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projopen));
+
+  // promote a quick/inbox task → pipeline
   q('[data-plpromote-task]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); promoteTaskToPipeline(el.dataset.plpromoteTask); });
-  q('[data-plpromote-proj]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); const [pid,tid]=el.dataset.plpromoteProj.split('|'); promoteProjToPipeline(pid,tid); });
+
+  // Time Blocker expand/collapse (day view ↔ full plan)
+  const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
+
   bindPipeline();          // the top-3 pipeline hero
-  bindTaskInbox();
-  bindFollowups();         // full follow-ups list in the sidebar
+  bindAppointments();      // fixed date/time commitments
+  bindTaskInbox();         // Quick + Scheduled lists (recurring auto-injected here)
+  bindFollowups();         // full follow-ups list
+  bindPlan();              // reused Time Blocker (day view, or full plan when expanded)
 }
 

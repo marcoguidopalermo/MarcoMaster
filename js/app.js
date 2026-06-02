@@ -59,7 +59,7 @@ function startApp(){
   const tb=q('#themeBtn'); if(tb) tb.onclick=toggleTheme;
   q('#resetModal').onclick=(e)=>{ if(e.target.id==='resetModal') closeReset(); };
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeReset(); });
-  go('today');
+  go('dashboard');
   // 2) Now reconcile with the cloud in the background and keep syncing live.
   subscribeCloud();
 }

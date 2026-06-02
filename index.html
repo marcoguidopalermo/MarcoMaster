@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarcoMaster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=6">
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="brand">
+      <h1><span class="dot"></span>MarcoMaster</h1>
+      <div class="tag"><b>TaskMaster runs the business.</b><br>MarcoMaster runs Marco.</div>
+    </div>
+    <div id="navLinks"></div>
+    <div class="side-foot">
+      <button class="reset-btn" id="resetBtn">⟲ Reset Button</button>
+      <button class="theme-btn" id="themeBtn" title="toggle light / dark">◑</button>
+    </div>
+  </nav>
+  <main class="main" id="main"></main>
+</div>
+<div class="toast" id="toast">Saved</div>
+<div class="modal-bg" id="resetModal"></div>
+
+<!-- Firebase SDK (cloud auth + sync) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<!-- App scripts: classic (non-module) scripts sharing one global scope.
+     Load order matters — app.js runs init() last, after every definition. -->
+<script src="js/storage.js?v=2"></script>
+<script src="js/defaults.js?v=2"></script>
+<script src="js/state.js?v=6"></script>
+<script src="js/tasks.js?v=2"></script>
+<script src="js/recurring.js?v=2"></script>
+<script src="js/page-today.js?v=6"></script>
+<script src="js/page-recurring.js?v=2"></script>
+<script src="js/page-review-scorecard.js?v=2"></script>
+<script src="js/page-board.js?v=2"></script>
+<script src="js/page-shutdown.js?v=2"></script>
+<script src="js/page-plan.js?v=4"></script>
+<script src="js/page-insights.js?v=2"></script>
+<script src="js/page-settings.js?v=2"></script>
+<script src="js/page-projects.js?v=2"></script>
+<script src="js/page-followups.js?v=5"></script>
+<script src="js/ui-core.js?v=5"></script>
+<script src="js/app.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,134 @@
+/* ---------- global state ---------- */
+let S = {};   // full app state, persisted under 'marcomaster'
+
+function loadState(){
+  // INSTANT, synchronous, no network: load from the local cache (or seeded
+  // defaults for a first run) so the app can render immediately. Cloud data is
+  // reconciled in the background afterwards by subscribeCloud(). Never throws.
+  S = Store._lsGet('marcomaster') || {};
+  seedDefaults();
+}
+
+/* the two starter projects (fresh objects each call) */
+function defaultProjects(){
+  return [
+    {id:b(), name:'CrewMaster', color:'#58a6ff', done:false, tasks:[]},
+    {id:b(), name:'Backyard Landscaping', color:'#3fb950', done:false, tasks:[]},
+  ];
+}
+
+/* Fill S with default state and run schema migrations. Idempotent — safe to call
+   more than once and only fills in what's missing. */
+function seedDefaults(){
+  if(!S || typeof S!=='object') S={};
+  // seed defaults once
+  if(!S.recurring){
+    S.recurring = JSON.parse(JSON.stringify(DEFAULT_RECURRING));
+    // first-run staggering: only daily tasks are due immediately; longer cadences
+    // start their clock today so they surface on their natural schedule, not all at once
+    const k=todayKey();
+    S.recurring.forEach(r=>{ if(r.every>1) r.last=k; });
+  }
+  if(!S.rules) S.rules = [...DEFAULT_RULES];
+  if(!S.board) S.board = JSON.parse(JSON.stringify(DEFAULT_BOARD));
+  if(!S.season) S.season = 'Business Stabilization + Health Rebuild + Content Restart';
+  if(!S.narrative) S.narrative = '';
+  if(!S.projects) S.projects = defaultProjects();
+  // one-time backfill: if an existing account ended up with an empty projects
+  // list, seed the two defaults once (the flag stops it re-seeding if the user
+  // later deletes them all on purpose, and prevents duplicates).
+  if(S.projects.length===0 && !S._projectsSeeded) S.projects = defaultProjects();
+  S._projectsSeeded = true;
+  // migrate: ensure every project has a tasks array
+  S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; });
+  if(!S.followups) S.followups = [];   // persistent open loops (new + existing accounts)
+  if(!S.theme) S.theme='dark';
+  if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
+  if(!S.days) S.days = {};        // per-day "today" data
+  if(!S.weeks) S.weeks = {};      // per-week review + scorecard
+  if(!S.mode) S.mode = 'open';
+  // settings (editable reset checklist, day window, etc.)
+  if(!S.settings) S.settings = {
+    resetSteps: DEFAULT_RESET_STEPS.map(s=>({id:s[0],label:s[1]})),
+    dayStart: 8, dayEnd: 21,
+    autoAddRecurring: true,
+    showMore: false,
+  };
+  if(!S.settings.resetSteps) S.settings.resetSteps = DEFAULT_RESET_STEPS.map(s=>({id:s[0],label:s[1]}));
+  if(S.settings.dayStart==null) S.settings.dayStart=8;
+  if(S.settings.dayEnd==null) S.settings.dayEnd=21;
+  if(S.settings.autoAddRecurring==null) S.settings.autoAddRecurring=true;
+  if(S.settings.showMore==null) S.settings.showMore=false;
+  // migrate old recurring shape ({f:'daily'}) → cadence model
+  const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
+  S.recurring.forEach(r=>{
+    if(r.every==null && r.mode==null){ r.every = FREQ_DAYS[r.f]||1; }
+    if(r.mode==null){ r.mode='everyN'; if(r.every==null) r.every=1; }
+    if(r.kind==null){ r.kind = (r.every&&r.every<=1)?'quick':'project'; }
+    if(r.auto==null){ r.auto = true; }
+    if(!('last' in r)){ r.last = null; }
+  });
+  // migrate scheduled tasks (had start, no schedDate) across all days
+  Object.keys(S.days||{}).forEach(dk=>{
+    (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; });
+  });
+}
+async function persist(){ await Store.set('marcomaster', S); }
+
+let saveTimer=null;
+function save(showToast=true){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{ await persist(); if(showToast) toast(); }, 350);
+}
+function toast(msg='Saved ✓'){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),1400);
+}
+
+/* today's data object (auto-creates, never carries checkmarks forward) */
+function day(){
+  const k=todayKey();
+  if(!S.days[k]) S.days[k]={
+    reset:{}, focus:{biz:'',health:'',lev:'',content:'',not:''},
+    workout:'', shutdownTime:'', energy:'', mood:'', sleep:'', stress:'',
+    tasks:[],          // {id, txt, kind:'quick'|'project', done, mins, start:null, recurringId?}
+    pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; RESETS daily
+    archive:[],        // completed tasks swept here: {id, txt, kind, mins, doneAt}
+    checkins:[],       // {t:'HH:MM', ts, energy:1-5, mood:'word'}  throughout-day log
+    tomorrow:[],       // top-3 picked at shutdown for next day  (strings)
+    recurringAdded:{}, // {recurringId:true} injected into today already
+    skipped:{},        // {recurringId:true} skipped this cycle
+    dayStart:8,        // first hour shown on the Plan grid (24h)
+    dayEnd:21,         // last hour shown
+    shutdown:{ well:'',drift:'',avoid:'',trained:false,health:false,time:false,firstMove:'',clear:'' }
+  };
+  const d=S.days[k];
+  // migrations for days created before these fields existed
+  if(!d.tasks) d.tasks=[];
+  if(!d.pipeline) d.pipeline=[];
+  if(!d.archive) d.archive=[];
+  if(!d.checkins) d.checkins=[];
+  if(!d.tomorrow) d.tomorrow=[];
+  if(!d.recurringAdded) d.recurringAdded={};
+  if(!d.skipped) d.skipped={};
+  if(d.dayStart==null) d.dayStart=(S.settings&&S.settings.dayStart)||8;
+  if(d.dayEnd==null) d.dayEnd=(S.settings&&S.settings.dayEnd)||21;
+  // migrate: a task that had a start hour but no schedDate was scheduled for its own day
+  d.tasks.forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=k; });
+  // bridge: if this day is brand new and yesterday flagged a top-3, seed them once
+  if(!d._seeded){
+    d._seeded=true;
+    const prevKey=Object.keys(S.days).filter(x=>x<k).sort().pop();
+    if(prevKey){
+      const picks=(S.days[prevKey].tomorrow||[]).filter(p=>p&&p.trim());
+      picks.forEach(p=>d.tasks.push({id:b(),txt:p,kind:'project',done:false,mins:60,start:null,schedDate:null,fromYesterday:true}));
+    }
+    if(typeof persist==='function') Promise.resolve().then(persist);
+  }
+  return d;
+}
+
+/* numeric energy map for charts/averages */
+const ENERGY_NUM={Low:1,Medium:2,High:3};
+function energyToNum(v){ return ENERGY_NUM[v]||null; }
+

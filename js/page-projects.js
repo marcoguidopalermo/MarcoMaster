@@ -1,0 +1,128 @@
+/* ============================================================
+   PROJECTS — ongoing efforts with their own task lists.
+   Add tasks inside a project; send them into Today's time-block
+   bucket when you want to work them. Progress rolls up from the
+   project's own task list (done / total).
+   ============================================================ */
+const PROJ_COLORS=['#58a6ff','#3fb950','#e3b341','#ff5c2b','#bc8cff','#f778ba','#56d4dd'];
+let newProjName='';
+let projDraftText={};   // {projectId: in-progress new-task text}
+
+function projectStats(p){
+  const tasks=p.tasks||[];
+  const total=tasks.length;
+  const done=tasks.filter(t=>t.done).length;
+  return {total,done,pct: total?Math.round(done/total*100):0};
+}
+/* is this project task already sitting in today's list? */
+function projTaskInToday(projId, ptId){
+  return day().tasks.some(t=>t.projectId===projId && t.projTaskId===ptId && !t.done);
+}
+
+function renderProjects(){
+  const active=(S.projects||[]).filter(p=>!p.done);
+  const finished=(S.projects||[]).filter(p=>p.done);
+  const card=(p)=>{
+    const s=projectStats(p);
+    const tasks=p.tasks||[];
+    return `
+    <div class="proj-card ${p.done?'fin':''}">
+      <div class="proj-bar-top">
+        <span class="proj-swatch" style="background:${p.color}"></span>
+        <input type="text" class="proj-name-in" data-pname="${p.id}" value="${esc(p.name)}">
+        <span class="proj-stat">${s.done}/${s.total}</span>
+        <span class="proj-act" data-pdone="${p.id}" title="${p.done?'reopen':'mark finished'}">${p.done?'↩':'✓'}</span>
+        <span class="x" data-pdel="${p.id}">×</span>
+      </div>
+      <div class="proj-track"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
+
+      <div class="proj-tasks">
+        ${tasks.length?tasks.map(t=>`
+          <div class="ptask-row ${t.done?'done':''}">
+            <span class="box" data-ptdone="${p.id}|${t.id}">✓</span>
+            <span class="ptxt">${esc(t.txt)}</span>
+            ${!t.done?(projTaskInToday(p.id,t.id)
+              ? `<span class="in-today">in today ✓</span>`
+              : `<span class="to-today" data-pttoday="${p.id}|${t.id}">→ today</span>`):''}
+            <span class="x" data-ptdel="${p.id}|${t.id}">×</span>
+          </div>`).join(''):'<div class="empty sm">No tasks yet.</div>'}
+      </div>
+
+      <div class="proj-add-task">
+        <input type="text" data-ptadd="${p.id}" value="${esc(projDraftText[p.id]||'')}" placeholder="Add a task to ${esc(p.name)}...">
+        <button class="btn sm" data-ptaddbtn="${p.id}">+</button>
+      </div>
+    </div>`;
+  };
+  return `
+  <div class="phead">
+    <div class="kicker">Things on the go</div>
+    <h2>Projects</h2>
+    <p>Add tasks to a project, then send them to Today when you're ready to work them.</p>
+  </div>
+
+  <div class="proj-stack">
+    ${active.length?active.map(card).join(''):'<div class="empty">No active projects. Add one below.</div>'}
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="proj-add">
+      <input type="text" id="newProj" value="${esc(newProjName)}" placeholder="New project (e.g. CrewMaster)...">
+      <button class="btn" id="addProj">Add</button>
+    </div>
+  </div>
+
+  ${finished.length?`
+    <div class="phead compact" style="margin-top:24px"><h2 style="font-size:18px">Finished</h2></div>
+    <div class="proj-stack">${finished.map(card).join('')}</div>
+  `:''}
+  `;
+}
+
+function bindProjects(){
+  q('[data-pname]','all').forEach(el=>el.oninput=()=>{ const p=S.projects.find(x=>x.id===el.dataset.pname); if(p){ p.name=el.value; save(); } });
+  q('[data-pdone]','all').forEach(el=>el.onclick=()=>{ const p=S.projects.find(x=>x.id===el.dataset.pdone); if(p){ p.done=!p.done; save(); rerender(); } });
+  q('[data-pdel]','all').forEach(el=>el.onclick=()=>{
+    const p=S.projects.find(x=>x.id===el.dataset.pdel); if(!p) return;
+    if(confirm(`Delete project "${p.name}" and its task list?`)){
+      S.projects=S.projects.filter(x=>x.id!==p.id); save(); rerender();
+    }
+  });
+
+  q('[data-ptdone]','all').forEach(el=>el.onclick=()=>{
+    const [pid,tid]=el.dataset.ptdone.split('|');
+    const p=S.projects.find(x=>x.id===pid); const t=p&&p.tasks.find(x=>x.id===tid);
+    if(t){ setProjTaskDone(pid,tid,!t.done); save(false); rerender(); }
+  });
+  q('[data-ptdel]','all').forEach(el=>el.onclick=()=>{
+    const [pid,tid]=el.dataset.ptdel.split('|');
+    const p=S.projects.find(x=>x.id===pid); if(p){ p.tasks=p.tasks.filter(x=>x.id!==tid); save(); rerender(); }
+  });
+
+  q('[data-pttoday]','all').forEach(el=>el.onclick=()=>{
+    const [pid,tid]=el.dataset.pttoday.split('|');
+    const p=S.projects.find(x=>x.id===pid); const t=p&&p.tasks.find(x=>x.id===tid);
+    if(!t) return;
+    day().tasks.push({id:b(),txt:t.txt,kind:'project',done:false,mins:60,start:null,projectId:pid,projTaskId:tid});
+    save(); toast('Sent to Today'); rerender();
+  });
+
+  q('[data-ptadd]','all').forEach(el=>el.oninput=()=>{ projDraftText[el.dataset.ptadd]=el.value; });
+  q('[data-ptadd]','all').forEach(el=>el.onkeydown=e=>{ if(e.key==='Enter'){ addProjTask(el.dataset.ptadd); } });
+  q('[data-ptaddbtn]','all').forEach(el=>el.onclick=()=>addProjTask(el.dataset.ptaddbtn));
+
+  const np=q('#newProj'); if(np) np.oninput=()=>{ newProjName=np.value; };
+  const add=q('#addProj'); if(add) add.onclick=()=>{
+    const v=(newProjName||'').trim(); if(!v) return;
+    const color=PROJ_COLORS[(S.projects||[]).length % PROJ_COLORS.length];
+    S.projects.push({id:b(),name:v,color,done:false,tasks:[]});
+    newProjName=''; save(); rerender();
+  };
+  const ni=q('#newProj'); if(ni) ni.onkeydown=e=>{ if(e.key==='Enter') q('#addProj').click(); };
+}
+function addProjTask(pid){
+  const p=S.projects.find(x=>x.id===pid); if(!p) return;
+  const v=(projDraftText[pid]||'').trim(); if(!v) return;
+  p.tasks.push({id:b(),txt:v,done:false});
+  projDraftText[pid]=''; save(); rerender();
+}

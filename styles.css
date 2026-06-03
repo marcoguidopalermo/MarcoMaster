@@ -549,8 +549,9 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 /* ============================================================
    COMPACT DASHBOARD — fit on one screen, card-based
    ============================================================ */
-/* balanced 2-column middle: left = tasks, right = follow-ups + think-about */
-.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:18px}
+/* 2-column middle: left = tasks (~70%, wider so its sub-columns wrap less),
+   right = follow-ups + think-about (~30%) */
+.dash-grid{display:grid;grid-template-columns:7fr 3fr;gap:16px;align-items:start;margin-bottom:18px}
 @media(max-width:880px){.dash-grid{grid-template-columns:1fr}}
 .dash-col{display:flex;flex-direction:column;gap:16px;min-width:0}
 .dash-col>*{margin-bottom:0;min-width:0}

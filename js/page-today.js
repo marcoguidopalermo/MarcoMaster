@@ -116,7 +116,7 @@ function renderPipeline(){
   <div class="pipeline-card">
     <div class="pipeline-head">
       <span class="pl-kick">The Pipeline</span>
-      <span class="pl-sub">your 3 for today · resets each morning</span>
+      <span class="pl-sub">your 3 for today · unfinished roll over</span>
     </div>
     <div class="pipeline-slots">${slots}</div>
     ${allDone?`<button class="btn pl-refill" id="plRefill">✓ All 3 done — clear &amp; pick 3 more</button>`:''}

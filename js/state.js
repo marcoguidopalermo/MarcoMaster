@@ -113,7 +113,7 @@ function day(){
     workout:'', shutdownTime:'', energy:'', mood:'', sleep:'', stress:'',
     meds:'', feelings:'', fulfillment:'',   // journal fields (reflection tab)
     tasks:[],          // {id, txt, kind:'quick'|'project', done, mins, start:null, recurringId?}
-    pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; RESETS daily
+    pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; unfinished carry over to the next day (see _seeded bridge)
     archive:[],        // completed tasks swept here: {id, txt, kind, mins, doneAt}
     checkins:[],       // {t:'HH:MM', ts, energy:1-5, mood:'word'}  throughout-day log
     tomorrow:[],       // top-3 picked at shutdown for next day  (strings)
@@ -144,8 +144,24 @@ function day(){
     d._seeded=true;
     const prevKey=Object.keys(S.days).filter(x=>x<k).sort().pop();
     if(prevKey){
-      const picks=(S.days[prevKey].tomorrow||[]).filter(p=>p&&p.trim());
+      const prev=S.days[prevKey];
+      const picks=(prev.tomorrow||[]).filter(p=>p&&p.trim());
       picks.forEach(p=>d.tasks.push({id:b(),txt:p,kind:'project',done:false,mins:60,start:null,schedDate:null,fromYesterday:true}));
+      // carry UNFINISHED pipeline items into the new day; completed ones drop.
+      // The pipeline lives on the day record, so a new day would otherwise start
+      // empty — but it's set the night before, so open focuses must survive.
+      // "Completed" is judged in the previous day's context (its task / the
+      // persistent project task / the item's own flag), mirroring pipelineDone().
+      (prev.pipeline||[]).forEach(it=>{
+        let done;
+        if(it.taskId){ const t=(prev.tasks||[]).find(x=>x.id===it.taskId); done=t?t.done:!!it.done; }
+        else if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId); done=t?t.done:!!it.done; }
+        else { done=!!it.done; }
+        if(done) return;                      // completed → drop on the new day
+        const carried={id:b(), txt:it.txt, done:false};
+        if(it.projectId){ carried.projectId=it.projectId; carried.projTaskId=it.projTaskId; }  // keep persistent project link
+        d.pipeline.push(carried);
+      });
     }
     if(typeof persist==='function') Promise.resolve().then(persist);
   }

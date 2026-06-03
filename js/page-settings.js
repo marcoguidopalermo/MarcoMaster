@@ -44,11 +44,12 @@ function renderSettings(){
     <div class="card-h"><h3>Data</h3></div>
     <p class="inbox-rule" style="margin-top:0">Everything saves automatically${FB.user?' and syncs to your account across devices':' on this device'}.</p>
     <div class="btn-row">
-      <button class="btn ghost sm" id="exportData">⬇ Export my data (JSON)</button>
+      <button class="btn ghost sm" id="exportData">⬇ Export / Backup (JSON)</button>
+      <button class="btn ghost sm" id="importData">⬆ Import / Restore</button>
       <button class="btn ghost sm" id="wipeToday">Clear today's tasks</button>
       <button class="btn ghost sm danger" id="wipeAll">⚠ Wipe everything</button>
     </div>
-    <p class="list-note" style="margin-top:14px">Export gives you a backup file. Wipe everything resets MarcoMaster to defaults — with a confirmation step.</p>
+    <p class="list-note" style="margin-top:14px">Export downloads a full backup file. Import restores from such a file — it <b>replaces</b> your current data (export first if unsure). Wipe everything resets MarcoMaster to defaults — with a confirmation step.</p>
   </div>
 
   ${FB.user?`
@@ -79,6 +80,42 @@ function bindSettings(){
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download='marcomaster-backup-'+todayKey()+'.json'; a.click(); URL.revokeObjectURL(url);
     toast('Exported ✓');
+  };
+
+  // Import / Restore — read a backup JSON and REPLACE the current state with it.
+  // Uses a throwaway file input so we don't need a permanent element in the DOM.
+  const im=q('#importData'); if(im) im.onclick=()=>{
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='application/json,.json';
+    inp.onchange=()=>{
+      const file=inp.files&&inp.files[0]; if(!file) return;
+      const reader=new FileReader();
+      reader.onerror=()=>alert('Could not read that file.');
+      reader.onload=()=>{
+        let data;
+        try{ data=JSON.parse(reader.result); }
+        catch(e){ alert('That file is not valid JSON — pick a MarcoMaster backup file.'); return; }
+        if(!data || typeof data!=='object' || Array.isArray(data)){
+          alert("That file doesn't look like a MarcoMaster backup."); return;
+        }
+        const summary=[
+          (data.projects||[]).length+' projects',
+          (data.followups||[]).length+' follow-ups',
+          (data.appointments||[]).length+' appointments',
+          Object.keys(data.days||{}).length+' days of history',
+        ].join(' · ');
+        if(!confirm('Import this backup?\n\n'+summary+'\n\nThis REPLACES your current data. Export first if you want to keep what you have now.')) return;
+        S=data;
+        seedDefaults();                   // backfill any missing fields + run migrations
+        Store._lsSet('marcomaster', S);   // cache immediately so a reload is safe
+        persist().then(synced=>{
+          toast(synced?'Imported ✓ (synced)':'Imported ✓ (saved locally)');
+          location.reload();              // re-render everything cleanly from the new state
+        });
+      };
+      reader.readAsText(file);
+    };
+    inp.click();
   };
   const wt=q('#wipeToday'); if(wt) wt.onclick=()=>{
     if(confirm("Clear today's tasks? This removes all tasks in your Today list (completed and active).")){

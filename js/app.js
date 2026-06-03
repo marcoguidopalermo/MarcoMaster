@@ -61,6 +61,7 @@ function startApp(){
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeReset(); });
   go('dashboard');
   // 2) Now reconcile with the cloud in the background and keep syncing live.
+  setSyncStatus(FB.user?'syncing':'local');
   subscribeCloud();
 }
 
@@ -71,11 +72,12 @@ function startApp(){
 let _cloudSettled=false, _lastAppliedUpdate=0;
 function subscribeCloud(){
   if(!(FB.user && FB.db)) return;           // local-only mode: nothing to sync
-  showSync(true);
-  // Stop the spinner even if the first snapshot never arrives (e.g. offline).
-  const settleTimer=setTimeout(()=>{ if(!_cloudSettled){ _cloudSettled=true; showSync(false); } }, 6000);
+  setSyncStatus('syncing');
+  // If the first snapshot never arrives (e.g. offline), surface "not synced".
+  const settleTimer=setTimeout(()=>{ if(!_cloudSettled){ _cloudSettled=true; setSyncStatus('error'); } }, 6000);
   Store.watchUserDoc((snap)=>{
-    if(!_cloudSettled){ _cloudSettled=true; clearTimeout(settleTimer); showSync(false); }
+    if(!_cloudSettled){ _cloudSettled=true; clearTimeout(settleTimer); }
+    setSyncStatus('synced', Date.now());   // a live snapshot means the cloud is reachable
     if(!snap.exists){ persist(); return; }   // brand-new account → create the doc
     const data=snap.data()||{};
     const incoming=data.marcomaster;
@@ -94,40 +96,82 @@ function subscribeCloud(){
   });
 }
 
-/* tiny, non-blocking "syncing…" indicator in the sidebar */
-function showSync(on){
-  let el=document.getElementById('syncTag');
+/* ---------- persistent cloud-sync status indicator (sidebar brand) ----------
+   Always visible so the user knows whether their data is safely in the cloud.
+   States: 'syncing' (in flight), 'synced' (server acknowledged — shows the last
+   synced time), 'error' (write/connection did NOT commit), 'local' (not signed
+   in). The last-synced timestamp lives in its own localStorage key so it
+   survives reloads but never lands inside the exported data backup. */
+let _lastSyncedTs = (()=>{ try{ return +localStorage.getItem('mm_lastSync')||0; }catch(e){ return 0; } })();
+function fmtSyncTime(ts){
+  if(!ts) return '';
+  try{ return new Date(ts).toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit'}); }
+  catch(e){ return ''; }
+}
+function setSyncStatus(state, ts){
+  if(state==='synced' && ts){ _lastSyncedTs=ts; try{ localStorage.setItem('mm_lastSync', String(ts)); }catch(e){} }
+  let el=document.getElementById('syncStatus');
+  if(!el){
+    const brand=document.querySelector('.brand'); if(!brand) return;
+    el=document.createElement('div'); el.id='syncStatus'; el.className='sync-status';
+    brand.appendChild(el);
+  }
+  el.classList.remove('is-synced','is-error','is-syncing','is-local');
+  const since=_lastSyncedTs?fmtSyncTime(_lastSyncedTs):'';
+  if(state==='syncing'){
+    el.classList.add('is-syncing');
+    el.innerHTML='<span class="sync-dot"></span><span class="sync-lbl">Syncing…</span>';
+  }else if(state==='synced'){
+    el.classList.add('is-synced');
+    el.innerHTML='<span class="sync-dot"></span><span class="sync-lbl">Synced ✓'+(since?' · '+since:'')+'</span>';
+  }else if(state==='local'){
+    el.classList.add('is-local');
+    el.innerHTML='<span class="sync-dot"></span><span class="sync-lbl">On this device only</span>';
+  }else{ // 'error' — not synced
+    el.classList.add('is-error');
+    el.innerHTML='<span class="sync-dot"></span><span class="sync-lbl">Not synced'+(since?' · last '+since:'')+'</span>';
+  }
+}
+/* legacy transient spinner — now routed through the persistent indicator */
+function showSync(on){ if(on) setSyncStatus('syncing'); }
+
+async function init(){
+  // Sign-in is REQUIRED. There is no local-only bypass: without an authenticated
+  // user the app shows only the sign-in screen and never renders the dashboard.
+  if(typeof firebase==='undefined' || !firebase.initializeApp){
+    showSignIn('Could not load sign-in. Check your connection and reload.');
+    return;
+  }
+  try{
+    FB.app=firebase.initializeApp(FIREBASE_CONFIG);
+    FB.auth=firebase.auth();
+    FB.db=firebase.firestore();
+    FB.ready=true;
+    try{ await FB.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
+    FB.auth.onAuthStateChanged(async(user)=>{
+      if(user){ FB.user=user; await startApp(); }
+      else { FB.user=null; showSignIn(); }   // signed out → sign-in screen only
+    });
+  }catch(e){
+    console.error('Firebase init failed — sign-in required', e);
+    showSignIn('Could not connect to the cloud. Sign-in is required to use MarcoMaster.');
+  }
+}
+init();
+
+/* persistent "not synced" warning — shown when a cloud write does NOT commit, so
+   the user knows their changes are only in this browser, not on the server. */
+function setSyncWarning(on){
+  let el=document.getElementById('syncWarn');
   if(on){
     if(!el){
-      el=document.createElement('div'); el.id='syncTag'; el.className='sync-tag'; el.textContent='syncing…';
-      const brand=document.querySelector('.brand'); if(brand) brand.appendChild(el);
+      el=document.createElement('div'); el.id='syncWarn'; el.className='sync-warn';
+      el.innerHTML='⚠ Not synced — changes saved on this device only. Check your connection / sign-in.';
+      document.body.appendChild(el);
     }
     el.style.display='block';
   }else if(el){ el.style.display='none'; }
 }
-
-async function init(){
-  // If Firebase SDK is present, use cloud auth + sync. Otherwise run local-only.
-  if(typeof firebase!=='undefined' && firebase.initializeApp){
-    try{
-      FB.app=firebase.initializeApp(FIREBASE_CONFIG);
-      FB.auth=firebase.auth();
-      FB.db=firebase.firestore();
-      FB.ready=true;
-      try{ await FB.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
-      FB.auth.onAuthStateChanged(async(user)=>{
-        if(user){ FB.user=user; await startApp(); }
-        else { FB.user=null; showSignIn(); }
-      });
-      return;
-    }catch(e){
-      console.warn('Firebase init failed, running local-only',e);
-    }
-  }
-  // local-only fallback (e.g. opened as a plain file)
-  await startApp();
-}
-init();
 
 /* sign out (exposed for a settings button) */
 async function signOut(){

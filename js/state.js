@@ -74,12 +74,24 @@ function seedDefaults(){
     (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; });
   });
 }
-async function persist(){ await Store.set('marcomaster', S); }
+/* returns true only if the cloud write committed */
+async function persist(){ return await Store.set('marcomaster', S); }
 
 let saveTimer=null;
 function save(showToast=true){
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{ await persist(); if(showToast) toast(); }, 350);
+  saveTimer=setTimeout(async()=>{
+    setSyncStatus('syncing');             // persistent indicator: write in flight
+    const synced=await persist();
+    if(synced){
+      setSyncWarning(false);              // cloud confirmed
+      setSyncStatus('synced', Date.now());
+      if(showToast) toast('Saved ✓');
+    }else{
+      setSyncWarning(true);               // visible: changes are NOT in the cloud
+      setSyncStatus(FB.user?'error':'local');
+    }
+  }, 350);
 }
 function toast(msg='Saved ✓'){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');

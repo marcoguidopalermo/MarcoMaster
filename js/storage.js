@@ -37,24 +37,31 @@ const Store = {
   // echo of our own changes (and not re-render over what the user just did)
   _lastWriteTs:0,
 
-  // save: write local immediately (synchronous, instant), then push to Firestore.
+  // save: write local immediately (cache), then push to Firestore.
+  // Returns TRUE only when the cloud write actually commits; FALSE otherwise
+  // (not signed in, rejected, or not acknowledged in time). The caller uses this
+  // to decide whether to show "Saved ✓" or a "not synced" warning — we never
+  // report success for a write that didn't reach the server.
   async set(k,v){
-    this._lsSet(k,v);
-    if(FB.user && FB.db){
-      const ts=Date.now();
-      this._lastWriteTs=ts;
-      const write = FB.db.collection('users').doc(FB.user.uid)
-        .set({ [k]:v, _updated:ts }, {merge:true});
-      // Firestore's set() promise does NOT resolve while the client is offline —
-      // the write is queued locally and syncs later. Bound the await so an offline
-      // write can never hang a save; the queued write still completes once the
-      // connection returns.
-      try{
-        await Promise.race([
-          write,
-          new Promise((_,rej)=>setTimeout(()=>rej(new Error('offline')), 4000)),
-        ]);
-      }catch(e){ console.warn('Firestore write deferred (saved locally)',e); }
+    this._lsSet(k,v);                       // localStorage cache — always
+    if(!(FB.user && FB.db)) return false;   // not signed in → nothing reached the cloud
+    const ts=Date.now();
+    this._lastWriteTs=ts;
+    const write = FB.db.collection('users').doc(FB.user.uid)
+      .set({ [k]:v, _updated:ts }, {merge:true});
+    // Firestore's set() resolves when the SERVER acknowledges the write, rejects on
+    // a hard error (e.g. permission-denied), and stays pending while offline. We
+    // cap the wait so a save never hangs the UI — but a timeout counts as NOT
+    // synced (we don't know it committed), not as success.
+    try{
+      await Promise.race([
+        write,
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('write-timeout')), 8000)),
+      ]);
+      return true;                          // server acknowledged → genuinely synced
+    }catch(e){
+      console.error('Firestore write NOT synced:', e && (e.code||e.message||e));
+      return false;                         // rejected / offline / timed out
     }
   },
 

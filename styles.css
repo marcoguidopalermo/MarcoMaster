@@ -192,6 +192,14 @@ textarea{min-height:70px;line-height:1.55}
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* persistent "not synced" warning banner (cloud write did not commit) */
+.sync-warn{
+  position:fixed;bottom:0;left:0;right:0;display:none;
+  background:var(--red);color:#fff;padding:10px 18px;text-align:center;
+  font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:0.03em;
+  z-index:400;box-shadow:0 -4px 20px #0006;
+}
+
 /* SCORECARD */
 .score-row{display:flex;align-items:center;gap:16px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
 .score-row:last-child{border:none}
@@ -409,6 +417,15 @@ textarea{min-height:70px;line-height:1.55}
 .sync-tag{margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--txt-faint);letter-spacing:0.06em;display:flex;align-items:center;gap:5px}
 .sync-tag::before{content:'';width:7px;height:7px;border-radius:50%;border:1.5px solid var(--txt-faint);border-top-color:var(--accent);animation:syncspin .8s linear infinite}
 @keyframes syncspin{to{transform:rotate(360deg)}}
+/* persistent cloud-sync status indicator (sidebar) */
+.sync-status{margin-top:9px;font-family:var(--mono);font-size:10px;letter-spacing:0.05em;display:flex;align-items:center;gap:6px;color:var(--txt-faint)}
+.sync-status .sync-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--txt-faint)}
+.sync-status.is-synced{color:var(--green)}
+.sync-status.is-synced .sync-dot{background:var(--green);box-shadow:0 0 7px var(--green)}
+.sync-status.is-error{color:var(--red)}
+.sync-status.is-error .sync-dot{background:var(--red);box-shadow:0 0 7px var(--red)}
+.sync-status.is-local{color:var(--txt-faint)}
+.sync-status.is-syncing .sync-dot{background:transparent;border:1.5px solid var(--txt-faint);border-top-color:var(--accent);animation:syncspin .8s linear infinite}
 /* project-task scheduler: embedded Time Blocker grid + conflict flag */
 .ps-grid-wrap{max-height:320px;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
 .ps-grid-wrap .plan-grid{border:none;border-radius:0;margin:0}
@@ -846,3 +863,55 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .switch.on .knob{left:22px;background:#06210b}
 .btn.danger{border-color:#f8514944;color:var(--red)}
 .btn.danger:hover{border-color:var(--red);background:#f851491a;color:var(--red)}
+
+/* ============================================================
+   MOBILE (≤768px) — sidebar becomes a bottom tab bar; content
+   goes full-width single-column. Desktop is untouched (this block
+   only applies at phone widths).
+   ============================================================ */
+@media(max-width:768px){
+  /* sidebar → fixed bottom tab bar with just the 3 nav tabs */
+  .sidebar{
+    position:fixed;top:auto;bottom:0;left:0;right:0;
+    width:100%;height:auto;flex-direction:row;
+    padding:0;gap:0;overflow:visible;
+    border-right:none;border-top:1px solid var(--line);
+    background:linear-gradient(0deg,#0e1012,#0b0c0d);
+    z-index:300;
+    padding-bottom:env(safe-area-inset-bottom);   /* iOS home-bar inset */
+  }
+  .brand,.side-foot{display:none}                 /* hide logo + reset/theme on mobile */
+  #navLinks{display:flex;flex-direction:row;width:100%}
+  .navbtn{
+    flex:1;flex-direction:column;justify-content:center;gap:3px;
+    min-height:58px;padding:8px 4px;border-radius:0;border:none;
+    font-size:11px;text-align:center;
+  }
+  .navbtn .ic{width:auto;font-size:18px}
+  .navbtn.active{background:var(--accent-soft);color:var(--accent);border-bottom:2px solid var(--accent)}
+
+  /* content uses the full screen width; leave room for the bottom bar */
+  .app{display:block}
+  .main,.main[data-page="dashboard"]{
+    max-width:none;margin:0;width:100%;
+    padding:20px 14px 96px;          /* bottom pad clears the tab bar */
+  }
+
+  /* single column + no horizontal overflow */
+  html,body{overflow-x:hidden}
+  .dash-grid{grid-template-columns:1fr}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .pipeline-card,.appt-card,.dash-plan-card,.card{padding-left:14px;padding-right:14px}
+  .appt-add{flex-direction:column;align-items:stretch}
+  .appt-add input[type=date],.appt-add input[type=time]{width:100%}
+
+  /* bigger touch targets */
+  .btn,.btn.sm{padding:11px 16px;font-size:14px}
+  .pl-check{width:34px;height:34px}
+  .box,.qtask .box,.ptask .box,.ptask-row .box,.pm-row .box,.rtask .box{width:26px;height:26px}
+  .fu-act,.fu-row .x,.think-row .x,.appt-row .x,.pm-row .x{font-size:20px;padding:4px}
+  .to-pipe,.to-today{padding:6px 10px}
+
+  /* modals fill the small screen comfortably */
+  .modal{max-width:100%;padding:22px 18px}
+}

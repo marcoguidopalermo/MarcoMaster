@@ -147,6 +147,20 @@ function day(){
       const prev=S.days[prevKey];
       const picks=(prev.tomorrow||[]).filter(p=>p&&p.trim());
       picks.forEach(p=>d.tasks.push({id:b(),txt:p,kind:'project',done:false,mins:60,start:null,schedDate:null,fromYesterday:true}));
+      // carry UNFINISHED one-off (non-recurring) tasks forward; completed ones and
+      // recurring tasks stay put (recurring is re-injected fresh by the engine, so
+      // carrying it would double-add). MOVE (not copy) the task objects out of the
+      // previous day so each appears exactly once — no duplication in the global
+      // time-block pool, and (with the _seeded guard below) no re-carry on reload.
+      const carryTasks=(prev.tasks||[]).filter(t=>!t.done && !t.recurringId);
+      if(carryTasks.length){
+        carryTasks.forEach(t=>{
+          t.fromYesterday=true;
+          if(t.kind==='project'){ t.schedDate=null; t.start=null; }  // back to today's block pool
+          d.tasks.push(t);
+        });
+        prev.tasks=(prev.tasks||[]).filter(t=>t.done || t.recurringId);  // remove the moved ones
+      }
       // carry UNFINISHED pipeline items into the new day; completed ones drop.
       // The pipeline lives on the day record, so a new day would otherwise start
       // empty — but it's set the night before, so open focuses must survive.

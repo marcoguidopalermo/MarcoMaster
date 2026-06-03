@@ -558,6 +558,15 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 .dash-grid .inbox-col{max-height:300px;overflow-y:auto}
 .dash-grid .fu-list,.dash-grid .think-list{max-height:260px;overflow-y:auto}
 .dash-grid .card .card-h{margin-bottom:10px}
+/* desktop: stretch the columns to equal height and let the Today's Tasks card +
+   its two sub-lists grow to fill, so there's no empty void under the left column
+   when the right column is taller. (Mobile keeps the stacked, capped behavior.) */
+@media(min-width:881px){
+  .dash-grid{align-items:stretch}
+  .dash-grid .big-card{display:flex;flex-direction:column;flex:1}
+  .dash-grid .inbox-cols{flex:1;min-height:0;grid-template-rows:minmax(0,1fr)}
+  .dash-grid .inbox-col{max-height:none}
+}
 /* unified follow-ups card: add-input sits directly under the header, list below */
 .fu-add{margin-bottom:12px}
 

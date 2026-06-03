@@ -49,6 +49,8 @@ function renderDashboard(){
 
   ${renderActiveProjects()}
 
+  ${renderDashMeetings()}
+
   <div class="card dash-plan-card">
     <div class="card-h">
       <h3>Time Blocker</h3>
@@ -492,6 +494,9 @@ function bindDashboard(){
 
   // Active Projects: tap a card → open the project task modal
   q('[data-projopen]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projopen));
+
+  // Meetings: tap a card → open the meeting quick-view modal
+  q('[data-mtgopen]','all').forEach(el=>el.onclick=()=>openMeetingModal(el.dataset.mtgopen));
 
   // promote a quick/inbox task → pipeline
   q('[data-plpromote-task]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); promoteTaskToPipeline(el.dataset.plpromoteTask); });

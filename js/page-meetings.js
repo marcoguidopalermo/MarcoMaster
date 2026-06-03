@@ -112,3 +112,71 @@ function addMeetingPoint(mid){
   m.points.push({id:b(), txt:v, done:false});
   meetingDraftText[mid]=''; save(); rerender();
 }
+
+/* ============================================================
+   DASHBOARD — at-a-glance Meetings strip, mirroring Active Projects.
+   Each meeting is a compact card (name + talking-point progress); tap
+   opens a modal with the checkable points + notes. Full management
+   stays on the Meetings tab. Reuses the project-card-mini visual +
+   the project-modal pattern, on the meetings data.
+   ============================================================ */
+function renderDashMeetings(){
+  const meetings=S.meetings||[];
+  return `
+  <div class="card dash-projects">
+    <div class="card-h"><h3>Meetings</h3><span class="sub">${meetings.length}</span></div>
+    ${meetings.length?`<div class="proj-strip">
+      ${meetings.map(m=>{ const s=meetingStats(m); const pct=s.total?Math.round(s.done/s.total*100):0; return `
+        <button class="proj-card-mini" data-mtgopen="${m.id}">
+          <span class="pcm-top"><span class="proj-swatch" style="background:var(--accent)"></span><span class="pcm-name">${esc(m.name)}</span></span>
+          <div class="proj-track"><div class="proj-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+          <span class="pcm-count">${s.done}/${s.total} covered</span>
+        </button>`; }).join('')}
+    </div>`:'<div class="empty sm">No meetings — add one in the Meetings tab.</div>'}
+  </div>`;
+}
+
+/* ---------- meeting quick-view modal (mirrors the project task modal) ---------- */
+let meetingModalId=null;
+let meetingModalDraft='';
+function openMeetingModal(mid){ meetingModalId=mid; meetingModalDraft=''; renderMeetingModal(); }
+function renderMeetingModal(){
+  const m=(S.meetings||[]).find(x=>x.id===meetingModalId); if(!m){ closeReset(); return; }
+  const pts=m.points||[];
+  const el=q('#resetModal');
+  el.innerHTML=`
+    <div class="modal">
+      <span class="modal-close" id="mmClose">×</span>
+      <h3><span class="proj-swatch" style="background:var(--accent);display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(m.name)}</h3>
+      <div class="mtg-section-lbl">Talking points</div>
+      <div class="pm-tasks">
+        ${pts.length?pts.map(p=>`
+          <div class="pm-row ${p.done?'done':''}">
+            <span class="box" data-mmdone="${p.id}">✓</span>
+            <span class="pm-txt">${esc(p.txt)}</span>
+            <span class="x" data-mmdel="${p.id}">×</span>
+          </div>`).join(''):'<div class="empty sm">No talking points yet — add one below.</div>'}
+      </div>
+      <div class="proj-add-task" style="margin-top:12px">
+        <input type="text" id="mmAdd" value="${esc(meetingModalDraft)}" placeholder="Add a talking point for ${esc(m.name)}…">
+        <button class="btn sm" id="mmAddBtn">+ Add</button>
+      </div>
+      <div class="mtg-section-lbl">Notes</div>
+      <textarea class="mtg-notes" id="mmNotes" placeholder="Open notes / context for ${esc(m.name)}…">${esc(m.notes||'')}</textarea>
+      <p class="list-note" style="margin-top:10px">Quick view · full management on the Meetings tab</p>
+    </div>`;
+  el.classList.add('show');
+  bindMeetingModal();
+}
+function bindMeetingModal(){
+  const m=(S.meetings||[]).find(x=>x.id===meetingModalId); if(!m) return;
+  const close=q('#mmClose'); if(close) close.onclick=()=>{ meetingModalId=null; closeReset(); };
+  // re-render the modal AND the dashboard strip on every change (rerender only rebuilds #main)
+  q('[data-mmdone]','all').forEach(el=>el.onclick=()=>{ const p=(m.points||[]).find(x=>x.id===el.dataset.mmdone); if(p){ p.done=!p.done; save(false); renderMeetingModal(); rerender(); } });
+  q('[data-mmdel]','all').forEach(el=>el.onclick=()=>{ m.points=(m.points||[]).filter(x=>x.id!==el.dataset.mmdel); save(); renderMeetingModal(); rerender(); });
+  const ai=q('#mmAdd'); if(ai) ai.oninput=()=>{ meetingModalDraft=ai.value; };
+  const addP=()=>{ const v=(meetingModalDraft||'').trim(); if(!v) return; if(!m.points) m.points=[]; m.points.push({id:b(),txt:v,done:false}); meetingModalDraft=''; save(); renderMeetingModal(); rerender(); };
+  const ab=q('#mmAddBtn'); if(ab) ab.onclick=addP;
+  if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addP(); };
+  const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)
+}

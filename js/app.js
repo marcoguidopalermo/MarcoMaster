@@ -54,7 +54,8 @@ function startApp(){
   catch(e){ console.error('loadState failed — rendering with default state', e); try{ seedDefaults(); }catch(_){ } }
   applyTheme();
   try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
-  persist();   // fire-and-forget; never block the first render on a write
+  persist({bump:false});   // fire-and-forget; mirror local up WITHOUT advancing the
+                           // version, so a genuinely newer cloud copy can still win
   q('#resetBtn').onclick=openReset;
   const tb=q('#themeBtn'); if(tb) tb.onclick=toggleTheme;
   q('#resetModal').onclick=(e)=>{ if(e.target.id==='resetModal') closeReset(); };
@@ -69,7 +70,7 @@ function startApp(){
    The app is already rendered from local cache; this listener silently folds in
    the authoritative cloud state when it arrives (e.g. newer data from another
    device) and on every later change, without ever blocking the UI. */
-let _cloudSettled=false, _lastAppliedUpdate=0;
+let _cloudSettled=false;
 function subscribeCloud(){
   if(!(FB.user && FB.db)) return;           // local-only mode: nothing to sync
   setSyncStatus('syncing');
@@ -78,18 +79,24 @@ function subscribeCloud(){
   Store.watchUserDoc((snap)=>{
     if(!_cloudSettled){ _cloudSettled=true; clearTimeout(settleTimer); }
     setSyncStatus('synced', Date.now());   // a live snapshot means the cloud is reachable
-    if(!snap.exists){ persist(); return; }   // brand-new account → create the doc
+    if(!snap.exists){ persist({bump:false}); return; }   // brand-new account → create the doc
     const data=snap.data()||{};
     const incoming=data.marcomaster;
-    const ts=data._updated||0;
     if(incoming==null) return;
-    if(ts<=_lastAppliedUpdate) return;        // already have this (or newer)
-    if(ts<=Store._lastWriteTs) return;        // echo of our own write — ignore
+    // Newer-always-wins: both copies now carry a durable, content-tied version
+    // (updatedAt, stored INSIDE the state). Adopt the cloud copy ONLY when it is
+    // strictly newer than what we already hold locally — an older/emptier cloud
+    // snapshot can never clobber fresher local data. Fall back to the legacy
+    // sibling `_updated` for docs written before versioning, and to this echo
+    // check (equal version ⇒ our own write) for free.
+    const cloudV=(+incoming.updatedAt) || (+data._updated) || 0;
+    const localV=(+S.updatedAt) || 0;
+    if(cloudV<=localV) return;                // local is newer or equal → keep it
     if(saveTimer) return;                     // a local edit is mid-flight; let it win
     // Adopt the cloud state and silently re-render the current page.
-    _lastAppliedUpdate=ts;
     S=incoming;
     seedDefaults();
+    if((+S.updatedAt||0)<cloudV) S.updatedAt=cloudV;   // carry the version forward (legacy docs)
     Store._lsSet('marcomaster', S);
     try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
     renderNav(); rerender();

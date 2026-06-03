@@ -33,22 +33,33 @@ const Store = {
     return this._lsGet(k);
   },
 
-  // timestamp of our most recent cloud write, so the live listener can ignore the
-  // echo of our own changes (and not re-render over what the user just did)
-  _lastWriteTs:0,
-
-  // save: write local immediately (cache), then push to Firestore.
+  // save: stamp a monotonic, content-tied version INSIDE the state (updatedAt),
+  // write local immediately (cache), then push to Firestore. Because updatedAt
+  // lives inside the object it persists to BOTH localStorage and the cloud — that
+  // is what lets the snapshot reconciler compare "how fresh is local" vs "how
+  // fresh is cloud" and guarantee newer-always-wins (see app.js).
+  //   opts.bump=true  (default): a real save — advance the version. Math.max with
+  //                   prev+1 keeps it monotonic even if the clock jumps backwards.
+  //   opts.bump=false (startup re-persist / first-doc create): preserve the
+  //                   existing version; only assign one if it's missing (the
+  //                   one-time legacy migration). This stops the first-render write
+  //                   from falsely marking local as "newest" and shadowing a
+  //                   genuinely newer copy from another device.
   // Returns TRUE only when the cloud write actually commits; FALSE otherwise
   // (not signed in, rejected, or not acknowledged in time). The caller uses this
   // to decide whether to show "Saved ✓" or a "not synced" warning — we never
   // report success for a write that didn't reach the server.
-  async set(k,v){
-    this._lsSet(k,v);                       // localStorage cache — always
+  async set(k,v,opts){
+    const bump = !opts || opts.bump!==false;
+    if(v && typeof v==='object'){
+      const prev=+v.updatedAt||0;
+      if(bump || v.updatedAt==null) v.updatedAt=Math.max(Date.now(), prev+1);
+    }
+    this._lsSet(k,v);                       // localStorage cache — always (now incl. updatedAt)
     if(!(FB.user && FB.db)) return false;   // not signed in → nothing reached the cloud
-    const ts=Date.now();
-    this._lastWriteTs=ts;
+    const ts=(v && v.updatedAt!=null) ? +v.updatedAt : Date.now();   // mirror updatedAt exactly
     const write = FB.db.collection('users').doc(FB.user.uid)
-      .set({ [k]:v, _updated:ts }, {merge:true});
+      .set({ [k]:v, _updated:ts }, {merge:true});   // _updated mirrors updatedAt (back-compat)
     // Firestore's set() resolves when the SERVER acknowledges the write, rejects on
     // a hard error (e.g. permission-denied), and stays pending while offline. We
     // cap the wait so a save never hangs the UI — but a timeout counts as NOT

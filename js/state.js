@@ -21,6 +21,10 @@ function defaultProjects(){
    more than once and only fills in what's missing. */
 function seedDefaults(){
   if(!S || typeof S!=='object') S={};
+  // one-time migration: state saved before durable versioning has no updatedAt.
+  // Treat it as version 0 (the oldest possible) so any real edit — local or from
+  // the cloud — out-ranks it, and the first save() bumps it to a live timestamp.
+  if(S.updatedAt==null) S.updatedAt=0;
   // seed defaults once
   if(!S.recurring){
     S.recurring = JSON.parse(JSON.stringify(DEFAULT_RECURRING));
@@ -74,8 +78,11 @@ function seedDefaults(){
     (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; });
   });
 }
-/* returns true only if the cloud write committed */
-async function persist(){ return await Store.set('marcomaster', S); }
+/* returns true only if the cloud write committed.
+   opts.bump=false preserves the current in-state version (updatedAt) instead of
+   advancing it — used by the startup re-persist so first render doesn't falsely
+   mark local as newest. Real edits go through save()/persist() and DO bump. */
+async function persist(opts){ return await Store.set('marcomaster', S, opts); }
 
 let saveTimer=null;
 function save(showToast=true){

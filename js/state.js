@@ -47,6 +47,7 @@ function seedDefaults(){
   S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; });
   if(!S.followups) S.followups = [];      // persistent open loops (new + existing accounts)
   if(!S.appointments) S.appointments = []; // fixed date/time commitments
+  if(!S.meetings) S.meetings = [];        // recurring people/meetings: talking points + notes (migration: existing accounts get [])
   if(!S.theme) S.theme='dark';
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
   if(!S.days) S.days = {};        // per-day "today" data

@@ -757,6 +757,10 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .proj-add-task{display:flex;gap:8px}
 .proj-add-task input{flex:1;font-size:13px;padding:7px 10px}
 .empty.sm{padding:8px;font-size:11px}
+/* MEETINGS — reuses the project-card structure; adds section labels + notes */
+.mtg-section-lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--txt-faint);margin:12px 0 6px}
+.mtg-notes{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--txt);font-family:var(--sans);font-size:13.5px;line-height:1.55;min-height:64px;resize:vertical}
+.mtg-notes:focus{outline:none;border-color:var(--accent)}
 
 /* PLAN tabs */
 .plan-tabs{display:flex;gap:6px;margin-bottom:18px}

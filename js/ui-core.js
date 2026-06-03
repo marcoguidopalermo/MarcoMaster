@@ -18,6 +18,7 @@ function toggleTheme(){ S.theme=(S.theme==='light')?'dark':'light'; applyTheme()
 const PAGES={
   dashboard:{render:renderDashboard,bind:bindDashboard},
   journal:{render:renderJournal,bind:bindJournal},
+  meetings:{render:renderMeetings,bind:bindMeetings},
   settings:{render:renderSettings,bind:bindSettings},
 };
 let current='dashboard';
@@ -48,6 +49,7 @@ function rerender(){
 const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
   ['journal','✦','Journal'],
+  ['meetings','👥','Meetings'],
   ['settings','⚙','Settings'],
 ];
 function renderNav(){

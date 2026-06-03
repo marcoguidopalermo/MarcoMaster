@@ -60,7 +60,7 @@ body{
 
 /* SIDEBAR */
 .sidebar{
-  width:236px;flex-shrink:0;
+  width:200px;flex-shrink:0;
   border-right:1px solid var(--line);
   background:linear-gradient(180deg,#0e1012,#0b0c0d);
   padding:22px 14px;
@@ -74,8 +74,6 @@ body{
   display:flex;align-items:center;gap:8px;
 }
 .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent)}
-.brand .tag{font-family:var(--mono);font-size:9.5px;color:var(--txt-faint);letter-spacing:0.14em;text-transform:uppercase;margin-top:7px;line-height:1.6}
-.brand .tag b{color:var(--txt-dim);font-weight:600}
 
 .navbtn{
   display:flex;align-items:center;gap:11px;

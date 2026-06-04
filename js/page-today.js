@@ -186,8 +186,8 @@ function winsSummary(d){
 /* ---------- TASK INBOX (lives on Today) ---------- */
 function renderTaskInbox(){
   const quick=quickTasks();
-  const projects=projectTasks();
-  const unsched=unscheduledProjects();
+  const projects=projectTasks().filter(t=>!t.meetingId);      // meeting blocks live on the calendar grid, not the task inbox
+  const unsched=unscheduledProjects().filter(t=>!t.meetingId);
   const quickDone=quick.filter(t=>t.done).length;
   const liveDone=day().tasks.filter(t=>t.done).length;
   const archived=day().archive.length;

@@ -53,6 +53,14 @@ function renderAppointments(){
   </div>`;
 }
 
+/* create an appointment and return it. Shared by the manual add-input and by
+   meeting scheduling, so meetings reuse the exact appointment shape/flow. */
+function createAppointment(title, date, time){
+  if(!S.appointments) S.appointments=[];
+  const appt={ id:b(), title, date, time, createdAt:Date.now() };
+  S.appointments.push(appt);
+  return appt;
+}
 function bindAppointments(){
   const ti=q('#apptTitle'); if(ti) ti.oninput=()=>{ apptDraft.title=ti.value; };
   const di=q('#apptDate'); if(di) di.oninput=()=>{ apptDraft.date=di.value; };
@@ -63,8 +71,7 @@ function bindAppointments(){
     const time=apptDraft.time||'';
     if(!title){ toast('Add a title'); return; }
     if(!date || !time){ toast('Pick a date and time'); return; }
-    if(!S.appointments) S.appointments=[];
-    S.appointments.push({ id:b(), title, date, time, createdAt:Date.now() });
+    createAppointment(title, date, time);
     apptDraft={title:'',date:todayKey(),time:''};
     save(); toast('Appointment added'); rerender();
   };

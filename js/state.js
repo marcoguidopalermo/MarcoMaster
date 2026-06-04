@@ -48,6 +48,12 @@ function seedDefaults(){
   if(!S.followups) S.followups = [];      // persistent open loops (new + existing accounts)
   if(!S.appointments) S.appointments = []; // fixed date/time commitments
   if(!S.meetings) S.meetings = [];        // recurring people/meetings: talking points + notes (migration: existing accounts get [])
+  // migrate meetings for scheduling: nextMeeting (date/time) + linked appointment/block ids
+  S.meetings.forEach(m=>{
+    if(m.nextMeeting===undefined) m.nextMeeting=null;
+    if(m.apptId===undefined) m.apptId=null;
+    if(m.blockId===undefined) m.blockId=null;
+  });
   if(!S.theme) S.theme='dark';
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
   if(!S.days) S.days = {};        // per-day "today" data
@@ -106,10 +112,9 @@ function toast(msg='Saved ✓'){
   clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),1400);
 }
 
-/* today's data object (auto-creates, never carries checkmarks forward) */
-function day(){
-  const k=todayKey();
-  if(!S.days[k]) S.days[k]={
+/* a fresh, empty day record (shared by day() and dayFor()) */
+function blankDay(){
+  return {
     reset:{}, focus:{biz:'',health:'',lev:'',content:'',not:''},
     workout:'', shutdownTime:'', energy:'', mood:'', sleep:'', stress:'',
     meds:'', feelings:'', fulfillment:'',   // journal fields (reflection tab)
@@ -124,6 +129,20 @@ function day(){
     dayEnd:21,         // last hour shown
     shutdown:{ well:'',drift:'',avoid:'',trained:false,health:false,time:false,firstMove:'',clear:'' }
   };
+}
+/* get-or-create ANY day's record (e.g. a future date a meeting is scheduled on).
+   Unlike day() it runs no migrations or rollover bridge — those run when that
+   date actually becomes "today". Used by meeting scheduling to land a block on a
+   future day's tasks so it shows on the Time Blocker grid. */
+function dayFor(dk){
+  if(!S.days[dk]) S.days[dk]=blankDay();
+  return S.days[dk];
+}
+
+/* today's data object (auto-creates, never carries checkmarks forward) */
+function day(){
+  const k=todayKey();
+  if(!S.days[k]) S.days[k]=blankDay();
   const d=S.days[k];
   // migrations for days created before these fields existed
   if(!d.tasks) d.tasks=[];

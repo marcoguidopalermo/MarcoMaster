@@ -27,6 +27,9 @@ function renderMeetings(){
         <span class="x" data-mdel="${m.id}">×</span>
       </div>
 
+      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)}</div>`:''}
+      <button class="btn ghost sm mtg-sched-btn" data-msched="${m.id}">📅 ${m.nextMeeting?'Reschedule':'Schedule next meeting'}</button>
+
       <div class="mtg-section-lbl">Talking points</div>
       <div class="proj-tasks">
         ${pts.length?pts.map(p=>`
@@ -72,6 +75,7 @@ function bindMeetings(){
   q('[data-mdel]','all').forEach(el=>el.onclick=()=>{
     const m=(S.meetings||[]).find(x=>x.id===el.dataset.mdel); if(!m) return;
     if(confirm(`Delete meeting "${m.name}" and its talking points + notes?`)){
+      removeMeetingLinks(m);   // also clean up its linked appointment + calendar block
       S.meetings=(S.meetings||[]).filter(x=>x.id!==m.id); save(); rerender();
     }
   });
@@ -94,6 +98,9 @@ function bindMeetings(){
   q('[data-mpadd]','all').forEach(el=>el.onkeydown=e=>{ if(e.key==='Enter') addMeetingPoint(el.dataset.mpadd); });
   q('[data-mpaddbtn]','all').forEach(el=>el.onclick=()=>addMeetingPoint(el.dataset.mpaddbtn));
 
+  // schedule / reschedule the next meeting (date+time picker → appointment + block)
+  q('[data-msched]','all').forEach(el=>el.onclick=()=>openMeetingSchedule(el.dataset.msched));
+
   // add a meeting
   const ni=q('#newMeeting'); if(ni) ni.oninput=()=>{ newMeetingName=ni.value; };
   const add=q('#addMeeting'); if(add) add.onclick=()=>{ if(createMeeting(newMeetingName)){ newMeetingName=''; rerender(); } };
@@ -104,7 +111,7 @@ function bindMeetings(){
 function createMeeting(name){
   const v=(name||'').trim(); if(!v) return false;
   if(!S.meetings) S.meetings=[];
-  S.meetings.push({id:b(), name:v, points:[], notes:'', createdAt:Date.now()});
+  S.meetings.push({id:b(), name:v, points:[], notes:'', createdAt:Date.now(), nextMeeting:null, apptId:null, blockId:null});
   save(); return true;
 }
 
@@ -134,6 +141,7 @@ function renderDashMeetings(){
           <span class="pcm-top"><span class="proj-swatch" style="background:var(--accent)"></span><span class="pcm-name">${esc(m.name)}</span></span>
           <div class="proj-track"><div class="proj-fill" style="width:${pct}%;background:var(--accent)"></div></div>
           <span class="pcm-count">${s.done}/${s.total} covered</span>
+          ${m.nextMeeting?`<span class="pcm-next">${meetingNextLabel(m)}</span>`:''}
         </button>`; }).join('')}
     </div>`:'<div class="empty sm">No meetings — add one in the Meetings tab.</div>'}
   </div>`;
@@ -151,6 +159,8 @@ function renderMeetingModal(){
     <div class="modal modal-lg">
       <span class="modal-close" id="mmClose">×</span>
       <h3><span class="proj-swatch" style="background:var(--accent);display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(m.name)}</h3>
+      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)}</div>`:''}
+      <button class="btn ghost sm mtg-sched-btn" id="mmSched">📅 ${m.nextMeeting?'Reschedule':'Schedule next meeting'}</button>
       <div class="mtg-section-lbl">Talking points</div>
       <div class="pm-tasks">
         ${pts.length?pts.map(p=>`
@@ -182,4 +192,79 @@ function bindMeetingModal(){
   const ab=q('#mmAddBtn'); if(ab) ab.onclick=addP;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addP(); };
   const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)
+  const sc=q('#mmSched'); if(sc) sc.onclick=()=>openMeetingSchedule(meetingModalId);
+}
+
+/* ============================================================
+   MEETING SCHEDULING — pick a date+time → one linked APPOINTMENT
+   (S.appointments) + one calendar BLOCK (a kind:'project' task the
+   Time Blocker grid renders). Reschedule UPDATES the same two records
+   by their stored ids (m.apptId / m.blockId), never duplicating; if a
+   linked record was deleted elsewhere it is recreated cleanly.
+   ============================================================ */
+function meetingHour(time){ const [h,mn]=String(time||'').split(':').map(Number); return (h||0)+((mn||0)/60); }
+function meetingNextLabel(m){
+  if(!m.nextMeeting || !m.nextMeeting.date) return '';
+  return 'Next: '+apptDateLabel(m.nextMeeting.date)+', '+fmtClock(m.nextMeeting.time);
+}
+/* remove the appointment + calendar block linked to a meeting (used on delete) */
+function removeMeetingLinks(m){
+  if(m.apptId){ S.appointments=(S.appointments||[]).filter(a=>a.id!==m.apptId); }
+  if(m.blockId){ const ref=findTaskGlobal(m.blockId); if(ref){ S.days[ref.dayKey].tasks=(S.days[ref.dayKey].tasks||[]).filter(x=>x.id!==m.blockId); } }
+}
+function scheduleMeeting(m, date, time){
+  // 1) Appointment — update the linked one in place, or create + link (if missing/deleted).
+  let appt=m.apptId && (S.appointments||[]).find(a=>a.id===m.apptId);
+  if(appt){ appt.title=m.name; appt.date=date; appt.time=time; }
+  else { appt=createAppointment(m.name, date, time); m.apptId=appt.id; }
+  // 2) Calendar block (kind:'project' task) — update/move the linked one, or create + link.
+  const hour=meetingHour(time);
+  const ref=m.blockId && findTaskGlobal(m.blockId);
+  if(ref){
+    const t=ref.t;
+    if(ref.dayKey!==date){   // moved to a different day → relocate the SAME object (id preserved)
+      S.days[ref.dayKey].tasks=(S.days[ref.dayKey].tasks||[]).filter(x=>x.id!==t.id);
+      dayFor(date).tasks.push(t);
+    }
+    t.txt=m.name; t.schedDate=date; t.start=hour; t.done=false; t.meetingId=m.id;
+    if(t.mins==null) t.mins=60;
+  } else {
+    const t={id:b(), txt:m.name, kind:'project', done:false, mins:60, start:hour, schedDate:date, meetingId:m.id};
+    dayFor(date).tasks.push(t); m.blockId=t.id;
+  }
+  // 3) display marker on the meeting
+  m.nextMeeting={date, time};
+  save();
+}
+/* date+time picker modal; Save upserts via scheduleMeeting */
+function openMeetingSchedule(mid){
+  const m=(S.meetings||[]).find(x=>x.id===mid); if(!m) return;
+  meetingModalId=mid;
+  const nm=m.nextMeeting||{};
+  const dateVal=nm.date||todayKey();
+  const timeVal=nm.time||'';
+  const el=q('#resetModal');
+  el.innerHTML=`
+    <div class="modal">
+      <span class="modal-close" id="msClose">×</span>
+      <h3>${m.nextMeeting?'Reschedule':'Schedule next'} meeting</h3>
+      <p class="intro">Pick a date and time for "${esc(m.name)}". This adds it to Appointments and blocks it on your Time Blocker.</p>
+      <div class="ms-fields">
+        <input type="date" id="msDate" min="${todayKey()}" value="${esc(dateVal)}">
+        <input type="time" id="msTime" value="${esc(timeVal)}">
+      </div>
+      <div class="btn-row" style="margin-top:18px">
+        <button class="btn" id="msSave">${m.nextMeeting?'Update':'Schedule'}</button>
+        <button class="btn ghost" id="msCancel">Cancel</button>
+      </div>
+    </div>`;
+  el.classList.add('show');
+  q('#msClose').onclick=()=>closeReset();
+  q('#msCancel').onclick=()=>closeReset();
+  q('#msSave').onclick=()=>{
+    const d=q('#msDate').value, t=q('#msTime').value;
+    if(!d||!t){ toast('Pick a date and time'); return; }
+    scheduleMeeting(m, d, t);
+    closeReset(); toast('Meeting scheduled ✓'); rerender();
+  };
 }

@@ -275,7 +275,7 @@ function renderActiveProjects(){
     ${active.length?`<div class="proj-strip">
       ${active.map(p=>{ const s=projectStats(p); return `
         <button class="proj-card-mini" data-projopen="${p.id}">
-          <span class="pcm-top"><span class="proj-swatch" style="background:${p.color}"></span><span class="pcm-name">${esc(p.name)}</span></span>
+          <span class="pcm-top"><span class="proj-swatch" style="background:${p.color}"></span><span class="pcm-name">${esc(p.name)}</span><span class="pcm-del" data-pdeldash="${p.id}" title="Delete project">×</span></span>
           <div class="proj-track"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
           <span class="pcm-count">${s.done}/${s.total} done</span>
         </button>`; }).join('')}
@@ -494,6 +494,12 @@ function bindDashboard(){
 
   // Active Projects: tap a card → open the project task modal
   q('[data-projopen]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projopen));
+  // Active Projects: × → delete project (confirm + clean up linked tasks/pipeline)
+  q('[data-pdeldash]','all').forEach(el=>el.onclick=(e)=>{
+    e.stopPropagation();   // don't also open the card's modal
+    const p=(S.projects||[]).find(x=>x.id===el.dataset.pdeldash); if(!p) return;
+    if(confirm(`Delete "${p.name}" and its tasks?`)){ deleteProject(p); rerender(); }
+  });
 
   // Meetings: tap a card → open the meeting quick-view modal
   q('[data-mtgopen]','all').forEach(el=>el.onclick=()=>openMeetingModal(el.dataset.mtgopen));

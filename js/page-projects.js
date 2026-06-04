@@ -85,9 +85,7 @@ function bindProjects(){
   q('[data-pdone]','all').forEach(el=>el.onclick=()=>{ const p=S.projects.find(x=>x.id===el.dataset.pdone); if(p){ p.done=!p.done; save(); rerender(); } });
   q('[data-pdel]','all').forEach(el=>el.onclick=()=>{
     const p=S.projects.find(x=>x.id===el.dataset.pdel); if(!p) return;
-    if(confirm(`Delete project "${p.name}" and its task list?`)){
-      S.projects=S.projects.filter(x=>x.id!==p.id); save(); rerender();
-    }
+    if(confirm(`Delete "${p.name}" and its tasks?`)){ deleteProject(p); rerender(); }
   });
 
   q('[data-ptdone]','all').forEach(el=>el.onclick=()=>{
@@ -124,6 +122,33 @@ function createProject(name){
   const color=PROJ_COLORS[(S.projects||[]).length % PROJ_COLORS.length];
   S.projects.push({id:b(),name:v,color,done:false,tasks:[]});
   save(); return true;
+}
+/* remove everything linked to a project across all days, so deleting it leaves
+   no orphans (mirrors removeMeetingLinks for meetings):
+   - time-block/calendar day-tasks created from its tasks (projectId === p.id)
+   - pipeline items promoted from it, whether linked by projectId OR by taskId
+     (a project task sent to Today then promoted references the day-task's id). */
+function removeProjectLinks(p){
+  if(!p) return;
+  // ids of this project's day-tasks first, so pipeline items that reference them
+  // by taskId can be cleaned even after the tasks themselves are removed
+  const linkedTaskIds=new Set();
+  Object.keys(S.days||{}).forEach(dk=>{
+    (S.days[dk].tasks||[]).forEach(t=>{ if(t.projectId===p.id) linkedTaskIds.add(t.id); });
+  });
+  Object.keys(S.days||{}).forEach(dk=>{
+    const d=S.days[dk];
+    if(d.tasks) d.tasks=d.tasks.filter(t=>t.projectId!==p.id);
+    if(d.pipeline) d.pipeline=d.pipeline.filter(it=>it.projectId!==p.id && !linkedTaskIds.has(it.taskId));
+  });
+}
+/* delete a project: clean up its links, drop it (and its task list) from
+   S.projects, and persist through the version-stamped save layer. */
+function deleteProject(p){
+  if(!p) return;
+  removeProjectLinks(p);
+  S.projects=(S.projects||[]).filter(x=>x.id!==p.id);
+  save();
 }
 function addProjTask(pid){
   const p=S.projects.find(x=>x.id===pid); if(!p) return;

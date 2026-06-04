@@ -96,13 +96,16 @@ function bindMeetings(){
 
   // add a meeting
   const ni=q('#newMeeting'); if(ni) ni.oninput=()=>{ newMeetingName=ni.value; };
-  const add=q('#addMeeting'); if(add) add.onclick=()=>{
-    const v=(newMeetingName||'').trim(); if(!v) return;
-    if(!S.meetings) S.meetings=[];
-    S.meetings.push({id:b(), name:v, points:[], notes:'', createdAt:Date.now()});
-    newMeetingName=''; save(); rerender();
-  };
+  const add=q('#addMeeting'); if(add) add.onclick=()=>{ if(createMeeting(newMeetingName)){ newMeetingName=''; rerender(); } };
   if(ni) ni.onkeydown=e=>{ if(e.key==='Enter') q('#addMeeting').click(); };
+}
+/* create a meeting from a name; returns true if created. Shared by the Meetings
+   tab add-input and the Dashboard inline "+" so the logic lives in one place. */
+function createMeeting(name){
+  const v=(name||'').trim(); if(!v) return false;
+  if(!S.meetings) S.meetings=[];
+  S.meetings.push({id:b(), name:v, points:[], notes:'', createdAt:Date.now()});
+  save(); return true;
 }
 
 function addMeetingPoint(mid){
@@ -124,7 +127,7 @@ function renderDashMeetings(){
   const meetings=S.meetings||[];
   return `
   <div class="card dash-projects">
-    <div class="card-h"><h3>Meetings</h3><span class="sub">${meetings.length}</span></div>
+    <div class="card-h"><h3>Meetings</h3><span class="ch-actions"><span class="sub">${meetings.length}</span><button class="dash-add-btn" id="dashAddMtg" title="Add a meeting">+</button></span></div>
     ${meetings.length?`<div class="proj-strip">
       ${meetings.map(m=>{ const s=meetingStats(m); const pct=s.total?Math.round(s.done/s.total*100):0; return `
         <button class="proj-card-mini" data-mtgopen="${m.id}">
@@ -145,7 +148,7 @@ function renderMeetingModal(){
   const pts=m.points||[];
   const el=q('#resetModal');
   el.innerHTML=`
-    <div class="modal">
+    <div class="modal modal-lg">
       <span class="modal-close" id="mmClose">×</span>
       <h3><span class="proj-swatch" style="background:var(--accent);display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(m.name)}</h3>
       <div class="mtg-section-lbl">Talking points</div>

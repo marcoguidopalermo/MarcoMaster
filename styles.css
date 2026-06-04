@@ -121,6 +121,9 @@ body{
 .card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px}
 .card-h h3{font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--txt)}
 .card-h .sub{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.card-h .ch-actions{display:flex;align-items:center;gap:10px}
+.dash-add-btn{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--accent);font-size:17px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:border .14s,background .14s}
+.dash-add-btn:hover{border-color:var(--accent);background:var(--accent-soft)}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
@@ -302,6 +305,10 @@ textarea{min-height:70px;line-height:1.55}
 .modal-bg{position:fixed;inset:0;background:#000a;backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
 .modal-bg.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;padding:30px 32px;animation:fade .25s}
+/* large modal (meeting quick-view): roomy talking points + a tall, writable notes area */
+.modal.modal-lg{max-width:880px;width:94vw;max-height:90vh;overflow-y:auto}
+.modal-lg .pm-tasks{max-height:32vh;overflow-y:auto}
+.modal-lg .mtg-notes{min-height:300px}
 .modal h3{font-size:22px;font-weight:800;letter-spacing:-0.02em}
 .modal .intro{font-family:var(--serif);font-style:italic;color:var(--txt-dim);font-size:16px;margin:8px 0 22px;line-height:1.5}
 .modal .qf{margin-bottom:14px}
@@ -926,4 +933,6 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 
   /* modals fill the small screen comfortably */
   .modal{max-width:100%;padding:22px 18px}
+  .modal.modal-lg{width:100%;max-width:100%}
+  .modal-lg .mtg-notes{min-height:200px}
 }

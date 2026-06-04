@@ -113,13 +113,17 @@ function bindProjects(){
   q('[data-ptaddbtn]','all').forEach(el=>el.onclick=()=>addProjTask(el.dataset.ptaddbtn));
 
   const np=q('#newProj'); if(np) np.oninput=()=>{ newProjName=np.value; };
-  const add=q('#addProj'); if(add) add.onclick=()=>{
-    const v=(newProjName||'').trim(); if(!v) return;
-    const color=PROJ_COLORS[(S.projects||[]).length % PROJ_COLORS.length];
-    S.projects.push({id:b(),name:v,color,done:false,tasks:[]});
-    newProjName=''; save(); rerender();
-  };
+  const add=q('#addProj'); if(add) add.onclick=()=>{ if(createProject(newProjName)){ newProjName=''; rerender(); } };
   const ni=q('#newProj'); if(ni) ni.onkeydown=e=>{ if(e.key==='Enter') q('#addProj').click(); };
+}
+/* create a project from a name; returns true if created. Shared by the Settings
+   tab add-input and the Dashboard inline "+" so the logic lives in one place. */
+function createProject(name){
+  const v=(name||'').trim(); if(!v) return false;
+  if(!S.projects) S.projects=[];
+  const color=PROJ_COLORS[(S.projects||[]).length % PROJ_COLORS.length];
+  S.projects.push({id:b(),name:v,color,done:false,tasks:[]});
+  save(); return true;
 }
 function addProjTask(pid){
   const p=S.projects.find(x=>x.id===pid); if(!p) return;

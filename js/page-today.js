@@ -271,7 +271,7 @@ function renderActiveProjects(){
   const active=(S.projects||[]).filter(p=>!p.done);
   return `
   <div class="card dash-projects">
-    <div class="card-h"><h3>Active Projects</h3><span class="sub">${active.length}</span></div>
+    <div class="card-h"><h3>Active Projects</h3><span class="ch-actions"><span class="sub">${active.length}</span><button class="dash-add-btn" id="dashAddProj" title="Add a project">+</button></span></div>
     ${active.length?`<div class="proj-strip">
       ${active.map(p=>{ const s=projectStats(p); return `
         <button class="proj-card-mini" data-projopen="${p.id}">
@@ -497,6 +497,10 @@ function bindDashboard(){
 
   // Meetings: tap a card → open the meeting quick-view modal
   q('[data-mtgopen]','all').forEach(el=>el.onclick=()=>openMeetingModal(el.dataset.mtgopen));
+
+  // Dashboard inline add: create a project / meeting right here (reuses the tab logic)
+  const dap=q('#dashAddProj'); if(dap) dap.onclick=()=>{ const v=prompt('New project name'); if(v && createProject(v)) rerender(); };
+  const dam=q('#dashAddMtg'); if(dam) dam.onclick=()=>{ const v=prompt('New meeting / person'); if(v && createMeeting(v)) rerender(); };
 
   // promote a quick/inbox task → pipeline
   q('[data-plpromote-task]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); promoteTaskToPipeline(el.dataset.plpromoteTask); });

@@ -26,8 +26,9 @@ function renderProjects(){
     const s=projectStats(p);
     const tasks=p.tasks||[];
     return `
-    <div class="proj-card ${p.done?'fin':''}">
+    <div class="proj-card ${p.done?'fin':''}" data-pdrag="${p.id}">
       <div class="proj-bar-top">
+        ${!p.done?`<span class="proj-grip" title="drag to reorder">⋮⋮</span>`:''}
         <input type="color" class="proj-color" data-pcolor="${p.id}" value="${p.color}" title="project colour">
         <input type="text" class="proj-name-in" data-pname="${p.id}" value="${esc(p.name)}">
         <span class="proj-stat">${s.done}/${s.total}</span>
@@ -86,6 +87,15 @@ function bindProjects(){
   q('[data-pdel]','all').forEach(el=>el.onclick=()=>{
     const p=S.projects.find(x=>x.id===el.dataset.pdel); if(!p) return;
     if(confirm(`Delete "${p.name}" and its tasks?`)){ deleteProject(p); rerender(); }
+  });
+  // drag-to-reorder project cards (mouse + touch) — order = priority, mirrored on
+  // the dashboard (both render from S.projects). First .proj-stack = active cards.
+  makeReorderable(q('.proj-stack'), '[data-pdrag]', 'pdrag', '.proj-grip', (order)=>{
+    const byId=Object.fromEntries((S.projects||[]).map(p=>[p.id,p]));
+    const reordered=order.map(id=>byId[id]).filter(Boolean);
+    const rest=(S.projects||[]).filter(p=>!order.includes(p.id));   // finished + any others stay after
+    S.projects=[...reordered,...rest];
+    save(); rerender();
   });
 
   q('[data-ptdone]','all').forEach(el=>el.onclick=()=>{

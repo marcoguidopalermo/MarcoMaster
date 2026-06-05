@@ -8,6 +8,52 @@ function scoreClass(v){ return v<=4?'low':v<=7?'mid':'high'; }
 function applyTheme(){ document.documentElement.setAttribute('data-theme', S.theme||'dark'); }
 function toggleTheme(){ S.theme=(S.theme==='light')?'dark':'light'; applyTheme(); save(false); }
 
+/* ---------- generic drag-reorder (mouse + touch long-press), no library ----------
+   Drag an item by its handle to reorder a vertical list. Uses Pointer Events so
+   mouse, touch and pen are handled uniformly; touch needs a brief long-press so a
+   normal swipe still scrolls the page. While dragging it just moves DOM nodes; on
+   drop it reads the new order and calls onCommit(orderedIds) ONCE — the caller
+   reorders its data, saves, and re-renders.
+     container : element holding the rows
+     itemSel   : selector for each reorderable item (carries data-<idKey>)
+     idKey     : dataset key holding the id (e.g. 'pmdrag' → data-pmdrag)
+     handleSel : selector for the drag handle inside an item
+     onCommit  : (orderedIds:string[]) => void                                    */
+function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
+  if(!container) return;
+  const items=()=>[...container.querySelectorAll(itemSel)];
+  items().forEach(item=>{
+    const handle=item.querySelector(handleSel); if(!handle) return;
+    handle.style.touchAction='none';   // own the gesture so a touch-drag doesn't scroll
+    let pid=null, startY=0, dragging=false, pressTimer=null;
+    const begin=()=>{ dragging=true; item.classList.add('dragging'); };
+    const finish=()=>{
+      if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+      try{ handle.releasePointerCapture(pid); }catch(_){}
+      if(dragging){ dragging=false; item.classList.remove('dragging'); onCommit(items().map(x=>x.dataset[idKey])); }
+    };
+    handle.onpointerdown=e=>{
+      if(e.button>0) return;                       // primary button / touch only
+      pid=e.pointerId; startY=e.clientY;
+      try{ handle.setPointerCapture(pid); }catch(_){}
+      if(e.pointerType!=='mouse') pressTimer=setTimeout(()=>{ pressTimer=null; begin(); }, 200);  // long-press on touch
+    };
+    handle.onpointermove=e=>{
+      if(!dragging){
+        if(e.pointerType==='mouse'){ if(Math.abs(e.clientY-startY)>4) begin(); }
+        else if(pressTimer && Math.abs(e.clientY-startY)>12){ clearTimeout(pressTimer); pressTimer=null; }  // moved before hold → it's a scroll
+        if(!dragging) return;
+      }
+      e.preventDefault();
+      const y=e.clientY;
+      const after=items().find(x=>{ if(x===item) return false; const r=x.getBoundingClientRect(); return y < r.top + r.height/2; });
+      if(after) container.insertBefore(item, after); else container.appendChild(item);
+    };
+    handle.onpointerup=finish;
+    handle.onpointercancel=finish;
+  });
+}
+
 /* ============================================================
    ROUTER
    ============================================================ */

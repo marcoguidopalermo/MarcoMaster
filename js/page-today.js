@@ -301,7 +301,7 @@ function renderProjectModal(){
           const st=projTaskState(p.id,t);
           const tag = st.state==='scheduled'?`<span class="sched-tag yellow">${schedLabel(st.tb)}</span>`
                     : (st.state==='unscheduled'?`<span class="to-today" data-pmsched="${t.id}">⏱ schedule</span>`:'');
-          return `<div class="pm-row ${t.done?'done':''}" draggable="true" data-pmdrag="${t.id}">
+          return `<div class="pm-row ${t.done?'done':''}" data-pmdrag="${t.id}">
             <span class="pm-grip" title="drag to reorder">⋮⋮</span>
             <span class="box" data-pmdone="${t.id}">✓</span>
             <span class="pm-txt">${esc(t.txt)}</span>
@@ -331,18 +331,11 @@ function bindProjectModal(){
   const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
   const ab=q('#pmAddBtn'); if(ab) ab.onclick=addT;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addT(); };
-  // drag-to-reorder within p.tasks
-  let dragId=null;
-  q('[data-pmdrag]','all').forEach(row=>{
-    row.ondragstart=e=>{ dragId=row.dataset.pmdrag; row.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',dragId);}catch(_){} };
-    row.ondragend=()=>{ dragId=null; row.classList.remove('dragging'); };
-    row.ondragover=e=>{ e.preventDefault(); };
-    row.ondrop=e=>{ e.preventDefault();
-      const overId=row.dataset.pmdrag; const dg=dragId||(e.dataTransfer&&e.dataTransfer.getData('text/plain'));
-      if(!dg||dg===overId) return;
-      const arr=p.tasks; const from=arr.findIndex(x=>x.id===dg); const to=arr.findIndex(x=>x.id===overId);
-      if(from<0||to<0) return; const [moved]=arr.splice(from,1); arr.splice(to,0,moved); save(); renderProjectModal(); rerender();
-    };
+  // drag-to-reorder p.tasks by the grip (mouse + touch), via the shared helper
+  makeReorderable(q('.pm-tasks'), '[data-pmdrag]', 'pmdrag', '.pm-grip', (order)=>{
+    const byId=Object.fromEntries(p.tasks.map(t=>[t.id,t]));
+    p.tasks=order.map(id=>byId[id]).filter(Boolean).concat(p.tasks.filter(t=>!order.includes(t.id)));
+    save(); renderProjectModal(); rerender();
   });
 }
 

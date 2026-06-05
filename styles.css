@@ -736,6 +736,8 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .proj-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
 .proj-card.fin{opacity:.6}
 .proj-bar-top{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.proj-grip{cursor:grab;color:var(--txt-faint);font-size:14px;letter-spacing:-2px;flex-shrink:0;user-select:none;padding:0 2px}
+.proj-card.dragging{opacity:.5;border-color:var(--accent)}
 .proj-swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0}
 .proj-name-in{flex:1;background:transparent;border:none;font-size:17px;font-weight:700;color:var(--txt);padding:2px 0;min-width:80px}
 .proj-name-in:focus{outline:none;border-bottom:1px solid var(--accent)}

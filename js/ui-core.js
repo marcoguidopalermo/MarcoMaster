@@ -31,28 +31,22 @@ function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
     handle.ondragstart=()=>false;      // no native drag image / selection
     let pid=null, startY=0, dragging=false, pressTimer=null;
     const noSelect=on=>{ document.body.style.userSelect=on?'none':''; document.body.style.webkitUserSelect=on?'none':''; };
+    const killSelect=e=>e.preventDefault();   // suppress any text selection for the whole drag
     const begin=()=>{ dragging=true; item.classList.add('dragging'); document.body.style.cursor='grabbing'; };
-    /* move the dragged item live among its siblings based on pointer Y */
+    /* move the dragged item live among its siblings based on absolute pointer Y.
+       Scans ALL siblings each move, so one continuous drag can cross any number of
+       slots (pos 1 → pos 5 in a single motion). */
     const moveTo=y=>{
       const before=siblings().find(s=>{ if(s===item) return false; const r=s.getBoundingClientRect(); return y < r.top + r.height/2; });
       if(before){ if(item.nextElementSibling!==before) container.insertBefore(item, before); }
       else if(container.lastElementChild!==item) container.appendChild(item);
     };
-    const finish=()=>{
-      if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
-      try{ handle.releasePointerCapture(pid); }catch(_){}
-      noSelect(false); document.body.style.cursor='';
-      if(dragging){ dragging=false; item.classList.remove('dragging'); onCommit(siblings().map(s=>s.dataset[idKey])); }
-    };
-    handle.onpointerdown=e=>{
-      if(e.button>0) return;             // ignore right/middle click
-      e.preventDefault();                // stop the browser starting a text selection
-      pid=e.pointerId; startY=e.clientY;
-      noSelect(true);
-      try{ handle.setPointerCapture(pid); }catch(_){}
-      if(e.pointerType!=='mouse') pressTimer=setTimeout(()=>{ pressTimer=null; begin(); }, 200);  // long-press on touch
-    };
-    handle.onpointermove=e=>{
+    // Listeners live on document (not the handle) so moves keep firing even after
+    // the item — and its handle — reorder out from under the cursor. That's what
+    // lets a single drag travel across many positions instead of stalling after
+    // the first slot.
+    const onMove=e=>{
+      if(e.pointerId!==pid) return;
       if(!dragging){
         if(e.pointerType==='mouse'){ if(Math.abs(e.clientY-startY)>4) begin(); }
         else if(pressTimer && Math.abs(e.clientY-startY)>12){ clearTimeout(pressTimer); pressTimer=null; }  // moved before hold → scroll
@@ -61,8 +55,27 @@ function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
       e.preventDefault();
       moveTo(e.clientY);
     };
-    handle.onpointerup=finish;
-    handle.onpointercancel=finish;
+    const finish=e=>{
+      if(e && e.pointerId!=null && e.pointerId!==pid) return;
+      if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', finish);
+      document.removeEventListener('pointercancel', finish);
+      document.removeEventListener('selectstart', killSelect);
+      noSelect(false); document.body.style.cursor=''; pid=null;
+      if(dragging){ dragging=false; item.classList.remove('dragging'); onCommit(siblings().map(s=>s.dataset[idKey])); }
+    };
+    handle.onpointerdown=e=>{
+      if(e.button>0) return;             // ignore right/middle click
+      e.preventDefault();                // stop the browser starting a text selection
+      pid=e.pointerId; startY=e.clientY;
+      noSelect(true);                    // body user-select:none for the whole drag
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', finish);
+      document.addEventListener('pointercancel', finish);
+      document.addEventListener('selectstart', killSelect);
+      if(e.pointerType!=='mouse') pressTimer=setTimeout(()=>{ pressTimer=null; begin(); }, 200);  // long-press on touch
+    };
   });
 }
 

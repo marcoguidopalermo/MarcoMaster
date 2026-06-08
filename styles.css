@@ -591,7 +591,7 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 /* project task modal: rows + drag-to-reorder */
 .pm-tasks{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto}
 .pm-row{display:flex;align-items:center;gap:9px;padding:8px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px}
-.pm-row.dragging{opacity:.4;border-color:var(--accent)}
+.pm-row.dragging{opacity:.95;border-color:var(--accent);box-shadow:0 6px 18px #0007;position:relative;z-index:5}
 .pm-row.done .pm-txt{color:var(--txt-faint);text-decoration:line-through}
 .pm-grip{cursor:grab;color:var(--txt-faint);font-size:15px;letter-spacing:-2px;flex-shrink:0;user-select:none;-webkit-user-select:none;touch-action:none;padding:4px 3px;margin:-4px -1px}
 .pm-grip:hover{color:var(--txt-dim)}
@@ -741,7 +741,7 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .proj-grip{cursor:grab;color:var(--txt-faint);font-size:16px;letter-spacing:-2px;flex-shrink:0;user-select:none;-webkit-user-select:none;touch-action:none;padding:4px 4px;margin:-4px 0}
 .proj-grip:hover{color:var(--txt-dim)}
 .proj-grip:active{cursor:grabbing}
-.proj-card.dragging{opacity:.5;border-color:var(--accent)}
+.proj-card.dragging{opacity:.95;border-color:var(--accent);box-shadow:0 8px 24px #0008;position:relative;z-index:5}
 .proj-swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0}
 .proj-name-in{flex:1;background:transparent;border:none;font-size:17px;font-weight:700;color:var(--txt);padding:2px 0;min-width:80px}
 .proj-name-in:focus{outline:none;border-bottom:1px solid var(--accent)}

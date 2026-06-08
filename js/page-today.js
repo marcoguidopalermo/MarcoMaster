@@ -35,7 +35,7 @@ function renderDashboard(){
 
   ${renderPipeline()}
 
-  ${renderWeeklyPipeline()}
+  ${renderWeeklyGoals()}
 
   ${renderAppointments()}
 
@@ -181,112 +181,19 @@ function bindPipeline(){
   const rf=q('#plRefill'); if(rf) rf.onclick=clearDonePipeline;
 }
 
-/* ---------- THIS WEEK — the weekly-horizon pipeline (~5 focuses) ----------
-   Mirrors the daily Pipeline above, but its data is top-level (S.weeklyPipeline,
-   via the weeklyPipeline() accessor) so it survives daily rollovers and only
-   carries/resets on a Monday week boundary. Reuses the daily pipeline CSS. */
-const WEEKLY_SLOTS=5;
-let weeklyAdding=false;   // true while typing into an empty weekly slot
-/* live done-state of a weekly item — same link semantics as pipelineDone() */
-function weeklyPipelineDone(it){
-  if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); return t?t.done:!!it.done; }
-  if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&p.tasks.find(x=>x.id===it.projTaskId); return t?t.done:!!it.done; }
-  return !!it.done;
-}
-function renderWeeklyPipeline(){
-  const pipe=weeklyPipeline();
-  let slots='';
-  for(let i=0;i<WEEKLY_SLOTS;i++){
-    const it=pipe[i];
-    if(it){
-      const done=weeklyPipelineDone(it);
-      slots+=`
-      <div class="pl-slot filled ${done?'done':''}">
-        <span class="pl-num">${i+1}</span>
-        <span class="pl-check" data-wlcheck="${i}">✓</span>
-        <span class="pl-txt">${esc(it.txt)}</span>
-        <span class="pl-x" data-wlremove="${i}" title="Remove">×</span>
-      </div>`;
-    }else if(i===pipe.length && weeklyAdding){
-      slots+=`
-      <div class="pl-slot add">
-        <span class="pl-num">${i+1}</span>
-        <input type="text" id="wlInput" placeholder="Type a focus for this week, then Enter">
-      </div>`;
-    }else if(i===pipe.length){
-      slots+=`
-      <div class="pl-slot empty add-prompt" data-wladd>
-        <span class="pl-num">${i+1}</span>
-        <span class="pl-add-lbl">+ pick your focus</span>
-      </div>`;
-    }else{
-      slots+=`<div class="pl-slot empty"><span class="pl-num">${i+1}</span><span class="pl-empty-lbl">—</span></div>`;
-    }
-  }
-  const allDone = pipe.length===WEEKLY_SLOTS && pipe.every(weeklyPipelineDone);
+/* ---------- THIS WEEK — a simple free-text goals note ----------
+   Top-level S.weeklyGoals string. No slots, no carry-over: just a compact
+   textarea the user rewrites each week. Autosaves on input (no rerender, so the
+   caret never jumps), mirroring the journal free-text fields. */
+function renderWeeklyGoals(){
   return `
-  <div class="pipeline-card">
-    <div class="pipeline-head">
-      <span class="pl-kick">This Week</span>
-      <span class="pl-sub">your focus this week · unfinished roll over to next week</span>
-    </div>
-    <div class="pipeline-slots">${slots}</div>
-    ${allDone?`<button class="btn pl-refill" id="wlRefill">✓ All ${WEEKLY_SLOTS} done — clear &amp; pick more</button>`:''}
+  <div class="card weekly-goals">
+    <div class="card-h"><h3>This Week</h3><span class="sub">goals &amp; intentions</span></div>
+    <textarea id="weeklyGoals" rows="3" placeholder="What do you want to get done this week?">${esc(S.weeklyGoals||'')}</textarea>
   </div>`;
 }
-/* clear the completed weekly items so the slots reopen */
-function clearDoneWeekly(){
-  const pipe=weeklyPipeline();
-  S.weeklyPipeline=pipe.filter(it=>!weeklyPipelineDone(it));
-  save(); toast('This Week cleared — pick more'); rerender();
-}
-/* promote a today task / project task into the next open weekly slot */
-function promoteTaskToWeekly(taskId){
-  const pipe=weeklyPipeline();
-  if(pipe.length>=WEEKLY_SLOTS){ toast(`This Week is full (${WEEKLY_SLOTS})`); return; }
-  if(pipe.some(it=>it.taskId===taskId)){ toast('Already in This Week'); return; }
-  const t=day().tasks.find(x=>x.id===taskId); if(!t) return;
-  pipe.push({id:b(), txt:t.txt, taskId:t.id, done:t.done});
-  save(); toast('↟ This Week'); rerender();
-}
-function promoteProjToWeekly(pid, ptId){
-  const pipe=weeklyPipeline();
-  if(pipe.length>=WEEKLY_SLOTS){ toast(`This Week is full (${WEEKLY_SLOTS})`); return; }
-  if(pipe.some(it=>it.projectId===pid && it.projTaskId===ptId)){ toast('Already in This Week'); return; }
-  const p=(S.projects||[]).find(x=>x.id===pid); const t=p&&p.tasks.find(x=>x.id===ptId); if(!t) return;
-  pipe.push({id:b(), txt:t.txt, projectId:pid, projTaskId:ptId, done:t.done});
-  save(); toast('↟ This Week'); rerender();
-}
-function addWeeklyText(v){
-  v=(v||'').trim(); weeklyAdding=false;
-  const pipe=weeklyPipeline();
-  if(v && pipe.length<WEEKLY_SLOTS) pipe.push({id:b(), txt:v, done:false});
-  save(); rerender();
-}
-function toggleWeekly(idx){
-  const pipe=weeklyPipeline(); const it=pipe[idx]; if(!it) return;
-  const nd=!weeklyPipelineDone(it);
-  if(it.taskId){
-    const t=day().tasks.find(x=>x.id===it.taskId);
-    if(t){ t.done=nd; if(t.projectId&&t.projTaskId) setProjTaskDone(t.projectId,t.projTaskId,nd); if(nd&&t.recurringId) markRecurringDone(t.recurringId); }
-  }else if(it.projectId){
-    setProjTaskDone(it.projectId, it.projTaskId, nd);
-  }
-  it.done=nd;
-  save(false); rerender();
-}
-function bindWeeklyPipeline(){
-  q('[data-wlcheck]','all').forEach(el=>el.onclick=()=>toggleWeekly(+el.dataset.wlcheck));
-  q('[data-wlremove]','all').forEach(el=>el.onclick=()=>{ weeklyPipeline().splice(+el.dataset.wlremove,1); save(); rerender(); });
-  q('[data-wladd]','all').forEach(el=>el.onclick=()=>{ weeklyAdding=true; rerender(); setTimeout(()=>{ const i=q('#wlInput'); if(i) i.focus(); },0); });
-  const win=q('#wlInput'); if(win){
-    win.onkeydown=e=>{
-      if(e.key==='Enter'){ win.onblur=null; addWeeklyText(win.value); }
-      else if(e.key==='Escape'){ win.onblur=null; weeklyAdding=false; rerender(); }
-    };
-    win.onblur=()=>{ win.onblur=null; if(win.value.trim()) addWeeklyText(win.value); else { weeklyAdding=false; rerender(); } };
-  }
-  const rf=q('#wlRefill'); if(rf) rf.onclick=clearDoneWeekly;
+function bindWeeklyGoals(){
+  const ta=q('#weeklyGoals'); if(ta) ta.oninput=()=>{ S.weeklyGoals=ta.value; save(false); };
 }
 function winsSummary(d){
   const set=['health','lev','content','not'].filter(k=>d.focus[k]&&d.focus[k].trim()).length;
@@ -340,9 +247,7 @@ function renderTaskInbox(){
           <div class="qtask big-task ${t.done?'done':''}">
             <div class="box" data-tdone="${t.id}">✓</div>
             <span class="qtxt">${t.recurringId?'<span class="rec-badge">↻</span> ':''}${esc(t.txt)}</span>
-            ${!t.done?`<span class="to-pipe" data-plpromote-task="${t.id}" title="Promote to pipeline">↑</span>`:''}
-            ${!t.done?`<span class="to-pipe wk" data-wlpromote-task="${t.id}" title="Send to This Week">↟</span>`:''}
-            ${t.recurringId?`<span class="snz" data-snooze="${t.recurringId}|${t.id}" title="snooze">⏰</span>`:''}
+            ${!t.done?`<span class="to-pipe" data-plpromote-task="${t.id}" title="Promote to pipeline">↑</span>`:''}            ${t.recurringId?`<span class="snz" data-snooze="${t.recurringId}|${t.id}" title="snooze">⏰</span>`:''}
             <span class="x" data-tdel="${t.id}">×</span>
           </div>`).join(''):'<div class="empty">Nothing quick.</div>'}
       </div>
@@ -355,9 +260,7 @@ function renderTaskInbox(){
             <span class="ptxt">${t.recurringId?'<span class="rec-badge">↻</span> ':''}${t.fromYesterday?'<span class="rec-badge yd">↳</span> ':''}${esc(t.txt)}${projChip(t)}</span>
             ${t.schedDate!=null?`<span class="sched-tag yellow">${schedLabel(t)}</span>`:''}
             <span class="mins" data-tmins="${t.id}">${fmtDuration(t.mins)}</span>
-            ${!t.done?`<span class="to-pipe" data-plpromote-task="${t.id}" title="Promote to pipeline">↑</span>`:''}
-            ${!t.done?`<span class="to-pipe wk" data-wlpromote-task="${t.id}" title="Send to This Week">↟</span>`:''}
-            ${t.recurringId?`<span class="snz" data-snooze="${t.recurringId}|${t.id}" title="snooze">⏰</span>`:''}
+            ${!t.done?`<span class="to-pipe" data-plpromote-task="${t.id}" title="Promote to pipeline">↑</span>`:''}            ${t.recurringId?`<span class="snz" data-snooze="${t.recurringId}|${t.id}" title="snooze">⏰</span>`:''}
             <span class="x" data-tdel="${t.id}">×</span>
           </div>`).join(''):'<div class="empty">Nothing to block.</div>'}
         ${unsched.length?`<button class="btn ghost sm" id="goPlan" style="margin-top:10px;width:100%">→ Time block these</button>`:''}
@@ -419,7 +322,6 @@ function renderProjectModal(){
             <span class="pm-txt">${esc(t.txt)}</span>
             ${tag}
             ${!t.done?`<span class="to-pipe" data-pmpipe="${t.id}" title="Promote to pipeline">↑</span>`:''}
-            ${!t.done?`<span class="to-pipe wk" data-wmpipe="${t.id}" title="Send to This Week">↟</span>`:''}
             <span class="x" data-pmdel="${t.id}">×</span>
           </div>`;
         }).join(''):'<div class="empty sm">No tasks yet — add one below.</div>'}
@@ -428,7 +330,7 @@ function renderProjectModal(){
         <input type="text" id="pmAdd" value="${esc(projModalDraft)}" placeholder="Add a task to ${esc(p.name)}…">
         <button class="btn sm" id="pmAddBtn">+ Add</button>
       </div>
-      <p class="list-note" style="margin-top:10px">Drag ⋮⋮ to reorder · ✓ complete · ⏱ schedule · ↑ pipeline · ↟ this week</p>
+      <p class="list-note" style="margin-top:10px">Drag ⋮⋮ to reorder · ✓ complete · ⏱ schedule · ↑ pipeline</p>
     </div>`;
   m.classList.add('show');
   bindProjectModal();
@@ -439,7 +341,6 @@ function bindProjectModal(){
   q('[data-pmdone]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmdone); if(t){ setProjTaskDone(p.id,t.id,!t.done); save(false); renderProjectModal(); rerender(); } });
   q('[data-pmdel]','all').forEach(el=>el.onclick=()=>{ p.tasks=p.tasks.filter(x=>x.id!==el.dataset.pmdel); save(); renderProjectModal(); rerender(); });
   q('[data-pmpipe]','all').forEach(el=>el.onclick=()=>{ promoteProjToPipeline(p.id, el.dataset.pmpipe); renderProjectModal(); });
-  q('[data-wmpipe]','all').forEach(el=>el.onclick=()=>{ promoteProjToWeekly(p.id, el.dataset.wmpipe); renderProjectModal(); });
   q('[data-pmsched]','all').forEach(el=>el.onclick=()=>{ openProjSchedule(p.id, el.dataset.pmsched); });  // replaces modal with scheduler
   const ai=q('#pmAdd'); if(ai) ai.oninput=()=>{ projModalDraft=ai.value; };
   const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
@@ -617,14 +518,12 @@ function bindDashboard(){
 
   // promote a quick/inbox task → pipeline
   q('[data-plpromote-task]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); promoteTaskToPipeline(el.dataset.plpromoteTask); });
-  // promote a quick/inbox task → This Week
-  q('[data-wlpromote-task]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); promoteTaskToWeekly(el.dataset.wlpromoteTask); });
 
   // Time Blocker expand/collapse (day view ↔ full plan)
   const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
 
   bindPipeline();          // the top-3 pipeline hero
-  bindWeeklyPipeline();    // the weekly-horizon "This Week" pipeline
+  bindWeeklyGoals();       // the "This Week" free-text goals note
   bindAppointments();      // fixed date/time commitments
   bindTaskInbox();         // Quick + Scheduled lists (recurring auto-injected here)
   bindFollowups();         // full follow-ups list

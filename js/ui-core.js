@@ -20,30 +20,36 @@ function toggleTheme(){ S.theme=(S.theme==='light')?'dark':'light'; applyTheme()
      handleSel : selector for the drag handle inside an item
      onCommit  : (orderedIds:string[]) => void                                    */
 function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
-  if(!container) return;
+  if(!container){ console.warn('[reorder] NO container for', handleSel, '— makeReorderable did nothing'); return; }
   const items=()=>[...container.querySelectorAll(itemSel)];
+  const handleCount=items().filter(it=>it.querySelector(handleSel)).length;
+  console.log('[reorder] BIND', handleSel, '| items:', items().length, '| with handle:', handleCount, '| container:', container);
   items().forEach(item=>{
-    const handle=item.querySelector(handleSel); if(!handle) return;
+    const handle=item.querySelector(handleSel); if(!handle){ console.warn('[reorder] item missing handle', handleSel, item); return; }
     handle.style.touchAction='none';   // own the gesture so a touch-drag doesn't scroll
     handle.ondragstart=()=>false;      // belt-and-suspenders: no native drag image / selection
-    let pid=null, startY=0, dragging=false, pressTimer=null;
+    let pid=null, startY=0, dragging=false, pressTimer=null, pressing=false;
     const noSelect=on=>{ document.body.style.userSelect=on?'none':''; document.body.style.webkitUserSelect=on?'none':''; };
-    const begin=()=>{ dragging=true; item.classList.add('dragging'); document.body.style.cursor='grabbing'; };
+    const begin=()=>{ dragging=true; item.classList.add('dragging'); document.body.style.cursor='grabbing'; console.log('[reorder] >>> PICKED UP', item.dataset[idKey]); };
     const finish=()=>{
       if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
       try{ handle.releasePointerCapture(pid); }catch(_){}
-      noSelect(false); document.body.style.cursor='';
-      if(dragging){ dragging=false; item.classList.remove('dragging'); onCommit(items().map(x=>x.dataset[idKey])); }
+      noSelect(false); document.body.style.cursor=''; pressing=false;
+      if(dragging){ dragging=false; item.classList.remove('dragging'); const order=items().map(x=>x.dataset[idKey]); console.log('[reorder] COMMIT order', order); onCommit(order); }
+      else console.log('[reorder] release — no drag had begun');
     };
     handle.onpointerdown=e=>{
+      console.log('[reorder] pointerdown', handleSel, '| type:', e.pointerType, '| button:', e.button, '| id:', item.dataset[idKey]);
       if(e.button>0) return;                       // ignore right/middle click
       e.preventDefault();                          // KEY: stop the browser starting a text selection
-      pid=e.pointerId; startY=e.clientY;
+      pid=e.pointerId; startY=e.clientY; pressing=true;
       noSelect(true);                              // no text highlighting anywhere during the gesture
-      try{ handle.setPointerCapture(pid); }catch(_){}
+      let captured=false; try{ handle.setPointerCapture(pid); captured=true; }catch(err){ console.warn('[reorder] setPointerCapture FAILED', err); }
+      console.log('[reorder] pointerdown handled | captured:', captured);
       if(e.pointerType!=='mouse') pressTimer=setTimeout(()=>{ pressTimer=null; begin(); }, 200);  // long-press on touch
     };
     handle.onpointermove=e=>{
+      if(pressing) console.log('[reorder] pointermove | dragging:', dragging, '| dy:', Math.round(e.clientY-startY), '| type:', e.pointerType);
       if(!dragging){
         if(e.pointerType==='mouse'){ if(Math.abs(e.clientY-startY)>4) begin(); }
         else if(pressTimer && Math.abs(e.clientY-startY)>12){ clearTimeout(pressTimer); pressTimer=null; }  // moved before hold → it's a scroll
@@ -52,10 +58,11 @@ function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
       e.preventDefault();
       const y=e.clientY;
       const after=items().find(x=>{ if(x===item) return false; const r=x.getBoundingClientRect(); return y < r.top + r.height/2; });
+      console.log('[reorder] reposition before', after?after.dataset[idKey]:'(end)');
       if(after) container.insertBefore(item, after); else container.appendChild(item);
     };
     handle.onpointerup=finish;
-    handle.onpointercancel=finish;
+    handle.onpointercancel=()=>{ console.log('[reorder] pointercancel'); finish(); };
   });
 }
 

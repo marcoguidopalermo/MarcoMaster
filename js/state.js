@@ -58,6 +58,11 @@ function seedDefaults(){
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
   if(!S.days) S.days = {};        // per-day "today" data
   if(!S.weeks) S.weeks = {};      // per-week review + scorecard
+  // "This Week" pipeline: top-level (NOT on a day record) so it survives daily
+  // rollovers and only carries/resets on a Monday week boundary. Same item shape
+  // as the daily pipeline: {id, txt, done, taskId?|projectId?+projTaskId?}.
+  if(!S.weeklyPipeline) S.weeklyPipeline = [];
+  if(S.weeklyPipelineWeek===undefined) S.weeklyPipelineWeek = null;  // weekKey() this list belongs to
   if(!S.mode) S.mode = 'open';
   // settings (editable reset checklist, day window, etc.)
   if(!S.settings) S.settings = {
@@ -200,6 +205,42 @@ function day(){
     if(typeof persist==='function') Promise.resolve().then(persist);
   }
   return d;
+}
+
+/* "This Week" pipeline accessor + one-time WEEK-boundary carry-over.
+   Storage is top-level (S.weeklyPipeline) so daily rollovers never touch it; it
+   only carries/resets when the Monday-based weekKey() changes. The guard is
+   S.weeklyPipelineWeek (the week this list currently belongs to) — the weekly
+   analogue of the daily bridge's d._seeded. It is advanced to the new week
+   SYNCHRONOUSLY, before any persist, so a re-render/reload in the same week is a
+   no-op and the carry can't double-fire. This is fully independent of the daily
+   bridge: different state, different (week vs day) boundary, no shared marker. */
+function weeklyPipeline(){
+  if(!S.weeklyPipeline) S.weeklyPipeline=[];
+  const wk=weekKey();
+  if(S.weeklyPipelineWeek==null){
+    S.weeklyPipelineWeek=wk;               // first run / legacy: adopt this week, nothing to carry
+  }else if(S.weeklyPipelineWeek!==wk){
+    // NEW WEEK: carry UNFINISHED items, drop COMPLETED ones. "Done" is judged the
+    // same way pipelineDone() does (linked day task / persistent project task /
+    // the item's own flag). Carried items become fresh and keep the persistent
+    // project link, but drop the volatile taskId day-link (that day task is gone).
+    const carried=[];
+    (S.weeklyPipeline||[]).forEach(it=>{
+      let done;
+      if(it.taskId){ const t=(day().tasks||[]).find(x=>x.id===it.taskId); done=t?t.done:!!it.done; }
+      else if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId); done=t?t.done:!!it.done; }
+      else { done=!!it.done; }
+      if(done) return;                      // completed → drop on the new week
+      const c={id:b(), txt:it.txt, done:false};
+      if(it.projectId){ c.projectId=it.projectId; c.projTaskId=it.projTaskId; }
+      carried.push(c);
+    });
+    S.weeklyPipeline=carried;
+    S.weeklyPipelineWeek=wk;                // stamp BEFORE persist → can't re-fire this week
+    if(typeof persist==='function') Promise.resolve().then(persist);
+  }
+  return S.weeklyPipeline;
 }
 
 /* numeric energy map for charts/averages */

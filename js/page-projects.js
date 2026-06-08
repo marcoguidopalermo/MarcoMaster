@@ -151,6 +151,8 @@ function removeProjectLinks(p){
     if(d.tasks) d.tasks=d.tasks.filter(t=>t.projectId!==p.id);
     if(d.pipeline) d.pipeline=d.pipeline.filter(it=>it.projectId!==p.id && !linkedTaskIds.has(it.taskId));
   });
+  // top-level "This Week" pipeline: strip items linked to this project too
+  if(S.weeklyPipeline) S.weeklyPipeline=S.weeklyPipeline.filter(it=>it.projectId!==p.id && !linkedTaskIds.has(it.taskId));
 }
 /* delete a project: clean up its links, drop it (and its task list) from
    S.projects, and persist through the version-stamped save layer. */

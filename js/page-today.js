@@ -37,6 +37,8 @@ function renderDashboard(){
 
   ${renderWeeklyGoals()}
 
+  ${renderMonthlyGoals()}
+
   ${renderAppointments()}
 
   <div class="dash-grid">
@@ -194,6 +196,21 @@ function renderWeeklyGoals(){
 }
 function bindWeeklyGoals(){
   const ta=q('#weeklyGoals'); if(ta) ta.oninput=()=>{ S.weeklyGoals=ta.value; save(false); };
+}
+
+/* ---------- THIS MONTH — a simple free-text goals note ----------
+   Top-level S.monthlyGoals string, same pattern as the weekly note above:
+   compact textarea the user rewrites each month, autosaving on input (no
+   rerender, so the caret never jumps). */
+function renderMonthlyGoals(){
+  return `
+  <div class="card monthly-goals">
+    <div class="card-h"><h3>This Month</h3><span class="sub">goals &amp; intentions</span></div>
+    <textarea id="monthlyGoals" rows="3" placeholder="What do you want to get done this month?">${esc(S.monthlyGoals||'')}</textarea>
+  </div>`;
+}
+function bindMonthlyGoals(){
+  const ta=q('#monthlyGoals'); if(ta) ta.oninput=()=>{ S.monthlyGoals=ta.value; save(false); };
 }
 function winsSummary(d){
   const set=['health','lev','content','not'].filter(k=>d.focus[k]&&d.focus[k].trim()).length;
@@ -524,6 +541,7 @@ function bindDashboard(){
 
   bindPipeline();          // the top-3 pipeline hero
   bindWeeklyGoals();       // the "This Week" free-text goals note
+  bindMonthlyGoals();      // the "This Month" free-text goals note
   bindAppointments();      // fixed date/time commitments
   bindTaskInbox();         // Quick + Scheduled lists (recurring auto-injected here)
   bindFollowups();         // full follow-ups list

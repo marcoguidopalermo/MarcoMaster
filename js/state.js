@@ -58,9 +58,10 @@ function seedDefaults(){
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
   if(!S.days) S.days = {};        // per-day "today" data
   if(!S.weeks) S.weeks = {};      // per-week review + scorecard
-  // "This Week" goals: a simple top-level free-text note. Persists until the user
-  // rewrites it — no auto-reset, no day-record coupling.
+  // "This Week" / "This Month" goals: simple top-level free-text notes. Persist
+  // until the user rewrites them — no auto-reset, no day-record coupling.
   if(S.weeklyGoals==null) S.weeklyGoals = '';
+  if(S.monthlyGoals==null) S.monthlyGoals = '';
   if(!S.mode) S.mode = 'open';
   // settings (editable reset checklist, day window, etc.)
   if(!S.settings) S.settings = {

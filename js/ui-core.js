@@ -25,16 +25,21 @@ function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
   items().forEach(item=>{
     const handle=item.querySelector(handleSel); if(!handle) return;
     handle.style.touchAction='none';   // own the gesture so a touch-drag doesn't scroll
+    handle.ondragstart=()=>false;      // belt-and-suspenders: no native drag image / selection
     let pid=null, startY=0, dragging=false, pressTimer=null;
-    const begin=()=>{ dragging=true; item.classList.add('dragging'); };
+    const noSelect=on=>{ document.body.style.userSelect=on?'none':''; document.body.style.webkitUserSelect=on?'none':''; };
+    const begin=()=>{ dragging=true; item.classList.add('dragging'); document.body.style.cursor='grabbing'; };
     const finish=()=>{
       if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
       try{ handle.releasePointerCapture(pid); }catch(_){}
+      noSelect(false); document.body.style.cursor='';
       if(dragging){ dragging=false; item.classList.remove('dragging'); onCommit(items().map(x=>x.dataset[idKey])); }
     };
     handle.onpointerdown=e=>{
-      if(e.button>0) return;                       // primary button / touch only
+      if(e.button>0) return;                       // ignore right/middle click
+      e.preventDefault();                          // KEY: stop the browser starting a text selection
       pid=e.pointerId; startY=e.clientY;
+      noSelect(true);                              // no text highlighting anywhere during the gesture
       try{ handle.setPointerCapture(pid); }catch(_){}
       if(e.pointerType!=='mouse') pressTimer=setTimeout(()=>{ pressTimer=null; begin(); }, 200);  // long-press on touch
     };

@@ -35,6 +35,8 @@ function renderDashboard(){
 
   ${renderPipeline()}
 
+  ${renderAllTasks()}
+
   ${renderWeeklyGoals()}
 
   ${renderMonthlyGoals()}
@@ -181,6 +183,177 @@ function bindPipeline(){
     pin.onblur=()=>{ pin.onblur=null; if(pin.value.trim()) addPipelineText(pin.value); else { pipelineAdding=false; rerender(); } };
   }
   const rf=q('#plRefill'); if(rf) rf.onclick=clearDonePipeline;
+}
+
+/* ============================================================
+   ALL TASKS — one unified list of every task from every source.
+   DISPLAY-ONLY: nothing is restructured in storage. We just read the
+   three places tasks already live and render them under collapsible,
+   labelled groups:
+     • Project tasks  → S.projects[*].tasks (the source of truth; their
+       scheduled instance is shown inline via the linked time-block).
+     • Quick tasks    → day().tasks where kind==='quick'.
+     • Scheduled      → day().tasks where kind==='project' with NO
+       projectId (standalone time-blocks; project-linked ones are
+       surfaced through their project group, not duplicated here).
+   Carry-over is untouched: this reads live from day()/S.projects, so
+   whatever the day() rollover bridge carried forward is what shows. */
+let allTasksCollapsed={};   // {groupKey:true} = collapsed; default expanded
+
+/* Build the ordered, de-duplicated groups for the unified list. Each row
+   carries its source so the bind handlers can dispatch uniformly. */
+function allTasksGrouped(){
+  const tk=todayKey();
+  const groups=[];
+  // 1) one group per active project — the canonical task list
+  (S.projects||[]).filter(p=>!p.done).forEach(p=>{
+    const rows=(p.tasks||[]).map(t=>{
+      const st=projTaskState(p.id,t);          // done | scheduled (+tb) | unscheduled
+      const tb=st.tb||null;
+      const schedDate=tb?tb.schedDate:null;
+      const start=tb?tb.start:null;
+      return {source:'project', id:t.id, txt:t.txt, done:t.done,
+              schedDate, start, scheduled:st.state==='scheduled',
+              overdue:schedDate!=null && schedDate<tk && !t.done};
+    });
+    if(rows.length) groups.push({key:'proj-'+p.id, label:p.name, color:p.color, type:'project', rows});
+  });
+  // 2) quick tasks (today)
+  const quick=day().tasks.filter(t=>t.kind==='quick').map(t=>({
+    source:'quick', id:t.id, txt:t.txt, done:t.done, recurringId:t.recurringId,
+    schedDate:null, start:null, scheduled:false, overdue:false}));
+  if(quick.length) groups.push({key:'quick', label:'Quick', color:'var(--amber)', type:'quick', rows:quick});
+  // 3) standalone time-blocks (today) — no project link, not a meeting block
+  const sched=day().tasks.filter(t=>t.kind==='project' && !t.projectId && !t.meetingId).map(t=>({
+    source:'scheduled', id:t.id, txt:t.txt, done:t.done, recurringId:t.recurringId,
+    schedDate:t.schedDate, start:t.start, scheduled:t.schedDate!=null,
+    overdue:t.schedDate!=null && t.schedDate<tk && !t.done}));
+  if(sched.length) groups.push({key:'scheduled', label:'Scheduled', color:'var(--amber)', type:'scheduled', rows:sched});
+  return groups;
+}
+function renderAllTasks(){
+  const groups=allTasksGrouped();
+  const openCt=groups.reduce((n,g)=>n+g.rows.filter(r=>!r.done).length,0);
+  const overdueCt=groups.reduce((n,g)=>n+g.rows.filter(r=>r.overdue).length,0);
+  return `
+  <div class="card all-tasks" style="border-top:3px solid var(--accent)">
+    <div class="card-h">
+      <h3>All Tasks</h3>
+      <span class="sub">${openCt} open${overdueCt?` · <span class="at-overdue-ct">${overdueCt} overdue</span>`:''}</span>
+    </div>
+    ${groups.length?groups.map(renderTaskGroup).join(''):`<div class="empty">No tasks anywhere — add one in Today's Tasks or a project.</div>`}
+  </div>`;
+}
+function renderTaskGroup(g){
+  const collapsed=!!allTasksCollapsed[g.key];
+  const openCt=g.rows.filter(r=>!r.done).length;
+  const overdueCt=g.rows.filter(r=>r.overdue).length;
+  return `
+  <div class="at-group ${collapsed?'collapsed':''}">
+    <div class="at-group-h" data-atgroup="${g.key}">
+      <span class="at-caret">${collapsed?'▶':'▼'}</span>
+      <span class="proj-swatch" style="background:${g.color}"></span>
+      <span class="at-group-name">${esc(g.label)}</span>
+      <span class="at-group-ct">${overdueCt?`<span class="at-overdue-ct">${overdueCt}⚠</span> · `:''}${openCt}</span>
+    </div>
+    ${collapsed?'':`<div class="at-rows">${g.rows.map(r=>renderTaskRow(g,r)).join('')}</div>`}
+  </div>`;
+}
+function renderTaskRow(g,r){
+  let tag='';
+  if(!r.done){
+    if(r.overdue){
+      tag=`<span class="sched-tag overdue" title="Scheduled in the past — requires completion">⚠ Overdue · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
+    }else if(r.scheduled){
+      tag=`<span class="sched-tag yellow">Scheduled · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
+    }
+  }
+  const canSched   = r.source==='project' && !r.scheduled && !r.done;
+  const canUnsched = r.source==='project' &&  r.scheduled && !r.done;
+  return `
+  <div class="at-row ${r.done?'done':''} ${r.overdue?'overdue':''}">
+    <div class="box" data-atcheck="${g.key}|${r.id}">✓</div>
+    <span class="at-txt">${r.recurringId?'<span class="rec-badge">↻</span> ':''}${esc(r.txt)}</span>
+    ${tag}
+    ${canSched?`<span class="at-act" data-atsched="${g.key.slice(5)}|${r.id}" title="Schedule on the calendar">⏱</span>`:''}
+    ${canUnsched?`<span class="at-act unsched" data-atunsched="${g.key.slice(5)}|${r.id}" title="Unschedule (keeps the task in its project)">⊘</span>`:''}
+    ${!r.done?`<span class="at-act" data-atpipe="${g.key}|${r.id}" title="Promote to pipeline">↑</span>`:''}
+    <span class="at-act" data-atedit="${g.key}|${r.id}" title="Edit text">✎</span>
+    <span class="x" data-atdel="${g.key}|${r.id}" title="Delete">×</span>
+  </div>`;
+}
+
+/* ---- unified-list actions: dispatch by group key, reuse existing logic ---- */
+function atToggle(gk,id){
+  if(gk.startsWith('proj-')){
+    const pid=gk.slice(5); const p=(S.projects||[]).find(x=>x.id===pid);
+    const t=p&&p.tasks.find(x=>x.id===id); if(!t) return;
+    setProjTaskDone(pid,id,!t.done);          // keeps linked blocks + progress in sync
+  }else{
+    const t=day().tasks.find(x=>x.id===id); if(!t) return;   // quick or standalone day-task
+    t.done=!t.done;
+    if(t.done && t.recurringId) markRecurringDone(t.recurringId);
+    if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=t.done; }
+  }
+  save(false); rerender();
+}
+function atPromote(gk,id){
+  if(gk.startsWith('proj-')) promoteProjToPipeline(gk.slice(5), id);
+  else promoteTaskToPipeline(id);
+}
+function atEdit(gk,id){
+  if(gk.startsWith('proj-')){
+    const pid=gk.slice(5); const p=(S.projects||[]).find(x=>x.id===pid);
+    const t=p&&p.tasks.find(x=>x.id===id); if(!t) return;
+    const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return;
+    t.txt=nv;
+    allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===pid && e.t.projTaskId===id) e.t.txt=nv; });  // keep linked block text in sync
+  }else{
+    const t=day().tasks.find(x=>x.id===id); if(!t) return;
+    const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return;
+    t.txt=nv;
+  }
+  save(); rerender();
+}
+function atDelete(gk,id){
+  if(gk.startsWith('proj-')){
+    const pid=gk.slice(5); const p=(S.projects||[]).find(x=>x.id===pid); if(!p) return;
+    p.tasks=(p.tasks||[]).filter(x=>x.id!==id);
+    // sweep any linked day-task blocks + pipeline references so nothing dangles
+    const linkedIds=new Set();
+    Object.keys(S.days||{}).forEach(dk=>{ (S.days[dk].tasks||[]).forEach(t=>{ if(t.projectId===pid && t.projTaskId===id) linkedIds.add(t.id); }); });
+    Object.keys(S.days||{}).forEach(dk=>{
+      const d=S.days[dk];
+      if(d.tasks) d.tasks=d.tasks.filter(t=>!(t.projectId===pid && t.projTaskId===id));
+      if(d.pipeline) d.pipeline=d.pipeline.filter(it=>!(it.projectId===pid && it.projTaskId===id) && !linkedIds.has(it.taskId));
+    });
+  }else{
+    Object.keys(S.days||{}).forEach(dk=>{ const d=S.days[dk]; if(d.pipeline) d.pipeline=d.pipeline.filter(it=>it.taskId!==id); });
+    day().tasks=day().tasks.filter(x=>x.id!==id);
+  }
+  save(); rerender();
+}
+/* Unschedule a project task: drop its non-done linked time-block(s) from the
+   calendar across every day, leaving the project task itself in place. */
+function unscheduleProjTask(pid, ptId){
+  let removed=false;
+  Object.keys(S.days||{}).forEach(dk=>{
+    const d=S.days[dk]; if(!d.tasks) return;
+    const before=d.tasks.length;
+    d.tasks=d.tasks.filter(t=>!(t.kind==='project' && t.projectId===pid && t.projTaskId===ptId && !t.done));
+    if(d.tasks.length!==before) removed=true;
+  });
+  if(removed) save();
+  toast('Unscheduled — task kept in project'); rerender();
+}
+function bindAllTasks(){
+  q('[data-atgroup]','all').forEach(el=>el.onclick=()=>{ const k=el.dataset.atgroup; allTasksCollapsed[k]=!allTasksCollapsed[k]; rerender(); });
+  q('[data-atcheck]','all').forEach(el=>el.onclick=()=>{ const [gk,id]=el.dataset.atcheck.split('|'); atToggle(gk,id); });
+  q('[data-atpipe]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); const [gk,id]=el.dataset.atpipe.split('|'); atPromote(gk,id); });
+  q('[data-atedit]','all').forEach(el=>el.onclick=()=>{ const [gk,id]=el.dataset.atedit.split('|'); atEdit(gk,id); });
+  q('[data-atdel]','all').forEach(el=>el.onclick=()=>{ const [gk,id]=el.dataset.atdel.split('|'); atDelete(gk,id); });
+  q('[data-atsched]','all').forEach(el=>el.onclick=()=>{ const [pid,id]=el.dataset.atsched.split('|'); openProjSchedule(pid,id); });
+  q('[data-atunsched]','all').forEach(el=>el.onclick=()=>{ const [pid,id]=el.dataset.atunsched.split('|'); unscheduleProjTask(pid,id); });
 }
 
 /* ---------- THIS WEEK — a simple free-text goals note ----------
@@ -540,6 +713,7 @@ function bindDashboard(){
   const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
 
   bindPipeline();          // the top-3 pipeline hero
+  bindAllTasks();          // the unified "All Tasks" list (every source, one place)
   bindWeeklyGoals();       // the "This Week" free-text goals note
   bindMonthlyGoals();      // the "This Month" free-text goals note
   bindAppointments();      // fixed date/time commitments

@@ -416,9 +416,19 @@ textarea{min-height:70px;line-height:1.55}
 .arch-h:hover .at-sec-lab{color:var(--accent)}
 .at-row .box.done-static{background:var(--green);border-color:var(--green);color:#06210b;cursor:default}
 .done-when{font-family:var(--mono);font-size:10px;color:var(--txt-faint);flex-shrink:0}
-/* Today's Appointments — pinned card at the top of the Dashboard */
-.appt-today-card{border-top:3px solid var(--amber)}
-.appt-today-card .appt-row.today{border-left:2px solid var(--amber)}
+/* TODAY glance strip — pinned card at the top of the Dashboard */
+.today-strip{border-top:3px solid var(--amber)}
+.glance-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.glance-row{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;font-size:13.5px;transition:background .12s}
+.glance-row:hover{background:var(--panel)}
+.glance-row.appt{border-left:2px solid var(--amber)}
+.glance-row.task.overdue{border-left:2px solid var(--red)}
+.glance-time{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--txt-dim);min-width:52px;flex-shrink:0}
+.glance-ic{flex-shrink:0;font-size:12px}
+.glance-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.glance-od{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:color-mix(in srgb, var(--red) 16%, transparent);padding:2px 7px;border-radius:5px;flex-shrink:0}
+.glance-box{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:transparent;font-weight:700;font-size:10px;transition:all .15s}
+.glance-box:hover{border-color:var(--green)}
 
 /* PLAN PAGE */
 .plan-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}

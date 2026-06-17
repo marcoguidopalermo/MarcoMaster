@@ -33,7 +33,7 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
-  ${renderTodayAppointments()}
+  ${renderTodayStrip()}
 
   ${renderPipeline()}
 

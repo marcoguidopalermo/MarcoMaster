@@ -18,23 +18,51 @@ function apptDateLabel(k){
   return new Date(y,m-1,d).toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
 }
 
-/* TODAY'S appointments — compact card pinned to the very top of the Dashboard
-   so they're the first thing seen. Returns '' when there are none. Delete reuses
-   the existing [data-apptdel] handler in bindAppointments. */
-function renderTodayAppointments(){
+/* TODAY — a lightweight glance strip pinned to the very top of the Dashboard:
+   today's appointments first, then today's scheduled + overdue tasks (compact,
+   check-off only — no edit/schedule/delete). It's a "here's your day" overview;
+   the full interactive task list stays below in All Tasks. Returns '' when there
+   is nothing today. Appointment delete reuses [data-apptdel]; the task check-off
+   reuses [data-atcheck] — both already bound (bindAppointments / bindAllTasks). */
+function renderTodayStrip(){
   const tk=todayKey();
-  const today=(S.appointments||[]).filter(a=>a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  if(!today.length) return '';
+  const appts=(S.appointments||[]).filter(a=>a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  // today's + overdue scheduled tasks (not done), via the shared row builder
+  const {scheduled}=buildTaskRows();
+  const tasks=scheduled.filter(r=>!r.done && r.schedDate!=null && r.schedDate<=tk)
+    .sort((a,b)=>{   // overdue (older dates) first, then by start time
+      const ka=(a.schedDate||'')+'|'+(a.start!=null?String(a.start).padStart(6,'0'):'zzzzzz');
+      const kb=(b.schedDate||'')+'|'+(b.start!=null?String(b.start).padStart(6,'0'):'zzzzzz');
+      return ka.localeCompare(kb);
+    });
+  if(!appts.length && !tasks.length) return '';
+  const apptRow=(a)=>`
+    <div class="glance-row appt">
+      <span class="glance-time">${fmtClock(a.time)||'—'}</span>
+      <span class="glance-ic">📅</span>
+      <span class="glance-txt">${esc(a.title)}</span>
+      <span class="x" data-apptdel="${a.id}" title="Delete appointment">×</span>
+    </div>`;
+  const taskRow=(r)=>{
+    const label = r.source==='project'
+      ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
+      : `<span class="type-chip s">▣ Scheduled</span>`;
+    const time = r.start!=null?fmtHour(r.start):(r.overdue?'⚠':'—');
+    return `
+    <div class="glance-row task ${r.overdue?'overdue':''}">
+      <span class="glance-time">${time}</span>
+      <div class="box glance-box" data-atcheck="${r.key}" title="Mark done">✓</div>
+      <span class="glance-txt">${esc(r.txt)}</span>
+      ${label}
+      ${r.overdue?`<span class="glance-od">overdue</span>`:''}
+    </div>`;
+  };
   return `
-  <div class="card appt-today-card">
-    <div class="card-h"><h3>📅 Today's Appointments</h3><span class="sub">${today.length}</span></div>
-    <div class="appt-list">
-      ${today.map(a=>`
-        <div class="appt-row today">
-          <span class="appt-time">${fmtClock(a.time)}</span>
-          <span class="appt-title">${esc(a.title)}</span>
-          <span class="x" data-apptdel="${a.id}">×</span>
-        </div>`).join('')}
+  <div class="card today-strip">
+    <div class="card-h"><h3>☀ Today</h3><span class="sub">${appts.length?appts.length+' appt'+(appts.length>1?'s':'')+' · ':''}${tasks.length} task${tasks.length===1?'':'s'}</span></div>
+    <div class="glance-list">
+      ${appts.map(apptRow).join('')}
+      ${tasks.map(taskRow).join('')}
     </div>
   </div>`;
 }

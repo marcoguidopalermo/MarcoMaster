@@ -37,6 +37,8 @@ function renderDashboard(){
 
   ${renderPipeline()}
 
+  ${renderCompletedToday()}
+
   ${renderAllTasks()}
 
   ${renderWeeklyGoals()}
@@ -255,7 +257,6 @@ function renderAllTasks(){
   const schedShow=showAllSched?schedActive:schedFocused;
   const openCt=quickActive.length + schedActive.length;
   const overdueCt=schedActive.filter(r=>r.overdue).length;
-  const doneToday=completedRows('today');
   const archiveAll=completedRows('all');
   const active=(S.projects||[]).filter(p=>!p.done);
   return `
@@ -299,9 +300,16 @@ function renderAllTasks(){
         :`<div class="empty sm">${showAllSched?'No project tasks yet — add one above.':'Nothing scheduled for today.'+(hidden>0?` ${hidden} in backlog — “See all project tasks”.`:'')}</div>`}
     </div>
 
-    ${doneToday.length?renderCompletedSection('✓ Completed Today', doneToday):''}
     ${renderArchiveSection(archiveAll)}
   </div>`;
+}
+/* Completed Today renders as its own block high on the Dashboard (below the
+   Pipeline, above All Tasks). Same data + row behaviour; '' when empty. Its
+   rows reuse the data-atcheck / data-atdel handlers bound by bindAllTasks. */
+function renderCompletedToday(){
+  const rows=completedRows('today');
+  if(!rows.length) return '';
+  return `<div class="card completed-today-card">${renderCompletedSection('✓ Completed Today', rows)}</div>`;
 }
 function renderTaskSection(title, rows, emptyMsg){
   const openCt=rows.filter(r=>!r.done).length;

@@ -408,6 +408,8 @@ textarea{min-height:70px;line-height:1.55}
 .at-sec-actions{display:flex;align-items:center;gap:10px}
 .at-sec-actions .btn.sm{padding:3px 9px;font-size:11px}
 /* Completed Today + Archive */
+.completed-today-card{border-top:3px solid var(--green)}
+.completed-today-card .at-section.completed{margin-top:0}
 .at-section.completed .at-sec-lab{color:var(--green)}
 .at-section.archive{margin-top:16px;border-top:1px dashed var(--line-soft);padding-top:6px}
 .arch-h{cursor:pointer;user-select:none}

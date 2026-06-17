@@ -33,7 +33,9 @@ function linkedTimeBlock(pid, ptId){
 function setProjTaskDone(pid, ptId, done){
   const p=(S.projects||[]).find(x=>x.id===pid);
   const t=p&&(p.tasks||[]).find(x=>x.id===ptId);
-  if(t) t.done=done;
+  // stamp the completion DAY (not time) so the dashboard can split "Completed
+  // Today" from the older Archive; cleared on un-complete.
+  if(t){ t.done=done; t.doneAt = done?todayKey():null; }
   allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===pid && e.t.projTaskId===ptId) e.t.done=done; });
 }
 

@@ -33,6 +33,8 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
+  ${renderTodayAppointments()}
+
   ${renderPipeline()}
 
   ${renderAllTasks()}
@@ -204,6 +206,8 @@ function bindPipeline(){
 /* Build the two flat, de-duplicated sections. Each row carries a `key`
    ("P|projId|taskId" for a project task, "S|taskId" for a standalone
    day-task) so the bind handlers can dispatch uniformly. */
+let showAllSched=false;   // ▣ Scheduled focus: false = today + overdue only; true = full backlog. In-memory, OFF each load.
+let archiveOpen=false;    // Archive dropdown (default collapsed)
 function buildTaskRows(){
   const tk=todayKey();
   const rows=[];
@@ -239,9 +243,20 @@ function buildTaskRows(){
 }
 function renderAllTasks(){
   const {quick,scheduled}=buildTaskRows();
-  const openCt=[...quick,...scheduled].filter(r=>!r.done).length;
-  const overdueCt=scheduled.filter(r=>r.overdue).length;
-  const liveDone=day().tasks.filter(t=>t.done).length;   // clear-bar applies to day-tasks
+  const tk=todayKey();
+  const quickActive=quick.filter(r=>!r.done);
+  const schedActive=scheduled.filter(r=>!r.done);
+  // DEFAULT FOCUS: hide the PROJECT backlog (unscheduled / future project tasks).
+  // Keep what's relevant now — anything scheduled today or overdue, plus today's
+  // standalone working set (freshly added, carried-over, recurring time-blocks).
+  const isBacklog=r=>r.source==='project' && !(r.schedDate!=null && r.schedDate<=tk);
+  const schedFocused=schedActive.filter(r=>!isBacklog(r));
+  const hidden=schedActive.length - schedFocused.length;   // = project-backlog count
+  const schedShow=showAllSched?schedActive:schedFocused;
+  const openCt=quickActive.length + schedActive.length;
+  const overdueCt=schedActive.filter(r=>r.overdue).length;
+  const doneToday=completedRows('today');
+  const archiveAll=completedRows('all');
   const active=(S.projects||[]).filter(p=>!p.done);
   return `
   <div class="card all-tasks" style="border-top:3px solid var(--accent)">
@@ -249,7 +264,6 @@ function renderAllTasks(){
       <h3>All Tasks</h3>
       <span class="sub">${openCt} open${overdueCt?` · <span class="at-overdue-ct">${overdueCt} overdue</span>`:''}</span>
     </div>
-    ${liveDone?`<div class="clear-bar"><span>${liveDone} done</span><button class="btn sm" id="clearCompleted">Clear ✓</button></div>`:''}
 
     <div class="task-add">
       <input type="text" id="taskInput" placeholder="Add a task…">
@@ -271,8 +285,22 @@ function renderAllTasks(){
       ${taskDraft.customOpen?`<span class="dur-custom-wrap"><input type="number" min="1" max="600" id="durCustomInput" value="${!DURATION_PRESETS.includes(taskDraft.mins)?taskDraft.mins:''}" placeholder="min" class="num-in"><span class="dur-lab">min</span></span>`:''}
     </div>`:''}
 
-    ${renderTaskSection('⚡ Quick', quick, 'Nothing quick — add one above.')}
-    ${renderTaskSection('▣ Scheduled', scheduled, 'Nothing to schedule — add one above.')}
+    ${renderTaskSection('⚡ Quick', quickActive, 'Nothing quick — add one above.')}
+
+    <div class="at-section">
+      <div class="at-sec-h">
+        <span class="at-sec-lab">▣ Scheduled</span>
+        <span class="at-sec-actions">
+          <span class="at-sec-ct">${showAllSched?schedShow.length+' shown':schedShow.length+' today/overdue'}</span>
+          ${(hidden>0||showAllSched)?`<button class="btn ghost sm" id="schedToggle">${showAllSched?'▾ Focus to today':'▸ See all project tasks ('+hidden+')'}</button>`:''}
+        </span>
+      </div>
+      ${schedShow.length?`<div class="at-rows">${schedShow.map(renderTaskRow).join('')}</div>`
+        :`<div class="empty sm">${showAllSched?'No project tasks yet — add one above.':'Nothing scheduled for today.'+(hidden>0?` ${hidden} in backlog — “See all project tasks”.`:'')}</div>`}
+    </div>
+
+    ${doneToday.length?renderCompletedSection('✓ Completed Today', doneToday):''}
+    ${renderArchiveSection(archiveAll)}
   </div>`;
 }
 function renderTaskSection(title, rows, emptyMsg){
@@ -315,6 +343,76 @@ function renderTaskRow(r){
     ${!r.done?`<span class="at-act" data-atpipe="${r.key}" title="Promote to pipeline">↑</span>`:''}
     ${r.recurringId?`<span class="at-act" data-atsnooze="${r.recurringId}|${r.id}" title="Snooze to tomorrow">⏰</span>`:''}
     <span class="at-act" data-atedit="${r.key}" title="Edit text">✎</span>
+    <span class="x" data-atdel="${r.key}" title="Delete">×</span>
+  </div>`;
+}
+
+/* ---- COMPLETED: pulled out of the active lists into two places ----
+   Gather completed tasks from every source. scope 'today' → only those finished
+   today (project doneAt===today, or a done task living in today's day record);
+   scope 'all' → every completed task ever (the Archive). */
+function completedRows(scope){
+  const tk=todayKey();
+  const out=[];
+  // A) project tasks (done) — dated by their doneAt stamp
+  (S.projects||[]).forEach(p=>{
+    (p.tasks||[]).filter(t=>t.done).forEach(t=>{
+      const when=t.doneAt||null;
+      if(scope==='today' && when!==tk) return;
+      out.push({source:'project', key:'P|'+p.id+'|'+t.id, txt:t.txt, kind:t.kind||'project',
+                projName:p.name, projColor:p.color, when});
+    });
+  });
+  // B) standalone done day-tasks + C) swept archive entries — dated by day record
+  Object.keys(S.days||{}).forEach(dk=>{
+    if(scope==='today' && dk!==tk) return;
+    const d=S.days[dk]||{};
+    (d.tasks||[]).filter(t=>t.done && !t.projectId && !t.meetingId).forEach(t=>{
+      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk});
+    });
+    (d.archive||[]).forEach(a=>{
+      out.push({source:'archive', dayKey:dk, id:a.id, txt:a.txt, kind:a.kind, when:dk, time:a.doneAt});
+    });
+  });
+  // newest first
+  out.sort((x,y)=>((y.when||'')+(y.time||'')).localeCompare((x.when||'')+(x.time||'')));
+  return out;
+}
+function renderCompletedSection(title, rows){
+  return `
+  <div class="at-section completed">
+    <div class="at-sec-h"><span class="at-sec-lab">${title}</span><span class="at-sec-ct">${rows.length}</span></div>
+    <div class="at-rows">${rows.map(r=>renderCompletedRow(r,false)).join('')}</div>
+  </div>`;
+}
+function renderArchiveSection(rows){
+  return `
+  <div class="at-section archive">
+    <div class="at-sec-h arch-h" data-archtoggle>
+      <span class="at-sec-lab">${archiveOpen?'▾':'▸'} Archive</span>
+      <span class="at-sec-ct">${rows.length} completed</span>
+    </div>
+    ${archiveOpen?`<div class="at-rows">${rows.length?rows.map(r=>renderCompletedRow(r,true)).join(''):'<div class="empty sm">No completed tasks yet.</div>'}</div>`:''}
+  </div>`;
+}
+/* a struck-through completed row. withDate=true shows the completion date (Archive);
+   false shows just a time if we have one (Completed Today). */
+function renderCompletedRow(r, withDate){
+  const chip = r.source==='project'
+    ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
+    : `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Scheduled'}</span>`;
+  const when = withDate ? (r.when?`<span class="done-when">${shortDate(r.when)}</span>`:'')
+                        : (r.time?`<span class="done-when">${r.time}</span>`:'');
+  if(r.source==='archive'){
+    return `<div class="at-row done">
+      <div class="box done-static" title="archived">✓</div>
+      <span class="at-txt">${esc(r.txt)}</span>${chip}${when}
+      <span class="x" data-arcdel="${r.dayKey}|${r.id}" title="Delete from archive">×</span>
+    </div>`;
+  }
+  return `<div class="at-row done">
+    <div class="box" data-atcheck="${r.key}" title="Mark not done (reactivate)">✓</div>
+    <span class="at-txt">${esc(r.txt)}</span>${chip}${when}
     <span class="x" data-atdel="${r.key}" title="Delete">×</span>
   </div>`;
 }
@@ -411,7 +509,10 @@ function bindAllTasks(){
   const doAdd=()=>{ const i=q('#taskInput'); const v=i.value.trim(); if(!v) return; addUnifiedTask(v, taskDraft.kind, taskDraft.projectId, taskDraft.kind==='project'?taskDraft.mins:2); rerender(); };
   const addBtn=q('#taskAddBtn'); if(addBtn) addBtn.onclick=doAdd;
   const ti=q('#taskInput'); if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') doAdd(); };
-  const cc=q('#clearCompleted'); if(cc) cc.onclick=()=>{ archiveCompleted(); toast('Cleared & archived'); rerender(); };
+  // ---- focus toggle + archive dropdown ----
+  const st=q('#schedToggle'); if(st) st.onclick=()=>{ showAllSched=!showAllSched; rerender(); };
+  const arch=q('[data-archtoggle]'); if(arch) arch.onclick=()=>{ archiveOpen=!archiveOpen; rerender(); };
+  q('[data-arcdel]','all').forEach(el=>el.onclick=()=>{ const [dk,id]=el.dataset.arcdel.split('|'); const d=S.days[dk]; if(d&&d.archive){ d.archive=d.archive.filter(a=>a.id!==id); save(); rerender(); } });
   // ---- row actions ----
   q('[data-atcheck]','all').forEach(el=>el.onclick=()=>atToggle(el.dataset.atcheck));
   q('[data-atpipe]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); atPromote(el.dataset.atpipe); });
@@ -478,8 +579,7 @@ function projTaskState(pid, t){
   return {state:'unscheduled'};
 }
 /* Active Projects — horizontal strip of cards (name + progress + count).
-   Tap a card → the Projects manager (Settings) to edit it; tasks live in the
-   flat All Tasks list, not here. */
+   Tap a card → openProjectModal to manage that project's task list. */
 function renderActiveProjects(){
   const active=(S.projects||[]).filter(p=>!p.done);
   return `
@@ -494,6 +594,67 @@ function renderActiveProjects(){
         </button>`; }).join('')}
     </div>`:'<div class="empty sm">No active projects — add one in Settings.</div>'}
   </div>`;
+}
+
+/* ---------- project task modal: manage + drag-reorder tasks ----------
+   Opened from an Active Projects card. Add / complete / delete / schedule /
+   promote a project's tasks in one place; edits flow straight into the flat
+   All Tasks list. Tasks added here default to time-block (▣ Scheduled). */
+let projModalId=null;
+let projModalDraft='';
+function openProjectModal(pid){ projModalId=pid; projModalDraft=''; renderProjectModal(); }
+function renderProjectModal(){
+  const p=(S.projects||[]).find(x=>x.id===projModalId); if(!p){ closeReset(); return; }
+  const tasks=(p.tasks||[]).filter(t=>!t.done); const s=projectStats(p);
+  const m=q('#resetModal');
+  m.innerHTML=`
+    <div class="modal">
+      <span class="modal-close" id="pmClose">×</span>
+      <h3><span class="proj-swatch" style="background:${p.color};display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(p.name)}</h3>
+      <div class="proj-track" style="margin:10px 0 16px"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
+      <div class="pm-tasks">
+        ${tasks.length?tasks.map(t=>{
+          const st=projTaskState(p.id,t);
+          const tag = st.state==='scheduled'?`<span class="sched-tag yellow">${schedLabel(st.tb)}</span>`
+                    : (st.state==='unscheduled'?`<span class="to-today" data-pmsched="${t.id}">⏱ schedule</span>`:'');
+          return `<div class="pm-row" data-pmdrag="${t.id}">
+            <span class="pm-grip" title="drag to reorder">⋮⋮</span>
+            <span class="box" data-pmdone="${t.id}">✓</span>
+            <span class="pm-txt">${esc(t.txt)}</span>
+            ${tag}
+            <span class="to-pipe" data-pmpipe="${t.id}" title="Promote to pipeline">↑</span>
+            <span class="to-pipe" data-pmedit="${t.id}" title="Edit text">✎</span>
+            <span class="x" data-pmdel="${t.id}">×</span>
+          </div>`;
+        }).join(''):'<div class="empty sm">No open tasks — add one below.</div>'}
+      </div>
+      <div class="proj-add-task" style="margin-top:12px">
+        <input type="text" id="pmAdd" value="${esc(projModalDraft)}" placeholder="Add a task to ${esc(p.name)}…">
+        <button class="btn sm" id="pmAddBtn">+ Add</button>
+      </div>
+      <p class="list-note" style="margin-top:10px">Drag ⋮⋮ to reorder · ✓ complete · ⏱ schedule · ↑ pipeline · ✎ edit. Done tasks move to “Completed Today / Archive” on the Dashboard.</p>
+    </div>`;
+  m.classList.add('show');
+  bindProjectModal();
+}
+function bindProjectModal(){
+  const p=(S.projects||[]).find(x=>x.id===projModalId); if(!p) return;
+  const close=q('#pmClose'); if(close) close.onclick=()=>{ projModalId=null; closeReset(); };
+  q('[data-pmdone]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmdone); if(t){ setProjTaskDone(p.id,t.id,!t.done); save(false); renderProjectModal(); rerender(); } });
+  q('[data-pmdel]','all').forEach(el=>el.onclick=()=>{ p.tasks=p.tasks.filter(x=>x.id!==el.dataset.pmdel); save(); renderProjectModal(); rerender(); });
+  q('[data-pmpipe]','all').forEach(el=>el.onclick=()=>{ promoteProjToPipeline(p.id, el.dataset.pmpipe); renderProjectModal(); });
+  q('[data-pmedit]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmedit); if(!t) return; const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return; t.txt=nv; allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===p.id && e.t.projTaskId===t.id) e.t.txt=nv; }); save(); renderProjectModal(); rerender(); });
+  q('[data-pmsched]','all').forEach(el=>el.onclick=()=>{ openProjSchedule(p.id, el.dataset.pmsched); });  // replaces modal with scheduler
+  const ai=q('#pmAdd'); if(ai) ai.oninput=()=>{ projModalDraft=ai.value; };
+  const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false,kind:'project',mins:60}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
+  const ab=q('#pmAddBtn'); if(ab) ab.onclick=addT;
+  if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addT(); };
+  // drag-to-reorder p.tasks by the grip (mouse + touch), via the shared helper
+  makeReorderable(q('.pm-tasks'), '[data-pmdrag]', 'pmdrag', '.pm-grip', (order)=>{
+    const byId=Object.fromEntries(p.tasks.map(t=>[t.id,t]));
+    p.tasks=order.map(id=>byId[id]).filter(Boolean).concat(p.tasks.filter(t=>!order.includes(t.id)));
+    save(); renderProjectModal(); rerender();
+  });
 }
 
 /* ---------- project-task scheduler (duration + date) ----------
@@ -584,9 +745,8 @@ function bindDashboard(){
   if(ta) ta.onclick=addThink; if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addThink(); };
   q('[data-thinkdel]','all').forEach(el=>el.onclick=()=>{ S.board.parking=(S.board.parking||[]).filter(x=>x.id!==el.dataset.thinkdel); save(); rerender(); });
 
-  // Active Projects: tap a card → go to the Projects manager (in Settings).
-  // Tasks live in the flat All Tasks list now, so the card is edit-project only.
-  q('[data-projopen]','all').forEach(el=>el.onclick=()=>go('settings'));
+  // Active Projects: tap a card → open that project's task-list modal
+  q('[data-projopen]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projopen));
   // Active Projects: × → delete project (confirm + clean up linked tasks/pipeline)
   q('[data-pdeldash]','all').forEach(el=>el.onclick=(e)=>{
     e.stopPropagation();   // don't also open the card's modal

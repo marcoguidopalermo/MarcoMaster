@@ -18,6 +18,27 @@ function apptDateLabel(k){
   return new Date(y,m-1,d).toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
 }
 
+/* TODAY'S appointments — compact card pinned to the very top of the Dashboard
+   so they're the first thing seen. Returns '' when there are none. Delete reuses
+   the existing [data-apptdel] handler in bindAppointments. */
+function renderTodayAppointments(){
+  const tk=todayKey();
+  const today=(S.appointments||[]).filter(a=>a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  if(!today.length) return '';
+  return `
+  <div class="card appt-today-card">
+    <div class="card-h"><h3>📅 Today's Appointments</h3><span class="sub">${today.length}</span></div>
+    <div class="appt-list">
+      ${today.map(a=>`
+        <div class="appt-row today">
+          <span class="appt-time">${fmtClock(a.time)}</span>
+          <span class="appt-title">${esc(a.title)}</span>
+          <span class="x" data-apptdel="${a.id}">×</span>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
 function renderAppointments(){
   const tk=todayKey();
   const all=(S.appointments||[]).filter(a=>a.date && a.date>=tk);   // past drop off
@@ -41,9 +62,7 @@ function renderAppointments(){
       <button class="btn" id="apptAdd">Add</button>
     </div>
 
-    ${today.length?`
-      <div class="appt-group-lbl today">Today</div>
-      <div class="appt-list">${today.map(row).join('')}</div>`:''}
+    ${today.length?`<p class="list-note" style="margin:4px 0 10px">Today's ${today.length} appointment${today.length>1?'s are':' is'} pinned to the top of the Dashboard.</p>`:''}
 
     ${upcoming.length?`
       <div class="appt-group-lbl">Upcoming</div>

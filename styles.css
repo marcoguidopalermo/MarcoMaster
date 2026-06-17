@@ -404,6 +404,19 @@ textarea{min-height:70px;line-height:1.55}
 /* Projects manager: per-project notes textarea */
 .proj-note{width:100%;margin-top:10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px;color:var(--txt);font-family:var(--sans);font-size:13px;padding:8px 10px;resize:vertical;line-height:1.4}
 .proj-note:focus{outline:none;border-color:var(--accent)}
+/* All Tasks: Scheduled-section header actions (count + focus toggle) */
+.at-sec-actions{display:flex;align-items:center;gap:10px}
+.at-sec-actions .btn.sm{padding:3px 9px;font-size:11px}
+/* Completed Today + Archive */
+.at-section.completed .at-sec-lab{color:var(--green)}
+.at-section.archive{margin-top:16px;border-top:1px dashed var(--line-soft);padding-top:6px}
+.arch-h{cursor:pointer;user-select:none}
+.arch-h:hover .at-sec-lab{color:var(--accent)}
+.at-row .box.done-static{background:var(--green);border-color:var(--green);color:#06210b;cursor:default}
+.done-when{font-family:var(--mono);font-size:10px;color:var(--txt-faint);flex-shrink:0}
+/* Today's Appointments — pinned card at the top of the Dashboard */
+.appt-today-card{border-top:3px solid var(--amber)}
+.appt-today-card .appt-row.today{border-left:2px solid var(--amber)}
 
 /* PLAN PAGE */
 .plan-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}

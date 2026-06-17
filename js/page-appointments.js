@@ -27,14 +27,30 @@ function apptDateLabel(k){
 function renderTodayStrip(){
   const tk=todayKey();
   const appts=(S.appointments||[]).filter(a=>a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  // today's + overdue scheduled tasks (not done), via the shared row builder
+  // today's + overdue scheduled tasks (not done). Two sources, deduped by a
+  // canonical key so each task shows once:
+  //   1) the unified rows (covers OVERDUE past-due tasks + project tasks);
+  //   2) scheduledOn(today) — the EXACT source the Time Blocker grid renders, so
+  //      any task with a block on today's calendar appears even if its task
+  //      object lives in another day record (which #1 wouldn't surface).
   const {scheduled}=buildTaskRows();
-  const tasks=scheduled.filter(r=>!r.done && r.schedDate!=null && r.schedDate<=tk)
-    .sort((a,b)=>{   // overdue (older dates) first, then by start time
-      const ka=(a.schedDate||'')+'|'+(a.start!=null?String(a.start).padStart(6,'0'):'zzzzzz');
-      const kb=(b.schedDate||'')+'|'+(b.start!=null?String(b.start).padStart(6,'0'):'zzzzzz');
-      return ka.localeCompare(kb);
-    });
+  const tasks=scheduled.filter(r=>!r.done && r.schedDate!=null && r.schedDate<=tk);
+  const seen=new Set(tasks.map(r=>r.key));
+  scheduledOn(tk).forEach(e=>{
+    const t=e.t; if(t.meetingId) return;   // meetings show as appointments, not tasks
+    const key=t.projectId ? ('P|'+t.projectId+'|'+t.projTaskId) : ('S|'+t.id);
+    if(seen.has(key)) return;
+    seen.add(key);
+    let projName=null, projColor=null;
+    if(t.projectId){ const p=(S.projects||[]).find(x=>x.id===t.projectId); if(p){ projName=p.name; projColor=p.color; } }
+    tasks.push({ source:t.projectId?'project':'standalone', key, txt:t.txt,
+                 start:t.start, schedDate:t.schedDate, overdue:false, projName, projColor });
+  });
+  tasks.sort((a,b)=>{   // overdue (older dates) first, then by start time
+    const ka=(a.schedDate||'')+'|'+(a.start!=null?String(a.start).padStart(6,'0'):'zzzzzz');
+    const kb=(b.schedDate||'')+'|'+(b.start!=null?String(b.start).padStart(6,'0'):'zzzzzz');
+    return ka.localeCompare(kb);
+  });
   if(!appts.length && !tasks.length) return '';
   const apptRow=(a)=>`
     <div class="glance-row appt">

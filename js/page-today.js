@@ -450,7 +450,12 @@ function atToggle(key){
     const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
     setProjTaskDone(k.projId,k.id,!t.done);    // keeps linked blocks + progress in sync
   }else{
-    const t=day().tasks.find(x=>x.id===k.id); if(!t) return;
+    // usually today's record; fall back to a global lookup so a time-block task
+    // living in another day record (e.g. surfaced in the TODAY strip from the
+    // calendar grid) still toggles correctly
+    let t=day().tasks.find(x=>x.id===k.id);
+    if(!t){ const g=findTaskGlobal(k.id); t=g&&g.t; }
+    if(!t) return;
     t.done=!t.done;
     if(t.done && t.recurringId) markRecurringDone(t.recurringId);
     if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=t.done; }

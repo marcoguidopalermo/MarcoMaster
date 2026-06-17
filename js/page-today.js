@@ -45,10 +45,9 @@ function renderDashboard(){
 
   <div class="dash-grid">
     <div class="dash-col">
-      ${renderTaskInbox()}
+      ${renderFollowups()}
     </div>
     <div class="dash-col">
-      ${renderFollowups()}
       ${renderThinkAbout()}
     </div>
   </div>
@@ -186,150 +185,206 @@ function bindPipeline(){
 }
 
 /* ============================================================
-   ALL TASKS — one unified list of every task from every source.
-   DISPLAY-ONLY: nothing is restructured in storage. We just read the
-   three places tasks already live and render them under collapsible,
-   labelled groups:
-     • Project tasks  → S.projects[*].tasks (the source of truth; their
-       scheduled instance is shown inline via the linked time-block).
-     • Quick tasks    → day().tasks where kind==='quick'.
-     • Scheduled      → day().tasks where kind==='project' with NO
-       projectId (standalone time-blocks; project-linked ones are
-       surfaced through their project group, not duplicated here).
-   Carry-over is untouched: this reads live from day()/S.projects, so
-   whatever the day() rollover bridge carried forward is what shows. */
-let allTasksCollapsed={};   // {groupKey:true} = collapsed; default expanded
+   ALL TASKS — the single, flat task list on the Dashboard.
+   DISPLAY-ONLY unification of every task source, plus the one add row.
+   No per-project dropdowns, no second inbox: this card is the only place
+   tasks are seen and added.
 
-/* Build the ordered, de-duplicated groups for the unified list. Each row
-   carries its source so the bind handlers can dispatch uniformly. */
-function allTasksGrouped(){
+   Two flat sections, each row self-labelled:
+     • ⚡ Quick      — kind==='quick' tasks (standalone day-tasks + project
+                       tasks the user marked Quick).
+     • ▣ Scheduled   — kind==='project' tasks (standalone time-blocks +
+                       project tasks needing / having a calendar slot).
+   Project tasks live in S.projects[*].tasks (labelled with the project
+   dot+name); standalone tasks live in day().tasks (labelled Quick /
+   Scheduled). A scheduled project task is surfaced through its project
+   row — its linked day().task block (projectId set) is excluded so each
+   task appears exactly once. Carry-over is untouched (reads live). */
+
+/* Build the two flat, de-duplicated sections. Each row carries a `key`
+   ("P|projId|taskId" for a project task, "S|taskId" for a standalone
+   day-task) so the bind handlers can dispatch uniformly. */
+function buildTaskRows(){
   const tk=todayKey();
-  const groups=[];
-  // 1) one group per active project — the canonical task list
+  const rows=[];
+  // project tasks (active projects) — the canonical list
   (S.projects||[]).filter(p=>!p.done).forEach(p=>{
-    const rows=(p.tasks||[]).map(t=>{
-      const st=projTaskState(p.id,t);          // done | scheduled (+tb) | unscheduled
-      const tb=st.tb||null;
-      const schedDate=tb?tb.schedDate:null;
-      const start=tb?tb.start:null;
-      return {source:'project', id:t.id, txt:t.txt, done:t.done,
-              schedDate, start, scheduled:st.state==='scheduled',
-              overdue:schedDate!=null && schedDate<tk && !t.done};
+    (p.tasks||[]).forEach(t=>{
+      const kind=t.kind||'project';          // legacy project tasks default to time-block
+      const row={key:'P|'+p.id+'|'+t.id, source:'project', projId:p.id, id:t.id,
+                 txt:t.txt, done:t.done, kind, recurringId:null,
+                 projName:p.name, projColor:p.color};
+      if(kind==='project'){
+        const st=projTaskState(p.id,t); const tb=st.tb||null;
+        row.scheduled=st.state==='scheduled';
+        row.schedDate=tb?tb.schedDate:null; row.start=tb?tb.start:null;
+        row.mins=tb?tb.mins:(t.mins!=null?t.mins:null);
+        row.overdue=row.schedDate!=null && row.schedDate<tk && !t.done;
+      }
+      rows.push(row);
     });
-    if(rows.length) groups.push({key:'proj-'+p.id, label:p.name, color:p.color, type:'project', rows});
   });
-  // 2) quick tasks (today)
-  const quick=day().tasks.filter(t=>t.kind==='quick').map(t=>({
-    source:'quick', id:t.id, txt:t.txt, done:t.done, recurringId:t.recurringId,
-    schedDate:null, start:null, scheduled:false, overdue:false}));
-  if(quick.length) groups.push({key:'quick', label:'Quick', color:'var(--amber)', type:'quick', rows:quick});
-  // 3) standalone time-blocks (today) — no project link, not a meeting block
-  const sched=day().tasks.filter(t=>t.kind==='project' && !t.projectId && !t.meetingId).map(t=>({
-    source:'scheduled', id:t.id, txt:t.txt, done:t.done, recurringId:t.recurringId,
-    schedDate:t.schedDate, start:t.start, scheduled:t.schedDate!=null,
-    overdue:t.schedDate!=null && t.schedDate<tk && !t.done}));
-  if(sched.length) groups.push({key:'scheduled', label:'Scheduled', color:'var(--amber)', type:'scheduled', rows:sched});
-  return groups;
+  // standalone day-tasks — exclude project-linked blocks (surfaced via their
+  // project) and meeting blocks (live on the calendar grid)
+  day().tasks.filter(t=>!t.projectId && !t.meetingId).forEach(t=>{
+    const row={key:'S|'+t.id, source:'standalone', id:t.id, txt:t.txt, done:t.done,
+               kind:t.kind, recurringId:t.recurringId, projName:null, projColor:null};
+    if(t.kind==='project'){
+      row.scheduled=t.schedDate!=null; row.schedDate=t.schedDate; row.start=t.start;
+      row.mins=t.mins; row.overdue=t.schedDate!=null && t.schedDate<tk && !t.done;
+    }
+    rows.push(row);
+  });
+  return { quick: rows.filter(r=>r.kind==='quick'), scheduled: rows.filter(r=>r.kind==='project') };
 }
 function renderAllTasks(){
-  const groups=allTasksGrouped();
-  const openCt=groups.reduce((n,g)=>n+g.rows.filter(r=>!r.done).length,0);
-  const overdueCt=groups.reduce((n,g)=>n+g.rows.filter(r=>r.overdue).length,0);
+  const {quick,scheduled}=buildTaskRows();
+  const openCt=[...quick,...scheduled].filter(r=>!r.done).length;
+  const overdueCt=scheduled.filter(r=>r.overdue).length;
+  const liveDone=day().tasks.filter(t=>t.done).length;   // clear-bar applies to day-tasks
+  const active=(S.projects||[]).filter(p=>!p.done);
   return `
   <div class="card all-tasks" style="border-top:3px solid var(--accent)">
     <div class="card-h">
       <h3>All Tasks</h3>
       <span class="sub">${openCt} open${overdueCt?` · <span class="at-overdue-ct">${overdueCt} overdue</span>`:''}</span>
     </div>
-    ${groups.length?groups.map(renderTaskGroup).join(''):`<div class="empty">No tasks anywhere — add one in Today's Tasks or a project.</div>`}
-  </div>`;
-}
-function renderTaskGroup(g){
-  const collapsed=!!allTasksCollapsed[g.key];
-  const openCt=g.rows.filter(r=>!r.done).length;
-  const overdueCt=g.rows.filter(r=>r.overdue).length;
-  return `
-  <div class="at-group ${collapsed?'collapsed':''}">
-    <div class="at-group-h" data-atgroup="${g.key}">
-      <span class="at-caret">${collapsed?'▶':'▼'}</span>
-      <span class="proj-swatch" style="background:${g.color}"></span>
-      <span class="at-group-name">${esc(g.label)}</span>
-      <span class="at-group-ct">${overdueCt?`<span class="at-overdue-ct">${overdueCt}⚠</span> · `:''}${openCt}</span>
+    ${liveDone?`<div class="clear-bar"><span>${liveDone} done</span><button class="btn sm" id="clearCompleted">Clear ✓</button></div>`:''}
+
+    <div class="task-add">
+      <input type="text" id="taskInput" placeholder="Add a task…">
+      <div class="kind-pick" id="kindPick">
+        <button data-kind="quick" class="${taskDraft.kind==='quick'?'active':''}">⚡ Quick</button>
+        <button data-kind="project" class="${taskDraft.kind==='project'?'active':''}">▣ Time block</button>
+      </div>
+      <select id="taskProjPick" class="proj-pick" title="Assign to a project (optional)">
+        <option value="">— No project —</option>
+        ${active.map(p=>`<option value="${p.id}" ${taskDraft.projectId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
+      </select>
+      <button class="btn" id="taskAddBtn">Add</button>
     </div>
-    ${collapsed?'':`<div class="at-rows">${g.rows.map(r=>renderTaskRow(g,r)).join('')}</div>`}
+    ${taskDraft.kind==='project'?`
+    <div class="dur-pick" id="durPick">
+      <span class="dur-lab">Duration:</span>
+      ${DURATION_PRESETS.map(m=>`<button class="dur-btn ${taskDraft.mins===m?'sel':''}" data-dur="${m}">${fmtDuration(m)}</button>`).join('')}
+      <button class="dur-btn ${!DURATION_PRESETS.includes(taskDraft.mins)&&!taskDraft.customOpen?'sel':''}" id="durCustom">${!DURATION_PRESETS.includes(taskDraft.mins)?fmtDuration(taskDraft.mins):'custom'}</button>
+      ${taskDraft.customOpen?`<span class="dur-custom-wrap"><input type="number" min="1" max="600" id="durCustomInput" value="${!DURATION_PRESETS.includes(taskDraft.mins)?taskDraft.mins:''}" placeholder="min" class="num-in"><span class="dur-lab">min</span></span>`:''}
+    </div>`:''}
+
+    ${renderTaskSection('⚡ Quick', quick, 'Nothing quick — add one above.')}
+    ${renderTaskSection('▣ Scheduled', scheduled, 'Nothing to schedule — add one above.')}
   </div>`;
 }
-function renderTaskRow(g,r){
+function renderTaskSection(title, rows, emptyMsg){
+  const openCt=rows.filter(r=>!r.done).length;
+  return `
+  <div class="at-section">
+    <div class="at-sec-h"><span class="at-sec-lab">${title}</span><span class="at-sec-ct">${openCt} open</span></div>
+    ${rows.length?`<div class="at-rows">${rows.map(renderTaskRow).join('')}</div>`:`<div class="empty sm">${emptyMsg}</div>`}
+  </div>`;
+}
+/* the inline label on each flat row: project dot+name, or a Quick/Scheduled chip */
+function taskLabelChip(r){
+  if(r.source==='project') return `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`;
+  return `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Scheduled'}</span>`;
+}
+function renderTaskRow(r){
   let tag='';
-  if(!r.done){
-    if(r.overdue){
-      tag=`<span class="sched-tag overdue" title="Scheduled in the past — requires completion">⚠ Overdue · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
-    }else if(r.scheduled){
-      tag=`<span class="sched-tag yellow">Scheduled · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
-    }
+  if(r.kind==='project' && !r.done){
+    if(r.overdue) tag=`<span class="sched-tag overdue" title="Scheduled in the past — requires completion">⚠ Overdue · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
+    else if(r.scheduled) tag=`<span class="sched-tag yellow">Scheduled · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
   }
-  const canSched   = r.source==='project' && !r.scheduled && !r.done;
-  const canUnsched = r.source==='project' &&  r.scheduled && !r.done;
+  const isProj=r.source==='project';
+  const canSched   = isProj && r.kind==='project' && !r.scheduled && !r.done;
+  const canUnsched = isProj && r.kind==='project' &&  r.scheduled && !r.done;
+  // duration: editable for standalone scheduled day-tasks, read-only for project rows
+  let mins='';
+  if(r.kind==='project' && r.mins!=null && !r.done){
+    mins = isProj ? `<span class="mins ro" title="duration — set when scheduling">${fmtDuration(r.mins)}</span>`
+                  : `<span class="mins" data-tmins="${r.id}" title="change duration">${fmtDuration(r.mins)}</span>`;
+  }
   return `
   <div class="at-row ${r.done?'done':''} ${r.overdue?'overdue':''}">
-    <div class="box" data-atcheck="${g.key}|${r.id}">✓</div>
+    <div class="box" data-atcheck="${r.key}">✓</div>
     <span class="at-txt">${r.recurringId?'<span class="rec-badge">↻</span> ':''}${esc(r.txt)}</span>
+    ${taskLabelChip(r)}
     ${tag}
-    ${canSched?`<span class="at-act" data-atsched="${g.key.slice(5)}|${r.id}" title="Schedule on the calendar">⏱</span>`:''}
-    ${canUnsched?`<span class="at-act unsched" data-atunsched="${g.key.slice(5)}|${r.id}" title="Unschedule (keeps the task in its project)">⊘</span>`:''}
-    ${!r.done?`<span class="at-act" data-atpipe="${g.key}|${r.id}" title="Promote to pipeline">↑</span>`:''}
-    <span class="at-act" data-atedit="${g.key}|${r.id}" title="Edit text">✎</span>
-    <span class="x" data-atdel="${g.key}|${r.id}" title="Delete">×</span>
+    ${mins}
+    ${canSched?`<span class="at-act" data-atsched="${r.projId}|${r.id}" title="Schedule on the calendar">⏱</span>`:''}
+    ${canUnsched?`<span class="at-act unsched" data-atunsched="${r.projId}|${r.id}" title="Unschedule (keeps the task in its project)">⊘</span>`:''}
+    ${!r.done?`<span class="at-act" data-atpipe="${r.key}" title="Promote to pipeline">↑</span>`:''}
+    ${r.recurringId?`<span class="at-act" data-atsnooze="${r.recurringId}|${r.id}" title="Snooze to tomorrow">⏰</span>`:''}
+    <span class="at-act" data-atedit="${r.key}" title="Edit text">✎</span>
+    <span class="x" data-atdel="${r.key}" title="Delete">×</span>
   </div>`;
 }
 
-/* ---- unified-list actions: dispatch by group key, reuse existing logic ---- */
-function atToggle(gk,id){
-  if(gk.startsWith('proj-')){
-    const pid=gk.slice(5); const p=(S.projects||[]).find(x=>x.id===pid);
-    const t=p&&p.tasks.find(x=>x.id===id); if(!t) return;
-    setProjTaskDone(pid,id,!t.done);          // keeps linked blocks + progress in sync
+/* add a task from the unified add row, honouring kind + optional project.
+   Project chosen → lives in that project's task list (kind decides section);
+   none → a standalone day-task (existing addTask path). */
+function addUnifiedTask(txt, kind, projectId, mins){
+  txt=(txt||'').trim(); if(!txt) return;
+  if(projectId){
+    const p=(S.projects||[]).find(x=>x.id===projectId); if(!p){ addTask(txt, kind, kind==='project'?(mins||60):2); return; }
+    if(!p.tasks) p.tasks=[];
+    const t={id:b(), txt, done:false, kind};
+    if(kind==='project') t.mins=mins||60;     // remembered as the scheduler's default
+    p.tasks.push(t);
+    save();
   }else{
-    const t=day().tasks.find(x=>x.id===id); if(!t) return;   // quick or standalone day-task
+    addTask(txt, kind, kind==='project'?(mins||60):2);   // standalone day-task (saves itself)
+  }
+}
+
+/* ---- unified-list actions: dispatch by row key ("P|projId|id" | "S|id") ---- */
+function atKey(key){ const a=key.split('|'); return a[0]==='P'?{src:'project',projId:a[1],id:a[2]}:{src:'standalone',id:a[1]}; }
+function atToggle(key){
+  const k=atKey(key);
+  if(k.src==='project'){
+    const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
+    setProjTaskDone(k.projId,k.id,!t.done);    // keeps linked blocks + progress in sync
+  }else{
+    const t=day().tasks.find(x=>x.id===k.id); if(!t) return;
     t.done=!t.done;
     if(t.done && t.recurringId) markRecurringDone(t.recurringId);
     if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=t.done; }
   }
   save(false); rerender();
 }
-function atPromote(gk,id){
-  if(gk.startsWith('proj-')) promoteProjToPipeline(gk.slice(5), id);
-  else promoteTaskToPipeline(id);
+function atPromote(key){
+  const k=atKey(key);
+  if(k.src==='project') promoteProjToPipeline(k.projId,k.id); else promoteTaskToPipeline(k.id);
 }
-function atEdit(gk,id){
-  if(gk.startsWith('proj-')){
-    const pid=gk.slice(5); const p=(S.projects||[]).find(x=>x.id===pid);
-    const t=p&&p.tasks.find(x=>x.id===id); if(!t) return;
+function atEdit(key){
+  const k=atKey(key);
+  if(k.src==='project'){
+    const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
     const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return;
     t.txt=nv;
-    allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===pid && e.t.projTaskId===id) e.t.txt=nv; });  // keep linked block text in sync
+    allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===k.projId && e.t.projTaskId===k.id) e.t.txt=nv; });  // keep linked block text in sync
   }else{
-    const t=day().tasks.find(x=>x.id===id); if(!t) return;
+    const t=day().tasks.find(x=>x.id===k.id); if(!t) return;
     const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return;
     t.txt=nv;
   }
   save(); rerender();
 }
-function atDelete(gk,id){
-  if(gk.startsWith('proj-')){
-    const pid=gk.slice(5); const p=(S.projects||[]).find(x=>x.id===pid); if(!p) return;
-    p.tasks=(p.tasks||[]).filter(x=>x.id!==id);
+function atDelete(key){
+  const k=atKey(key);
+  if(k.src==='project'){
+    const p=(S.projects||[]).find(x=>x.id===k.projId); if(!p) return;
+    p.tasks=(p.tasks||[]).filter(x=>x.id!==k.id);
     // sweep any linked day-task blocks + pipeline references so nothing dangles
     const linkedIds=new Set();
-    Object.keys(S.days||{}).forEach(dk=>{ (S.days[dk].tasks||[]).forEach(t=>{ if(t.projectId===pid && t.projTaskId===id) linkedIds.add(t.id); }); });
+    Object.keys(S.days||{}).forEach(dk=>{ (S.days[dk].tasks||[]).forEach(t=>{ if(t.projectId===k.projId && t.projTaskId===k.id) linkedIds.add(t.id); }); });
     Object.keys(S.days||{}).forEach(dk=>{
       const d=S.days[dk];
-      if(d.tasks) d.tasks=d.tasks.filter(t=>!(t.projectId===pid && t.projTaskId===id));
-      if(d.pipeline) d.pipeline=d.pipeline.filter(it=>!(it.projectId===pid && it.projTaskId===id) && !linkedIds.has(it.taskId));
+      if(d.tasks) d.tasks=d.tasks.filter(t=>!(t.projectId===k.projId && t.projTaskId===k.id));
+      if(d.pipeline) d.pipeline=d.pipeline.filter(it=>!(it.projectId===k.projId && it.projTaskId===k.id) && !linkedIds.has(it.taskId));
     });
   }else{
-    Object.keys(S.days||{}).forEach(dk=>{ const d=S.days[dk]; if(d.pipeline) d.pipeline=d.pipeline.filter(it=>it.taskId!==id); });
-    day().tasks=day().tasks.filter(x=>x.id!==id);
+    Object.keys(S.days||{}).forEach(dk=>{ const d=S.days[dk]; if(d.pipeline) d.pipeline=d.pipeline.filter(it=>it.taskId!==k.id); });
+    day().tasks=day().tasks.filter(x=>x.id!==k.id);
   }
   save(); rerender();
 }
@@ -347,13 +402,33 @@ function unscheduleProjTask(pid, ptId){
   toast('Unscheduled — task kept in project'); rerender();
 }
 function bindAllTasks(){
-  q('[data-atgroup]','all').forEach(el=>el.onclick=()=>{ const k=el.dataset.atgroup; allTasksCollapsed[k]=!allTasksCollapsed[k]; rerender(); });
-  q('[data-atcheck]','all').forEach(el=>el.onclick=()=>{ const [gk,id]=el.dataset.atcheck.split('|'); atToggle(gk,id); });
-  q('[data-atpipe]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); const [gk,id]=el.dataset.atpipe.split('|'); atPromote(gk,id); });
-  q('[data-atedit]','all').forEach(el=>el.onclick=()=>{ const [gk,id]=el.dataset.atedit.split('|'); atEdit(gk,id); });
-  q('[data-atdel]','all').forEach(el=>el.onclick=()=>{ const [gk,id]=el.dataset.atdel.split('|'); atDelete(gk,id); });
+  // ---- add row (kind toggle + optional project + duration) ----
+  q('#kindPick [data-kind]','all').forEach(el=>el.onclick=()=>{ taskDraft.kind=el.dataset.kind; rerender(); });
+  const pp=q('#taskProjPick'); if(pp) pp.onchange=()=>{ taskDraft.projectId=pp.value||null; };
+  q('[data-dur]','all').forEach(el=>el.onclick=()=>{ taskDraft.mins=+el.dataset.dur; taskDraft.customOpen=false; rerender(); });
+  const dc=q('#durCustom'); if(dc) dc.onclick=()=>{ taskDraft.customOpen=true; rerender(); setTimeout(()=>{ const ci=q('#durCustomInput'); if(ci) ci.focus(); },0); };
+  const dci=q('#durCustomInput'); if(dci) dci.oninput=()=>{ const n=parseInt(dci.value,10); if(!isNaN(n)&&n>0) taskDraft.mins=n; };
+  const doAdd=()=>{ const i=q('#taskInput'); const v=i.value.trim(); if(!v) return; addUnifiedTask(v, taskDraft.kind, taskDraft.projectId, taskDraft.kind==='project'?taskDraft.mins:2); rerender(); };
+  const addBtn=q('#taskAddBtn'); if(addBtn) addBtn.onclick=doAdd;
+  const ti=q('#taskInput'); if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') doAdd(); };
+  const cc=q('#clearCompleted'); if(cc) cc.onclick=()=>{ archiveCompleted(); toast('Cleared & archived'); rerender(); };
+  // ---- row actions ----
+  q('[data-atcheck]','all').forEach(el=>el.onclick=()=>atToggle(el.dataset.atcheck));
+  q('[data-atpipe]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); atPromote(el.dataset.atpipe); });
+  q('[data-atedit]','all').forEach(el=>el.onclick=()=>atEdit(el.dataset.atedit));
+  q('[data-atdel]','all').forEach(el=>el.onclick=()=>atDelete(el.dataset.atdel));
   q('[data-atsched]','all').forEach(el=>el.onclick=()=>{ const [pid,id]=el.dataset.atsched.split('|'); openProjSchedule(pid,id); });
   q('[data-atunsched]','all').forEach(el=>el.onclick=()=>{ const [pid,id]=el.dataset.atunsched.split('|'); unscheduleProjTask(pid,id); });
+  q('[data-tmins]','all').forEach(el=>el.onclick=()=>openDurationPicker(el.dataset.tmins));
+  // snooze a recurring task to tomorrow (removes from today, won't re-add today)
+  q('[data-atsnooze]','all').forEach(el=>el.onclick=()=>{
+    const [rid,tid]=el.dataset.atsnooze.split('|');
+    const r=S.recurring.find(x=>x.id===rid);
+    if(r){ const t=new Date(); t.setDate(t.getDate()+1); r.snoozeUntil=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+    day().tasks=day().tasks.filter(x=>x.id!==tid);
+    if(day().recurringAdded) day().recurringAdded[rid]=true;
+    save(); toast('Snoozed to tomorrow'); rerender();
+  });
 }
 
 /* ---------- THIS WEEK — a simple free-text goals note ----------
@@ -390,74 +465,6 @@ function winsSummary(d){
   return set?`${set}/4 set`:'tap to set';
 }
 
-/* ---------- TASK INBOX (lives on Today) ---------- */
-function renderTaskInbox(){
-  const quick=quickTasks();
-  const projects=projectTasks().filter(t=>!t.meetingId);      // meeting blocks live on the calendar grid, not the task inbox
-  const unsched=unscheduledProjects().filter(t=>!t.meetingId);
-  const quickDone=quick.filter(t=>t.done).length;
-  const liveDone=day().tasks.filter(t=>t.done).length;
-  const archived=day().archive.length;
-  const projChip=(t)=>{
-    if(!t.projectId) return '';
-    const p=(S.projects||[]).find(x=>x.id===t.projectId); if(!p) return '';
-    return `<span class="proj-chip" style="--pc:${p.color}">${esc(p.name)}</span>`;
-  };
-  return `
-  <div class="card big-card" style="border-top:3px solid var(--accent)">
-    <div class="card-h">
-      <h3>Today's Tasks</h3>
-      <span class="sub">${quick.length} quick · ${projects.length} blocked${archived?` · ${archived} done`:''}</span>
-    </div>
-    ${liveDone?`<div class="clear-bar">
-      <span>${liveDone} done</span>
-      <button class="btn sm" id="clearCompleted">Clear ✓</button>
-    </div>`:''}
-
-    <div class="task-add">
-      <input type="text" id="taskInput" placeholder="Add a task...">
-      <div class="kind-pick" id="kindPick">
-        <button data-kind="quick" class="${taskDraft.kind==='quick'?'active':''}">⚡ Quick</button>
-        <button data-kind="project" class="${taskDraft.kind==='project'?'active':''}">▣ Time block</button>
-      </div>
-      <button class="btn" id="taskAddBtn">Add</button>
-    </div>
-    ${taskDraft.kind==='project'?`
-    <div class="dur-pick" id="durPick">
-      <span class="dur-lab">Duration:</span>
-      ${DURATION_PRESETS.map(m=>`<button class="dur-btn ${taskDraft.mins===m?'sel':''}" data-dur="${m}">${fmtDuration(m)}</button>`).join('')}
-      <button class="dur-btn ${!DURATION_PRESETS.includes(taskDraft.mins)&&!taskDraft.customOpen?'sel':''}" id="durCustom">${!DURATION_PRESETS.includes(taskDraft.mins)?fmtDuration(taskDraft.mins):'custom'}</button>
-      ${taskDraft.customOpen?`<span class="dur-custom-wrap"><input type="number" min="1" max="600" id="durCustomInput" value="${!DURATION_PRESETS.includes(taskDraft.mins)?taskDraft.mins:''}" placeholder="min" class="num-in"><span class="dur-lab">min</span></span>`:''}
-    </div>`:''}
-
-    <div class="inbox-cols">
-      <div class="inbox-col">
-        <div class="inbox-col-h"><span class="lab quick">⚡ Quick Tasks</span><span class="ct">${quickDone}/${quick.length}</span></div>
-        ${quick.length?quick.map(t=>`
-          <div class="qtask big-task ${t.done?'done':''}">
-            <div class="box" data-tdone="${t.id}">✓</div>
-            <span class="qtxt">${t.recurringId?'<span class="rec-badge">↻</span> ':''}${esc(t.txt)}</span>
-            ${!t.done?`<span class="to-pipe" data-plpromote-task="${t.id}" title="Promote to pipeline">↑</span>`:''}            ${t.recurringId?`<span class="snz" data-snooze="${t.recurringId}|${t.id}" title="snooze">⏰</span>`:''}
-            <span class="x" data-tdel="${t.id}">×</span>
-          </div>`).join(''):'<div class="empty">Nothing quick.</div>'}
-      </div>
-
-      <div class="inbox-col">
-        <div class="inbox-col-h"><span class="lab proj">▣ Tasks — requires time block</span><span class="ct">${unsched.length?unsched.length+' to block':'all set ✓'}</span></div>
-        ${projects.length?projects.map(t=>`
-          <div class="ptask big-task ${t.done?'done':''} ${t.schedDate!=null?'scheduled':'limbo'}">
-            <div class="box" data-tdone="${t.id}">✓</div>
-            <span class="ptxt">${t.recurringId?'<span class="rec-badge">↻</span> ':''}${t.fromYesterday?'<span class="rec-badge yd">↳</span> ':''}${esc(t.txt)}${projChip(t)}</span>
-            ${t.schedDate!=null?`<span class="sched-tag yellow">${schedLabel(t)}</span>`:''}
-            <span class="mins" data-tmins="${t.id}">${fmtDuration(t.mins)}</span>
-            ${!t.done?`<span class="to-pipe" data-plpromote-task="${t.id}" title="Promote to pipeline">↑</span>`:''}            ${t.recurringId?`<span class="snz" data-snooze="${t.recurringId}|${t.id}" title="snooze">⏰</span>`:''}
-            <span class="x" data-tdel="${t.id}">×</span>
-          </div>`).join(''):'<div class="empty">Nothing to block.</div>'}
-        ${unsched.length?`<button class="btn ghost sm" id="goPlan" style="margin-top:10px;width:100%">→ Time block these</button>`:''}
-      </div>
-    </div>
-  </div>`;
-}
 function focusKey(cls){ return cls==='not'?'not':cls; }
 
 /* ---------- ACTIVE PROJECTS (collapsed list on Today) ---------- */
@@ -471,7 +478,8 @@ function projTaskState(pid, t){
   return {state:'unscheduled'};
 }
 /* Active Projects — horizontal strip of cards (name + progress + count).
-   Tap a card → openProjectModal for full task management + drag-reorder. */
+   Tap a card → the Projects manager (Settings) to edit it; tasks live in the
+   flat All Tasks list, not here. */
 function renderActiveProjects(){
   const active=(S.projects||[]).filter(p=>!p.done);
   return `
@@ -488,62 +496,6 @@ function renderActiveProjects(){
   </div>`;
 }
 
-/* ---------- project task modal: manage + drag-reorder tasks ---------- */
-let projModalId=null;
-let projModalDraft='';
-function openProjectModal(pid){ projModalId=pid; projModalDraft=''; renderProjectModal(); }
-function renderProjectModal(){
-  const p=(S.projects||[]).find(x=>x.id===projModalId); if(!p){ closeReset(); return; }
-  const tasks=p.tasks||[]; const s=projectStats(p);
-  const m=q('#resetModal');
-  m.innerHTML=`
-    <div class="modal">
-      <span class="modal-close" id="pmClose">×</span>
-      <h3><span class="proj-swatch" style="background:${p.color};display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(p.name)}</h3>
-      <div class="proj-track" style="margin:10px 0 16px"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
-      <div class="pm-tasks">
-        ${tasks.length?tasks.map(t=>{
-          const st=projTaskState(p.id,t);
-          const tag = st.state==='scheduled'?`<span class="sched-tag yellow">${schedLabel(st.tb)}</span>`
-                    : (st.state==='unscheduled'?`<span class="to-today" data-pmsched="${t.id}">⏱ schedule</span>`:'');
-          return `<div class="pm-row ${t.done?'done':''}" data-pmdrag="${t.id}">
-            <span class="pm-grip" title="drag to reorder">⋮⋮</span>
-            <span class="box" data-pmdone="${t.id}">✓</span>
-            <span class="pm-txt">${esc(t.txt)}</span>
-            ${tag}
-            ${!t.done?`<span class="to-pipe" data-pmpipe="${t.id}" title="Promote to pipeline">↑</span>`:''}
-            <span class="x" data-pmdel="${t.id}">×</span>
-          </div>`;
-        }).join(''):'<div class="empty sm">No tasks yet — add one below.</div>'}
-      </div>
-      <div class="proj-add-task" style="margin-top:12px">
-        <input type="text" id="pmAdd" value="${esc(projModalDraft)}" placeholder="Add a task to ${esc(p.name)}…">
-        <button class="btn sm" id="pmAddBtn">+ Add</button>
-      </div>
-      <p class="list-note" style="margin-top:10px">Drag ⋮⋮ to reorder · ✓ complete · ⏱ schedule · ↑ pipeline</p>
-    </div>`;
-  m.classList.add('show');
-  bindProjectModal();
-}
-function bindProjectModal(){
-  const p=(S.projects||[]).find(x=>x.id===projModalId); if(!p) return;
-  const close=q('#pmClose'); if(close) close.onclick=()=>{ projModalId=null; closeReset(); };
-  q('[data-pmdone]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmdone); if(t){ setProjTaskDone(p.id,t.id,!t.done); save(false); renderProjectModal(); rerender(); } });
-  q('[data-pmdel]','all').forEach(el=>el.onclick=()=>{ p.tasks=p.tasks.filter(x=>x.id!==el.dataset.pmdel); save(); renderProjectModal(); rerender(); });
-  q('[data-pmpipe]','all').forEach(el=>el.onclick=()=>{ promoteProjToPipeline(p.id, el.dataset.pmpipe); renderProjectModal(); });
-  q('[data-pmsched]','all').forEach(el=>el.onclick=()=>{ openProjSchedule(p.id, el.dataset.pmsched); });  // replaces modal with scheduler
-  const ai=q('#pmAdd'); if(ai) ai.oninput=()=>{ projModalDraft=ai.value; };
-  const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
-  const ab=q('#pmAddBtn'); if(ab) ab.onclick=addT;
-  if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addT(); };
-  // drag-to-reorder p.tasks by the grip (mouse + touch), via the shared helper
-  makeReorderable(q('.pm-tasks'), '[data-pmdrag]', 'pmdrag', '.pm-grip', (order)=>{
-    const byId=Object.fromEntries(p.tasks.map(t=>[t.id,t]));
-    p.tasks=order.map(id=>byId[id]).filter(Boolean).concat(p.tasks.filter(t=>!order.includes(t.id)));
-    save(); renderProjectModal(); rerender();
-  });
-}
-
 /* ---------- project-task scheduler (duration + date) ----------
    Reuses the duration presets and the same schedDate/start scheduling the time
    blocker uses, so a scheduled project task lands on the grid and stays linked. */
@@ -553,7 +505,7 @@ function openProjSchedule(pid, ptId){
   if(!t) return;
   const linked=linkedTimeBlock(pid, ptId);   // prefill if a block already exists
   const date=(linked&&linked.t.schedDate)||todayKey();
-  const mins=linked?linked.t.mins:60;
+  const mins=linked?linked.t.mins:(t.mins!=null?t.mins:60);   // else the task's remembered duration
   const ws=(S.settings&&S.settings.dayStart)||8;
   // default start = the block's existing start, else the first free slot that day
   const start=(linked&&linked.t.start!=null)?linked.t.start:firstFreeSlot(date, ws, mins, '__new__');
@@ -623,66 +575,8 @@ function confirmProjSchedule(){
   save(); closeReset(); toast('Scheduled'); rerender();
 }
 
-/* draft state for the Today task add row */
-let taskDraft={kind:'quick', mins:60, customOpen:false};
-function bindTaskInbox(){
-  q('#kindPick [data-kind]','all').forEach(el=>el.onclick=()=>{
-    taskDraft.kind=el.dataset.kind; rerender();
-  });
-  // duration presets
-  q('[data-dur]','all').forEach(el=>el.onclick=()=>{ taskDraft.mins=+el.dataset.dur; taskDraft.customOpen=false; rerender(); });
-  const dc=q('#durCustom'); if(dc) dc.onclick=()=>{ taskDraft.customOpen=true; rerender(); setTimeout(()=>{ const ci=q('#durCustomInput'); if(ci) ci.focus(); },0); };
-  const dci=q('#durCustomInput'); if(dci) dci.oninput=()=>{ const n=parseInt(dci.value,10); if(!isNaN(n)&&n>0) taskDraft.mins=n; };
-  const addBtn=q('#taskAddBtn');
-  const doAdd=()=>{
-    const i=q('#taskInput'); const v=i.value.trim(); if(!v)return;
-    addTask(v, taskDraft.kind, taskDraft.kind==='project'?taskDraft.mins:2);
-    rerender();
-  };
-  if(addBtn) addBtn.onclick=doAdd;
-  const ti=q('#taskInput'); if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') doAdd(); };
-  q('[data-tdone]','all').forEach(el=>el.onclick=()=>{
-    const t=day().tasks.find(x=>x.id===el.dataset.tdone);
-    if(t){
-      t.done=!t.done;
-      if(t.done && t.recurringId) markRecurringDone(t.recurringId);
-      if(t.projectId && t.projTaskId){
-        const p=S.projects.find(x=>x.id===t.projectId);
-        const pt=p&&p.tasks.find(x=>x.id===t.projTaskId);
-        if(pt) pt.done=t.done;   // keep project progress in sync
-      }
-      save(false); rerender();
-    }
-  });
-  q('[data-tdel]','all').forEach(el=>el.onclick=()=>{
-    day().tasks=day().tasks.filter(x=>x.id!==el.dataset.tdel); save(); rerender();
-  });
-  q('[data-tmins]','all').forEach(el=>el.onclick=()=>{
-    openDurationPicker(el.dataset.tmins);
-  });
-  const gp=q('#goPlan'); if(gp) gp.onclick=()=>{ const el=q('#dash-plan'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); };
-  const cc=q('#clearCompleted'); if(cc) cc.onclick=()=>{
-    archiveCompleted(); toast('Cleared & archived'); rerender();
-  };
-  // snooze a recurring task to tomorrow (removes from today, won't re-add today)
-  q('[data-snooze]','all').forEach(el=>el.onclick=()=>{
-    const [rid,tid]=el.dataset.snooze.split('|');
-    const r=S.recurring.find(x=>x.id===rid);
-    if(r){ const t=new Date(); t.setDate(t.getDate()+1); r.snoozeUntil=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
-    day().tasks=day().tasks.filter(x=>x.id!==tid);
-    if(day().recurringAdded) day().recurringAdded[rid]=true; // don't re-add today
-    save(); toast('Snoozed to tomorrow'); rerender();
-  });
-  // skip this cycle (mark last=today so next due is a full interval out)
-  q('[data-skip]','all').forEach(el=>el.onclick=()=>{
-    const [rid,tid]=el.dataset.skip.split('|');
-    const r=S.recurring.find(x=>x.id===rid);
-    if(r){ r.last=todayKey(); }
-    day().tasks=day().tasks.filter(x=>x.id!==tid);
-    if(day().skipped) day().skipped[rid]=true;
-    save(); toast('Skipped this cycle'); rerender();
-  });
-}
+/* draft state for the unified add row (kind + optional project + duration) */
+let taskDraft={kind:'quick', mins:60, customOpen:false, projectId:null};
 function bindDashboard(){
   // Things to think about (Parking Lot data)
   const ta=q('#thinkAdd'); const ti=q('#thinkInput');
@@ -690,8 +584,9 @@ function bindDashboard(){
   if(ta) ta.onclick=addThink; if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addThink(); };
   q('[data-thinkdel]','all').forEach(el=>el.onclick=()=>{ S.board.parking=(S.board.parking||[]).filter(x=>x.id!==el.dataset.thinkdel); save(); rerender(); });
 
-  // Active Projects: tap a card → open the project task modal
-  q('[data-projopen]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projopen));
+  // Active Projects: tap a card → go to the Projects manager (in Settings).
+  // Tasks live in the flat All Tasks list now, so the card is edit-project only.
+  q('[data-projopen]','all').forEach(el=>el.onclick=()=>go('settings'));
   // Active Projects: × → delete project (confirm + clean up linked tasks/pipeline)
   q('[data-pdeldash]','all').forEach(el=>el.onclick=(e)=>{
     e.stopPropagation();   // don't also open the card's modal
@@ -706,18 +601,14 @@ function bindDashboard(){
   const dap=q('#dashAddProj'); if(dap) dap.onclick=()=>{ const v=prompt('New project name'); if(v && createProject(v)) rerender(); };
   const dam=q('#dashAddMtg'); if(dam) dam.onclick=()=>{ const v=prompt('New meeting / person'); if(v && createMeeting(v)) rerender(); };
 
-  // promote a quick/inbox task → pipeline
-  q('[data-plpromote-task]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); promoteTaskToPipeline(el.dataset.plpromoteTask); });
-
   // Time Blocker expand/collapse (day view ↔ full plan)
   const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
 
   bindPipeline();          // the top-3 pipeline hero
-  bindAllTasks();          // the unified "All Tasks" list (every source, one place)
+  bindAllTasks();          // the single flat "All Tasks" list — add + every source
   bindWeeklyGoals();       // the "This Week" free-text goals note
   bindMonthlyGoals();      // the "This Month" free-text goals note
   bindAppointments();      // fixed date/time commitments
-  bindTaskInbox();         // Quick + Scheduled lists (recurring auto-injected here)
   bindFollowups();         // full follow-ups list
   bindPlan();              // reused Time Blocker (day view, or full plan when expanded)
 }

@@ -367,16 +367,16 @@ textarea{min-height:70px;line-height:1.55}
 .qtask .x:hover,.ptask .x:hover{color:var(--red)}
 .ptask.limbo{border-left:2px solid var(--amber)}
 
-/* ---------- ALL TASKS — unified list (every source, one place) ---------- */
+/* ---------- ALL TASKS — the single flat task list ---------- */
 .all-tasks .at-overdue-ct{color:var(--red);font-weight:700}
-.at-group{border:1px solid var(--line-soft);border-radius:8px;margin-top:10px;overflow:hidden}
-.at-group:first-of-type{margin-top:2px}
-.at-group-h{display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--bg);cursor:pointer;user-select:none;transition:background .12s}
-.at-group-h:hover{background:var(--panel)}
-.at-caret{font-size:10px;color:var(--txt-faint);width:11px;flex-shrink:0}
-.at-group-name{flex:1;font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:0.03em}
-.at-group-ct{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
-.at-rows{padding:4px 6px 6px}
+/* the add row's optional project picker */
+.all-tasks .proj-pick{font-family:var(--sans);font-size:13px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);cursor:pointer;max-width:170px}
+/* flat Quick / Scheduled sections */
+.at-section{margin-top:14px}
+.at-sec-h{display:flex;align-items:center;justify-content:space-between;padding:0 2px 7px;border-bottom:1px solid var(--line-soft);margin-bottom:4px}
+.at-sec-lab{font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:0.04em;color:var(--txt-dim)}
+.at-sec-ct{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
+.at-rows{padding:2px 0 2px}
 .at-row{display:flex;align-items:center;gap:9px;padding:8px 8px;border-radius:7px;transition:background .12s}
 .at-row:hover{background:var(--panel)}
 .at-row .box{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:transparent;font-weight:700;font-size:10px;transition:all .15s}
@@ -392,6 +392,18 @@ textarea{min-height:70px;line-height:1.55}
 .at-act.unsched:hover{color:var(--red);border-color:var(--red)}
 .at-row .x{color:var(--txt-faint);cursor:pointer;font-size:15px;padding:0 3px;line-height:1;flex-shrink:0}
 .at-row .x:hover{color:var(--red)}
+/* inline label chip for standalone rows (Quick / Scheduled) */
+.type-chip{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;flex-shrink:0}
+.type-chip.q{color:var(--amber);background:color-mix(in srgb, var(--amber) 16%, transparent)}
+.type-chip.s{color:var(--blue);background:color-mix(in srgb, var(--blue) 16%, transparent)}
+.at-row .proj-chip{margin-left:0}
+.at-row .mins{font-family:var(--mono);font-size:10px;color:var(--txt-faint);padding:2px 4px;border-radius:4px;flex-shrink:0;cursor:pointer}
+.at-row .mins:hover{background:var(--panel-2);color:var(--accent)}
+.at-row .mins.ro{cursor:default}
+.at-row .mins.ro:hover{background:none;color:var(--txt-faint)}
+/* Projects manager: per-project notes textarea */
+.proj-note{width:100%;margin-top:10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px;color:var(--txt);font-family:var(--sans);font-size:13px;padding:8px 10px;resize:vertical;line-height:1.4}
+.proj-note:focus{outline:none;border-color:var(--accent)}
 
 /* PLAN PAGE */
 .plan-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}

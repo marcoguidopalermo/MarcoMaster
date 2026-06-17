@@ -43,8 +43,8 @@ function seedDefaults(){
   // later deletes them all on purpose, and prevents duplicates).
   if(S.projects.length===0 && !S._projectsSeeded) S.projects = defaultProjects();
   S._projectsSeeded = true;
-  // migrate: ensure every project has a tasks array
-  S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; });
+  // migrate: ensure every project has a tasks array + a notes string
+  S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; if(p.note==null) p.note=''; });
   if(!S.followups) S.followups = [];      // persistent open loops (new + existing accounts)
   if(!S.appointments) S.appointments = []; // fixed date/time commitments
   if(!S.meetings) S.meetings = [];        // recurring people/meetings: talking points + notes (migration: existing accounts get [])

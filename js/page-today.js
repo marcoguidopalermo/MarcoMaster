@@ -197,8 +197,9 @@ function bindPipeline(){
    Two flat sections, each row self-labelled:
      • ⚡ Quick      — kind==='quick' tasks (standalone day-tasks + project
                        tasks the user marked Quick).
-     • ▣ Scheduled   — kind==='project' tasks (standalone time-blocks +
-                       project tasks needing / having a calendar slot).
+     • ▣ Time blocks — kind==='project' tasks (standalone time-blocks +
+                       project tasks needing / having a calendar slot). The word
+                       "Scheduled" only appears once a task has a real time block.
    Project tasks live in S.projects[*].tasks (labelled with the project
    dot+name); standalone tasks live in day().tasks (labelled Quick /
    Scheduled). A scheduled project task is surfaced through its project
@@ -208,7 +209,7 @@ function bindPipeline(){
 /* Build the two flat, de-duplicated sections. Each row carries a `key`
    ("P|projId|taskId" for a project task, "S|taskId" for a standalone
    day-task) so the bind handlers can dispatch uniformly. */
-let showAllSched=false;   // ▣ Scheduled focus: false = today + overdue only; true = full backlog. In-memory, OFF each load.
+let showAllSched=false;   // ▣ Time blocks focus: false = today + overdue only; true = full backlog. In-memory, OFF each load.
 let archiveOpen=false;    // Archive dropdown (default collapsed)
 function buildTaskRows(){
   const tk=todayKey();
@@ -290,7 +291,7 @@ function renderAllTasks(){
 
     <div class="at-section">
       <div class="at-sec-h">
-        <span class="at-sec-lab">▣ Scheduled</span>
+        <span class="at-sec-lab">▣ Time blocks</span>
         <span class="at-sec-actions">
           <span class="at-sec-ct">${showAllSched?schedShow.length+' shown':schedShow.length+' today/overdue'}</span>
           ${(hidden>0||showAllSched)?`<button class="btn ghost sm" id="schedToggle">${showAllSched?'▾ Focus to today':'▸ See all project tasks ('+hidden+')'}</button>`:''}
@@ -319,16 +320,20 @@ function renderTaskSection(title, rows, emptyMsg){
     ${rows.length?`<div class="at-rows">${rows.map(renderTaskRow).join('')}</div>`:`<div class="empty sm">${emptyMsg}</div>`}
   </div>`;
 }
-/* the inline label on each flat row: project dot+name, or a Quick/Scheduled chip */
+/* the inline label on each flat row: project dot+name, or a Quick / Time-block TYPE
+   chip. It never says "Scheduled" — the real scheduled / to-schedule state is shown
+   by the tag in renderTaskRow, so the word "Scheduled" only appears once a task
+   actually has a time block on the calendar. */
 function taskLabelChip(r){
   if(r.source==='project') return `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`;
-  return `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Scheduled'}</span>`;
+  return `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
 }
 function renderTaskRow(r){
   let tag='';
   if(r.kind==='project' && !r.done){
     if(r.overdue) tag=`<span class="sched-tag overdue" title="Scheduled in the past — requires completion">⚠ Overdue · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
     else if(r.scheduled) tag=`<span class="sched-tag yellow">Scheduled · ${schedLabel({schedDate:r.schedDate,start:r.start})}</span>`;
+    else tag=`<span class="sched-tag toschedule" title="No time block yet — give it a time on the calendar">To schedule</span>`;
   }
   const isProj=r.source==='project';
   const canSched   = isProj && r.kind==='project' && !r.scheduled && !r.done;
@@ -408,7 +413,7 @@ function renderArchiveSection(rows){
 function renderCompletedRow(r, withDate){
   const chip = r.source==='project'
     ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
-    : `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Scheduled'}</span>`;
+    : `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
   const when = withDate ? (r.when?`<span class="done-when">${shortDate(r.when)}</span>`:'')
                         : (r.time?`<span class="done-when">${r.time}</span>`:'');
   if(r.source==='archive'){
@@ -612,7 +617,7 @@ function renderActiveProjects(){
 /* ---------- project task modal: manage + drag-reorder tasks ----------
    Opened from an Active Projects card. Add / complete / delete / schedule /
    promote a project's tasks in one place; edits flow straight into the flat
-   All Tasks list. Tasks added here default to time-block (▣ Scheduled). */
+   All Tasks list. Tasks added here default to time-block (▣ Time blocks). */
 let projModalId=null;
 let projModalDraft='';
 function openProjectModal(pid){ projModalId=pid; projModalDraft=''; renderProjectModal(); }

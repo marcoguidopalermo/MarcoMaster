@@ -62,7 +62,7 @@ function renderTodayStrip(){
   const taskRow=(r)=>{
     const label = r.source==='project'
       ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
-      : `<span class="type-chip s">▣ Scheduled</span>`;
+      : `<span class="type-chip s">▣ Time block</span>`;
     const time = r.start!=null?fmtHour(r.start):(r.overdue?'⚠':'—');
     return `
     <div class="glance-row task ${r.overdue?'overdue':''}">

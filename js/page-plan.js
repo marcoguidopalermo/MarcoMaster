@@ -104,7 +104,7 @@ function renderDayView(){
 
     <div class="unsched-col">
       <div class="card">
-        <div class="card-h"><h3>Needs scheduling</h3><span class="sub">${pool.length}</span></div>
+        <div class="card-h"><h3>Needs scheduling</h3><span class="ch-actions"><span class="sub">${pool.length}</span>${pool.length?`<button class="btn ghost sm" id="poolClear" title="Remove all tasks from the scheduling pool">Clear all</button>`:''}</span></div>
         ${planSelected?`<div class="place-banner">Tap an hour to place on ${isToday?'today':shortDate(dk)} ↞ <span id="cancelPlace">cancel</span></div>`:''}
         <div class="unsched-list">
           ${pool.length?pool.map(e=>`
@@ -112,6 +112,7 @@ function renderDayView(){
               <span class="dot">▣</span>
               <span class="utxt">${esc(e.t.txt)}</span>
               <span class="umins">${fmtDuration(e.t.mins)}</span>
+              <span class="x" data-pooldel="${e.t.id}" title="Remove from pool">×</span>
             </div>`).join(''):'<div class="empty">Nothing to schedule ✓</div>'}
         </div>
         <div class="task-add" style="margin-top:14px">
@@ -263,6 +264,24 @@ function bindPlan(){
     rerender();
   });
   const cp=q('#cancelPlace'); if(cp) cp.onclick=()=>{ planSelected=null; rerender(); };
+
+  // delete a single task from the scheduling pool (removes it from its day record)
+  q('[data-pooldel]','all').forEach(el=>el.onclick=(e)=>{
+    e.stopPropagation();
+    const found=findTaskGlobal(el.dataset.pooldel);
+    if(found){ const rec=S.days[found.dayKey]; if(rec&&rec.tasks) rec.tasks=rec.tasks.filter(t=>t.id!==found.t.id); save(); rerender(); }
+  });
+  // clear the WHOLE scheduling pool — every unscheduled, not-done time-block task
+  // across all day records (this also sweeps the hidden recurring pile-up). Scheduled
+  // blocks and completed tasks are untouched. Explicit, confirmed bulk action, so it
+  // force-persists past the shrink-guard.
+  const pcl=q('#poolClear'); if(pcl) pcl.onclick=()=>{
+    if(!confirm('Remove ALL tasks from the scheduling pool?\n\nScheduled (time-blocked) and completed tasks are NOT affected. Recurring tasks will return when next due.')) return;
+    Object.keys(S.days||{}).forEach(dk=>{ const rec=S.days[dk]; if(rec&&rec.tasks) rec.tasks=rec.tasks.filter(t=>!(t.kind==='project' && t.schedDate==null && !t.done)); });
+    Store._gateOpen=true;
+    persist({force:true, bump:true}).then(()=>{ toast('Scheduling pool cleared'); });
+    rerender();
+  };
 
   // date navigation
   const pp=q('#planPrev'); if(pp) pp.onclick=()=>{ planDateShift(-1); planSelected=null; rerender(); };

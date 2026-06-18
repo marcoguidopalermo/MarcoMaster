@@ -710,6 +710,8 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .unsched-item .dot{color:var(--blue);font-size:12px}
 .unsched-item .utxt{flex:1;font-size:13px}
 .unsched-item .umins{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
+.unsched-item .x{color:var(--txt-faint);cursor:pointer;font-size:15px;line-height:1;padding:0 2px;flex-shrink:0}
+.unsched-item .x:hover{color:var(--red)}
 .place-banner{background:var(--accent-soft);border:1px solid #3b82f644;border-radius:7px;padding:9px 11px;font-size:12px;margin-bottom:12px;font-family:var(--mono)}
 .place-banner #cancelPlace{color:var(--accent);cursor:pointer;text-decoration:underline;margin-left:4px}
 .scratch .mini{font-size:12px;color:var(--txt-dim);line-height:1.6}

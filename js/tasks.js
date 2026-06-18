@@ -15,7 +15,15 @@ function allTimeBlockTasks(){
   });
   return out;
 }
-function poolUnscheduled(){ return allTimeBlockTasks().filter(e=>e.t.schedDate==null && !e.t.done); }
+/* the Needs-Scheduling pool. Recurring tasks are re-injected fresh into EACH day's
+   record and never carried/removed, so a leftover unscheduled instance piles up in
+   every past day. Show a recurring instance ONLY for today, so each recurring task
+   appears at most once; non-recurring project tasks are carried into today anyway. */
+function poolUnscheduled(){
+  const tk=todayKey();
+  return allTimeBlockTasks().filter(e=>
+    e.t.schedDate==null && !e.t.done && (!e.t.recurringId || e.dayKey===tk));
+}
 function scheduledOn(dateKey){ return allTimeBlockTasks().filter(e=>e.t.schedDate===dateKey && !e.t.done).sort((a,b)=>(a.t.start||0)-(b.t.start||0)); }
 function findTaskGlobal(id){
   for(const dk of Object.keys(S.days||{})){

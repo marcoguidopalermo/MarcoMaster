@@ -153,7 +153,7 @@ function stateCount(s){
   n+=(s.appointments||[]).length;
   const days=s.days||{};
   Object.keys(days).forEach(k=>{ const d=days[k]||{};
-    n+=(d.tasks||[]).length + (d.pipeline||[]).length + (d.archive||[]).length + (d.checkins||[]).length; });
+    n+=(d.tasks||[]).length + (d.pipeline||[]).length + (d.archive||[]).length + (d.checkins||[]).length + (d.spotlogs||[]).length; });
   if(s.board){ ['mustwin','scheduled','parking'].forEach(k=>{ n+=((s.board[k]||[]).length); }); }
   return n;
 }

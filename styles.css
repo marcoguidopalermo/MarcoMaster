@@ -657,6 +657,19 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 .al-item .al-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .al-item .al-time{font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
 .al-item .al-tag{font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--txt-faint);background:var(--panel-2);padding:1px 6px;border-radius:10px;flex-shrink:0}
+
+/* optional check-ins (spotlogs) */
+.checkin-form{padding:12px 14px;background:var(--bg);border:1px solid var(--line-soft);border-radius:10px;margin-bottom:12px}
+.ci-note-in{width:100%;margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--txt);font-family:var(--sans);font-size:13.5px;padding:9px 11px}
+.ci-note-in:focus{outline:none;border-color:var(--accent)}
+.ci-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.ci-log{display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px;font-size:12.5px}
+.ci-time{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);width:64px;flex-shrink:0}
+.ci-rats{display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.ci-rats .ci-dots{color:var(--amber);letter-spacing:1px}
+.ci-note{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt-dim)}
+.ci-log .x{margin-left:auto;color:var(--txt-faint);cursor:pointer;font-size:15px;line-height:1;flex-shrink:0}
+.ci-log .x:hover{color:var(--red)}
 .jrnl-insights{margin-top:16px;border-top:1px solid var(--line);padding-top:6px}
 
 /* ============================================================

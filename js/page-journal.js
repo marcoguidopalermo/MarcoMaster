@@ -7,12 +7,72 @@
    insights view (reusing renderInsights) opens from within the page.
    ============================================================ */
 let journalInsightsOpen=false;
+/* optional, timestamped check-ins (stored in day.spotlogs — kept fully separate from
+   the legacy day.checkins so Insights/Shutdown/word-cloud stay untouched) */
+let checkinOpen=false;
+let checkinDraft={mood:null,energy:null,calm:null,focus:null,note:''};
+function freshCheckinDraft(){ checkinDraft={mood:null,energy:null,calm:null,focus:null,note:''}; }
 
 /* a 5-star tap row bound to d[scope][field] (e.g. morning.energy) */
 function starRow(scope, field, val){
   val=+val||0;
   return `<div class="star-row">${[1,2,3,4,5].map(n=>
     `<button class="star ${n<=val?'on':''}" data-jstar="${scope}|${field}|${n}" title="${n}">★</button>`).join('')}</div>`;
+}
+
+/* ---- optional check-ins (day.spotlogs) ---- */
+function renderCheckins(){
+  const logs=(day().spotlogs||[]).slice().sort((a,b)=>(b.ts||0)-(a.ts||0));   // newest first
+  const dots=(v)=>{ v=+v||0; return '●'.repeat(v)+'○'.repeat(5-v); };
+  return `
+  <div class="card checkin-card">
+    <div class="card-h"><h3>Check-ins</h3><span class="ch-actions"><span class="sub">${logs.length} today</span>${checkinOpen?'':`<button class="btn sm" id="ciOpen">+ Check-in</button>`}</span></div>
+    ${checkinOpen?renderCheckinForm():''}
+    ${logs.length?`<div class="ci-list">${logs.map(c=>`
+      <div class="ci-log">
+        <span class="ci-time">${esc(fmtClock(c.time))}</span>
+        <span class="ci-rats">
+          <span class="ci-r" title="mood">m <span class="ci-dots">${dots(c.mood)}</span></span>
+          <span class="ci-r" title="energy">e <span class="ci-dots">${dots(c.energy)}</span></span>
+          <span class="ci-r" title="calm">c <span class="ci-dots">${dots(c.calm)}</span></span>
+          <span class="ci-r" title="focus">f <span class="ci-dots">${dots(c.focus)}</span></span>
+        </span>
+        ${c.note?`<span class="ci-note">${esc(c.note)}</span>`:''}
+        <span class="x" data-cidel="${c.id}" title="Delete check-in">×</span>
+      </div>`).join('')}</div>`
+    :(checkinOpen?'':'<p class="list-note" style="margin:6px 0 0">Optional — tap “+ Check-in” to log how you feel right now. No obligation, log as often (or as rarely) as you like.</p>')}
+  </div>`;
+}
+function renderCheckinForm(){
+  const dr=checkinDraft;
+  const ciStar=(field)=>{ const val=+dr[field]||0; return `<div class="star-row">${[1,2,3,4,5].map(n=>`<button class="star ${n<=val?'on':''}" data-cistar="${field}|${n}" title="${n}">★</button>`).join('')}</div>`; };
+  return `
+  <div class="checkin-form">
+    <div class="grid2">
+      <div class="rate-field"><label>Mood</label>${ciStar('mood')}</div>
+      <div class="rate-field"><label>Energy</label>${ciStar('energy')}</div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+      <div class="rate-field"><label>Calm <span class="hint">5 = calm</span></label>${ciStar('calm')}</div>
+      <div class="rate-field"><label>Focus <span class="hint">locked-in</span></label>${ciStar('focus')}</div>
+    </div>
+    <input type="text" id="ciNote" class="ci-note-in" value="${esc(dr.note||'')}" placeholder="optional note…">
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn sm" id="ciSave">✓ Log check-in</button>
+      <button class="btn ghost sm" id="ciCancel">Cancel</button>
+    </div>
+  </div>`;
+}
+function saveCheckin(){
+  const dr=checkinDraft;
+  if(dr.mood==null && dr.energy==null && dr.calm==null && dr.focus==null && !(dr.note||'').trim()){
+    toast('Tap a rating or add a note'); return;
+  }
+  const d=day(); if(!d.spotlogs) d.spotlogs=[];
+  d.spotlogs.push({ id:b(), time:nowHM(), ts:Date.now(),
+    mood:dr.mood, energy:dr.energy, calm:dr.calm, focus:dr.focus, note:(dr.note||'').trim() });
+  freshCheckinDraft(); checkinOpen=false;
+  save(); toast('Check-in logged ✓'); rerender();
 }
 
 /* ---- auto-log: read-only, computed per day ---- */
@@ -49,6 +109,8 @@ function renderJournal(){
     <p>Morning + evening check-in. Mostly taps — the more you log, the sharper the patterns get.</p>
   </div>
 
+  ${renderCheckins()}
+
   <div class="card jrnl-card">
     <div class="card-h"><h3>🌅 Morning</h3><span class="sub">saved automatically</span></div>
     <div class="field"><label>Sleep last night</label>
@@ -58,8 +120,8 @@ function renderJournal(){
       <div class="rate-field"><label>Energy</label>${starRow('morning','energy',m.energy)}</div>
     </div>
     <div class="grid2" style="margin-top:12px">
-      <div class="rate-field"><label>Anxiety</label>${starRow('morning','anxiety',m.anxiety)}</div>
-      <div class="rate-field"><label>Stress</label>${starRow('morning','stress',m.stress)}</div>
+      <div class="rate-field"><label>Calm <span class="hint">5 = calm/relaxed</span></label>${starRow('morning','calm',m.calm)}</div>
+      <div class="rate-field"></div>
     </div>
     <div class="field" style="margin-top:14px;margin-bottom:0"><label>Intentions <span class="hint">one line for today</span></label>
       <input type="text" data-jrnl2="morning|intentions" value="${esc(m.intentions||'')}" placeholder="today's intention…"></div>
@@ -72,7 +134,7 @@ function renderJournal(){
       <div class="rate-field"><label>Energy</label>${starRow('evening','energy',e.energy)}</div>
     </div>
     <div class="grid2" style="margin-top:12px">
-      <div class="rate-field"><label>Anxiety</label>${starRow('evening','anxiety',e.anxiety)}</div>
+      <div class="rate-field"><label>Calm <span class="hint">5 = calm/relaxed</span></label>${starRow('evening','calm',e.calm)}</div>
       <div class="rate-field"><label>Fulfillment</label>${starRow('evening','fulfillment',e.fulfillment)}</div>
     </div>
     <div class="grid2" style="margin-top:14px">
@@ -113,6 +175,7 @@ function renderJournal(){
     <p class="list-note" style="margin-top:0">Download every entry to hand to Claude — e.g. mood vs sleep, fulfillment vs training, completed-tasks vs mood.</p>
     <div class="btn-row">
       <button class="btn ghost sm" id="jExportCsv">⬇ Export CSV</button>
+      <button class="btn ghost sm" id="jExportCheckins">⬇ Export check-ins (CSV)</button>
       <button class="btn ghost sm" id="jExportJson">⬇ Export JSON</button>
     </div>
   </div>
@@ -152,35 +215,46 @@ function journalExportRows(){
     const done=journalCompletedFor(k); const events=journalEventsFor(k);
     return {
       date:k, sleep:d.sleep||'',
-      m_energy:m.energy||'', m_mood:m.mood||'', m_anxiety:m.anxiety||'', m_stress:m.stress||'',
+      m_energy:m.energy||'', m_mood:m.mood||'', m_calm:m.calm||'',
       intentions:m.intentions||'',
-      e_mood:e.mood||'', e_energy:e.energy||'', e_anxiety:e.anxiety||'', fulfillment:e.fulfillment||'',
+      e_mood:e.mood||'', e_energy:e.energy||'', e_calm:e.calm||'', fulfillment:e.fulfillment||'',
       trained:(e.trained===true?'yes':(e.trained===false?'no':'')), training_note:e.trainNote||'',
       meds:d.meds||'', diet:e.diet||'', reflection:d.feelings||'', mood_word:d.mood||'',
       completed_count:done.count, completed_tasks:done.items.map(i=>i.txt).join('; '),
       events:events.map(ev=>(ev.time?fmtClock(ev.time)+' ':'')+ev.label).join('; '),
+      checkin_count:(d.spotlogs||[]).length,
     };
   });
 }
-const JOURNAL_COLS=['date','sleep','m_energy','m_mood','m_anxiety','m_stress','intentions','e_mood','e_energy','e_anxiety','fulfillment','trained','training_note','meds','diet','reflection','mood_word','completed_count','completed_tasks','events'];
-function journalToCsv(rows){
-  const cell=(v)=>{ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
-  return [JOURNAL_COLS.join(',')].concat(rows.map(r=>JOURNAL_COLS.map(c=>cell(r[c])).join(','))).join('\n');
-}
+const JOURNAL_COLS=['date','sleep','m_energy','m_mood','m_calm','intentions','e_mood','e_energy','e_calm','fulfillment','trained','training_note','meds','diet','reflection','mood_word','completed_count','completed_tasks','events','checkin_count'];
+const CHECKIN_COLS=['date','time','mood','energy','calm','focus','note'];
+function csvCell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function rowsToCsv(cols, rows){ return [cols.join(',')].concat(rows.map(r=>cols.map(c=>csvCell(r[c])).join(','))).join('\n'); }
 function journalDownload(name, text, type){
   const blob=new Blob([text],{type}); const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url);
 }
 function exportJournalCsv(){
-  journalDownload('marcomaster-journal-'+todayKey()+'.csv', journalToCsv(journalExportRows()), 'text/csv');
+  journalDownload('marcomaster-journal-'+todayKey()+'.csv', rowsToCsv(JOURNAL_COLS, journalExportRows()), 'text/csv');
   toast('Journal CSV exported ✓');
+}
+/* one row PER check-in across all days — for intraday analysis (focus by time, mood drift) */
+function exportCheckinsCsv(){
+  const rows=[];
+  Object.keys(S.days||{}).sort().forEach(k=>{
+    (S.days[k].spotlogs||[]).slice().sort((a,b)=>(a.ts||0)-(b.ts||0)).forEach(c=>{
+      rows.push({ date:k, time:c.time||'', mood:c.mood||'', energy:c.energy||'', calm:c.calm||'', focus:c.focus||'', note:c.note||'' });
+    });
+  });
+  journalDownload('marcomaster-checkins-'+todayKey()+'.csv', rowsToCsv(CHECKIN_COLS, rows), 'text/csv');
+  toast('Check-ins CSV exported ✓');
 }
 function exportJournalJson(){
   const days=Object.keys(S.days||{}).sort().map(k=>{
     const d=S.days[k]||{}; const done=journalCompletedFor(k); const events=journalEventsFor(k);
     return { date:k, morning:d.morning||{}, evening:d.evening||{},
              sleep:d.sleep||'', meds:d.meds||'', reflection:d.feelings||'', moodWord:d.mood||'',
-             completed:done, events };
+             completed:done, events, checkins:(d.spotlogs||[]) };
   });
   journalDownload('marcomaster-journal-'+todayKey()+'.json',
     JSON.stringify({ exportedAt:new Date().toISOString(), days }, null, 2), 'application/json');
@@ -201,8 +275,16 @@ function bindJournal(){
   });
   // training toggle (Trained / Rest)
   q('[data-jtrain]','all').forEach(el=>el.onclick=()=>{ const d=day(); if(!d.evening) d.evening={}; d.evening.trained=(el.dataset.jtrain==='1'); save(false); rerender(); });
+  // ---- check-ins (day.spotlogs) ----
+  const cio=q('#ciOpen'); if(cio) cio.onclick=()=>{ checkinOpen=true; rerender(); };
+  q('[data-cistar]','all').forEach(el=>el.onclick=()=>{ const [field,n]=el.dataset.cistar.split('|'); const num=+n; checkinDraft[field]=(checkinDraft[field]===num)?null:num; rerender(); });
+  const cin=q('#ciNote'); if(cin) cin.oninput=()=>{ checkinDraft.note=cin.value; };
+  const cis=q('#ciSave'); if(cis) cis.onclick=saveCheckin;
+  const cic=q('#ciCancel'); if(cic) cic.onclick=()=>{ freshCheckinDraft(); checkinOpen=false; rerender(); };
+  q('[data-cidel]','all').forEach(el=>el.onclick=()=>{ const d=day(); d.spotlogs=(d.spotlogs||[]).filter(x=>x.id!==el.dataset.cidel); save(); rerender(); });
   // export
   const ec=q('#jExportCsv'); if(ec) ec.onclick=exportJournalCsv;
+  const eck=q('#jExportCheckins'); if(eck) eck.onclick=exportCheckinsCsv;
   const ej=q('#jExportJson'); if(ej) ej.onclick=exportJournalJson;
   // hidden insights view (reuses renderInsights + bindInsights)
   const it=q('#jInsightsToggle'); if(it) it.onclick=()=>{ journalInsightsOpen=!journalInsightsOpen; rerender(); };

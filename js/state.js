@@ -88,6 +88,8 @@ function seedDefaults(){
   Object.keys(S.days||{}).forEach(dk=>{
     (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; if(t.priority==null) t.priority=false; });
     migrateJournalV2(S.days[dk]);   // additive, gated by _jrnlV2 — never overwrites edits or loses data
+    migrateJournalCalm(S.days[dk]); // additive, gated by _jrnlCalm — anxiety/stress → calm
+    if(!S.days[dk].spotlogs) S.days[dk].spotlogs=[];   // optional timestamped check-ins
   });
 }
 /* ---------- Journal v2 migration (1-10 → 1-5 stars; flat → morning/evening) ----------
@@ -100,13 +102,37 @@ function fulfill10to5(n){ n=+n; if(!n||isNaN(n)) return null; return Math.max(1,
 function migrateJournalV2(d){
   if(!d || d._jrnlV2) return;
   d._jrnlV2=true;
-  if(!d.morning) d.morning={ energy:null, mood:null, anxiety:null, stress:null, intentions:'' };
-  if(!d.evening) d.evening={ mood:null, energy:null, anxiety:null, fulfillment:null, trained:null, trainNote:'', diet:'' };
+  if(!d.morning) d.morning={ energy:null, mood:null, anxiety:null, stress:null, calm:null, intentions:'' };
+  if(!d.evening) d.evening={ mood:null, energy:null, anxiety:null, calm:null, fulfillment:null, trained:null, trainNote:'', diet:'' };
   // map legacy ratings into the new stars (only when the new field is still empty)
   if(d.morning.energy==null && d.energy)  d.morning.energy = ENERGY_STAR[d.energy] || null;
   if(d.morning.stress==null && d.stress)  d.morning.stress = ENERGY_STAR[d.stress] || null;
   if(d.evening.fulfillment==null && d.fulfillment!=null && d.fulfillment!=='') d.evening.fulfillment = fulfill10to5(d.fulfillment);
   // legacy d.mood (word) stays put as the kept mood-text field; d.feelings stays as reflection.
+}
+/* ---------- Calm migration: Anxiety + Stress → a single CALM rating ----------
+   More stars = better, so Calm is the INVERSE of anxiety/stress (high stress → low
+   calm). NON-DESTRUCTIVE + gated by _jrnlCalm so it runs once. Old anxiety/stress
+   fields are left in place (dead data, not deleted). Where the source is ambiguous —
+   morning has BOTH an anxiety and a stress value — we start Calm fresh (null) rather
+   than risk a messy combined guess; a single clear source is inverted cleanly. */
+function calmInvert(v){ v=+v; if(!v||isNaN(v)||v<1||v>5) return null; return Math.max(1,Math.min(5,6-Math.round(v))); }
+function numOrNull(x){ return (typeof x==='number' && x>=1 && x<=5) ? x : null; }
+function migrateJournalCalm(d){
+  if(!d || d._jrnlCalm) return;
+  d._jrnlCalm=true;
+  if(!d.morning) d.morning={};
+  if(!d.evening) d.evening={};
+  if(d.morning.calm==null){
+    const a=numOrNull(d.morning.anxiety), s=numOrNull(d.morning.stress);
+    if(a!=null && s==null)      d.morning.calm=calmInvert(a);   // single clear source → invert
+    else if(s!=null && a==null) d.morning.calm=calmInvert(s);
+    else                        d.morning.calm=null;            // both or neither set → start fresh
+  }
+  if(d.evening.calm==null){
+    const a=numOrNull(d.evening.anxiety);
+    d.evening.calm = (a!=null) ? calmInvert(a) : null;
+  }
 }
 /* returns true only if the cloud write committed.
    opts.bump=false preserves the current in-state version (updatedAt) instead of
@@ -155,13 +181,14 @@ function blankDay(){
     meds:'', feelings:'', fulfillment:'',   // legacy flat journal fields (kept for Insights/Shutdown)
     // Journal v2 — morning/evening 1-5 star ratings + new text. _jrnlV2 marks a record
     // as already in the new shape so the one-time migration never re-runs on it.
-    _jrnlV2:true,
-    morning:{ energy:null, mood:null, anxiety:null, stress:null, intentions:'' },
-    evening:{ mood:null, energy:null, anxiety:null, fulfillment:null, trained:null, trainNote:'', diet:'' },
+    _jrnlV2:true, _jrnlCalm:true,
+    morning:{ energy:null, mood:null, calm:null, intentions:'' },
+    evening:{ mood:null, energy:null, calm:null, fulfillment:null, trained:null, trainNote:'', diet:'' },
     tasks:[],          // {id, txt, kind:'quick'|'project', done, mins, start:null, recurringId?}
     pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; unfinished carry over to the next day (see _seeded bridge)
     archive:[],        // completed tasks swept here: {id, txt, kind, mins, doneAt}
-    checkins:[],       // {t:'HH:MM', ts, energy:1-5, mood:'word'}  throughout-day log
+    checkins:[],       // legacy throughout-day log {t, ts, energy:'Med', mood:'word'} — kept for Insights/Shutdown
+    spotlogs:[],       // optional timestamped check-ins {id, time:'HH:MM', ts, mood, energy, calm, focus, note} (1-5 stars)
     tomorrow:[],       // top-3 picked at shutdown for next day  (strings)
     recurringAdded:{}, // {recurringId:true} injected into today already
     skipped:{},        // {recurringId:true} skipped this cycle
@@ -189,6 +216,7 @@ function day(){
   if(!d.pipeline) d.pipeline=[];
   if(!d.archive) d.archive=[];
   if(!d.checkins) d.checkins=[];
+  if(!d.spotlogs) d.spotlogs=[];
   if(!d.tomorrow) d.tomorrow=[];
   if(!d.recurringAdded) d.recurringAdded={};
   if(!d.skipped) d.skipped={};
@@ -196,6 +224,7 @@ function day(){
   if(d.feelings==null) d.feelings='';
   if(d.fulfillment==null) d.fulfillment='';
   migrateJournalV2(d);   // ensure morning/evening exist + one-time legacy → stars migration
+  migrateJournalCalm(d); // anxiety/stress → single calm rating (gated)
   if(d.dayStart==null) d.dayStart=(S.settings&&S.settings.dayStart)||8;
   if(d.dayEnd==null) d.dayEnd=(S.settings&&S.settings.dayEnd)||21;
   // migrate: a task that had a start hour but no schedDate was scheduled for its own day

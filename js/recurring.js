@@ -101,7 +101,7 @@ function syncRecurringIntoToday(){
   dueRecurring().forEach(r=>{
     if(d.recurringAdded[r.id]) return;
     if(d.skipped && d.skipped[r.id]) return;
-    d.tasks.push({id:b(),txt:r.t,kind:r.kind||'quick',done:false,mins:r.kind==='project'?60:2,start:null,recurringId:r.id});
+    d.tasks.push({id:b(),txt:r.t,kind:r.kind||'quick',done:false,priority:false,mins:r.kind==='project'?60:2,start:null,recurringId:r.id});
     d.recurringAdded[r.id]=true;
   });
 }

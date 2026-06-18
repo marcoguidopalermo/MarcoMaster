@@ -65,7 +65,7 @@ function renderTodayStrip(){
     seen.add(key);
     let projName=null, projColor=null;
     if(t.projectId){ const p=(S.projects||[]).find(x=>x.id===t.projectId); if(p){ projName=p.name; projColor=p.color; } }
-    tasks.push({ source:t.projectId?'project':'standalone', key, txt:t.txt,
+    tasks.push({ source:t.projectId?'project':'standalone', key, txt:t.txt, priority:!!t.priority,
                  start:t.start, schedDate:t.schedDate, overdue:false, projName, projColor });
   });
   tasks.sort((a,b)=>{   // overdue (older dates) first, then by start time
@@ -91,7 +91,7 @@ function renderTodayStrip(){
     <div class="glance-row task ${r.overdue?'overdue':''}">
       <span class="glance-time">${time}</span>
       <div class="box glance-box" data-atcheck="${r.key}" title="Mark done">✓</div>
-      <span class="glance-txt">${esc(r.txt)}</span>
+      <span class="glance-txt">${r.priority?'<span class="prio-mark">🔥</span> ':''}${esc(r.txt)}</span>
       ${label}
       ${r.overdue?`<span class="glance-od">overdue</span>`:''}
     </div>`;

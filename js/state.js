@@ -43,8 +43,8 @@ function seedDefaults(){
   // later deletes them all on purpose, and prevents duplicates).
   if(S.projects.length===0 && !S._projectsSeeded) S.projects = defaultProjects();
   S._projectsSeeded = true;
-  // migrate: ensure every project has a tasks array + a notes string
-  S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; if(p.note==null) p.note=''; });
+  // migrate: ensure every project has a tasks array + a notes string + task priority flags
+  S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; if(p.note==null) p.note=''; p.tasks.forEach(t=>{ if(t.priority==null) t.priority=false; }); });
   if(!S.followups) S.followups = [];      // persistent open loops (new + existing accounts)
   if(!S.appointments) S.appointments = []; // fixed date/time commitments
   if(!S.meetings) S.meetings = [];        // recurring people/meetings: talking points + notes (migration: existing accounts get [])
@@ -86,7 +86,7 @@ function seedDefaults(){
   });
   // migrate scheduled tasks (had start, no schedDate) across all days
   Object.keys(S.days||{}).forEach(dk=>{
-    (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; });
+    (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; if(t.priority==null) t.priority=false; });
   });
 }
 /* returns true only if the cloud write committed.
@@ -170,7 +170,7 @@ function day(){
   if(d.dayStart==null) d.dayStart=(S.settings&&S.settings.dayStart)||8;
   if(d.dayEnd==null) d.dayEnd=(S.settings&&S.settings.dayEnd)||21;
   // migrate: a task that had a start hour but no schedDate was scheduled for its own day
-  d.tasks.forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=k; });
+  d.tasks.forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=k; if(t.priority==null) t.priority=false; });
   // bridge: if this day is brand new and yesterday flagged a top-3, seed them once
   if(!d._seeded){
     d._seeded=true;

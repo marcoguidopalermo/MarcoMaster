@@ -92,6 +92,12 @@ function pipelineDone(it){
   if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&p.tasks.find(x=>x.id===it.projTaskId); return t?t.done:!!it.done; }
   return !!it.done;
 }
+/* 🔥 priority of the task behind a pipeline item (for the marker only) */
+function pipelinePriority(it){
+  if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); return !!(t&&t.priority); }
+  if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&p.tasks.find(x=>x.id===it.projTaskId); return !!(t&&t.priority); }
+  return !!it.priority;
+}
 function renderPipeline(){
   const d=day(); const pipe=d.pipeline||[];
   let slots='';
@@ -103,7 +109,7 @@ function renderPipeline(){
       <div class="pl-slot filled ${done?'done':''}">
         <span class="pl-num">${i+1}</span>
         <span class="pl-check" data-plcheck="${i}">✓</span>
-        <span class="pl-txt">${esc(it.txt)}</span>
+        <span class="pl-txt">${pipelinePriority(it)?'<span class="prio-mark">🔥</span> ':''}${esc(it.txt)}</span>
         <span class="pl-x" data-plremove="${i}" title="Remove">×</span>
       </div>`;
     }else if(i===pipe.length && pipelineAdding){
@@ -219,7 +225,7 @@ function buildTaskRows(){
     (p.tasks||[]).forEach(t=>{
       const kind=t.kind||'project';          // legacy project tasks default to time-block
       const row={key:'P|'+p.id+'|'+t.id, source:'project', projId:p.id, id:t.id,
-                 txt:t.txt, done:t.done, kind, recurringId:null,
+                 txt:t.txt, done:t.done, kind, recurringId:null, priority:!!t.priority,
                  projName:p.name, projColor:p.color};
       if(kind==='project'){
         const st=projTaskState(p.id,t); const tb=st.tb||null;
@@ -235,7 +241,7 @@ function buildTaskRows(){
   // project) and meeting blocks (live on the calendar grid)
   day().tasks.filter(t=>!t.projectId && !t.meetingId).forEach(t=>{
     const row={key:'S|'+t.id, source:'standalone', id:t.id, txt:t.txt, done:t.done,
-               kind:t.kind, recurringId:t.recurringId, projName:null, projColor:null};
+               kind:t.kind, recurringId:t.recurringId, priority:!!t.priority, projName:null, projColor:null};
     if(t.kind==='project'){
       row.scheduled=t.schedDate!=null; row.schedDate=t.schedDate; row.start=t.start;
       row.mins=t.mins; row.overdue=t.schedDate!=null && t.schedDate<tk && !t.done;
@@ -244,6 +250,9 @@ function buildTaskRows(){
   });
   return { quick: rows.filter(r=>r.kind==='quick'), scheduled: rows.filter(r=>r.kind==='project') };
 }
+/* stable sort: priority (🔥) rows rise to the TOP of a section; everything else
+   keeps its existing relative order below. */
+function prioritySort(rows){ return rows.slice().sort((a,b)=>(a.priority?0:1)-(b.priority?0:1)); }
 function renderAllTasks(){
   const {quick,scheduled}=buildTaskRows();
   const tk=todayKey();
@@ -287,7 +296,7 @@ function renderAllTasks(){
       ${taskDraft.customOpen?`<span class="dur-custom-wrap"><input type="number" min="1" max="600" id="durCustomInput" value="${!DURATION_PRESETS.includes(taskDraft.mins)?taskDraft.mins:''}" placeholder="min" class="num-in"><span class="dur-lab">min</span></span>`:''}
     </div>`:''}
 
-    ${renderTaskSection('⚡ Quick', quickActive, 'Nothing quick — add one above.')}
+    ${renderTaskSection('⚡ Quick', prioritySort(quickActive), 'Nothing quick — add one above.')}
 
     <div class="at-section">
       <div class="at-sec-h">
@@ -297,7 +306,7 @@ function renderAllTasks(){
           ${(hidden>0||showAllSched)?`<button class="btn ghost sm" id="schedToggle">${showAllSched?'▾ Focus to today':'▸ See all project tasks ('+hidden+')'}</button>`:''}
         </span>
       </div>
-      ${schedShow.length?`<div class="at-rows">${schedShow.map(renderTaskRow).join('')}</div>`
+      ${schedShow.length?`<div class="at-rows">${prioritySort(schedShow).map(renderTaskRow).join('')}</div>`
         :`<div class="empty sm">${showAllSched?'No project tasks yet — add one above.':'Nothing scheduled for today.'+(hidden>0?` ${hidden} in backlog — “See all project tasks”.`:'')}</div>`}
     </div>
 
@@ -351,6 +360,7 @@ function renderTaskRow(r){
     ${taskLabelChip(r)}
     ${tag}
     ${mins}
+    <span class="at-act prio ${r.priority?'on':''}" data-atprio="${r.key}" title="${r.priority?'Priority — click to unflag':'Flag as priority'}">🔥</span>
     ${canSched?`<span class="at-act" data-atsched="${r.projId}|${r.id}" title="Schedule on the calendar">⏱</span>`:''}
     ${canUnsched?`<span class="at-act unsched" data-atunsched="${r.projId}|${r.id}" title="Unschedule (keeps the task in its project)">⊘</span>`:''}
     ${!r.done?`<span class="at-act" data-atpipe="${r.key}" title="Promote to pipeline">↑</span>`:''}
@@ -373,7 +383,7 @@ function completedRows(scope){
       const when=t.doneAt||null;
       if(scope==='today' && when!==tk) return;
       out.push({source:'project', key:'P|'+p.id+'|'+t.id, txt:t.txt, kind:t.kind||'project',
-                projName:p.name, projColor:p.color, when});
+                projName:p.name, projColor:p.color, when, priority:!!t.priority});
     });
   });
   // B) standalone done day-tasks + C) swept archive entries — dated by day record
@@ -381,7 +391,7 @@ function completedRows(scope){
     if(scope==='today' && dk!==tk) return;
     const d=S.days[dk]||{};
     (d.tasks||[]).filter(t=>t.done && !t.projectId && !t.meetingId).forEach(t=>{
-      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk});
+      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, priority:!!t.priority});
     });
     (d.archive||[]).forEach(a=>{
       out.push({source:'archive', dayKey:dk, id:a.id, txt:a.txt, kind:a.kind, when:dk, time:a.doneAt});
@@ -416,16 +426,17 @@ function renderCompletedRow(r, withDate){
     : `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
   const when = withDate ? (r.when?`<span class="done-when">${shortDate(r.when)}</span>`:'')
                         : (r.time?`<span class="done-when">${r.time}</span>`:'');
+  const mark = r.priority?'<span class="prio-mark">🔥</span> ':'';
   if(r.source==='archive'){
     return `<div class="at-row done">
       <div class="box done-static" title="archived">✓</div>
-      <span class="at-txt">${esc(r.txt)}</span>${chip}${when}
+      <span class="at-txt">${mark}${esc(r.txt)}</span>${chip}${when}
       <span class="x" data-arcdel="${r.dayKey}|${r.id}" title="Delete from archive">×</span>
     </div>`;
   }
   return `<div class="at-row done">
     <div class="box" data-atcheck="${r.key}" title="Mark not done (reactivate)">✓</div>
-    <span class="at-txt">${esc(r.txt)}</span>${chip}${when}
+    <span class="at-txt">${mark}${esc(r.txt)}</span>${chip}${when}
     <span class="x" data-atdel="${r.key}" title="Delete">×</span>
   </div>`;
 }
@@ -438,7 +449,7 @@ function addUnifiedTask(txt, kind, projectId, mins){
   if(projectId){
     const p=(S.projects||[]).find(x=>x.id===projectId); if(!p){ addTask(txt, kind, kind==='project'?(mins||60):2); return; }
     if(!p.tasks) p.tasks=[];
-    const t={id:b(), txt, done:false, kind};
+    const t={id:b(), txt, done:false, priority:false, kind};
     if(kind==='project') t.mins=mins||60;     // remembered as the scheduler's default
     p.tasks.push(t);
     save();
@@ -470,6 +481,21 @@ function atToggle(key){
 function atPromote(key){
   const k=atKey(key);
   if(k.src==='project') promoteProjToPipeline(k.projId,k.id); else promoteTaskToPipeline(k.id);
+}
+/* toggle the 🔥 priority flag on the underlying task (project task or day-task) */
+function atPriority(key){
+  const k=atKey(key);
+  if(k.src==='project'){
+    const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
+    t.priority=!t.priority;
+    allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===k.projId && e.t.projTaskId===k.id) e.t.priority=t.priority; });  // keep linked block in sync
+  }else{
+    let t=day().tasks.find(x=>x.id===k.id);
+    if(!t){ const g=findTaskGlobal(k.id); t=g&&g.t; }
+    if(!t) return;
+    t.priority=!t.priority;
+  }
+  save(false); rerender();
 }
 function atEdit(key){
   const k=atKey(key);
@@ -534,6 +560,7 @@ function bindAllTasks(){
   // ---- row actions ----
   q('[data-atcheck]','all').forEach(el=>el.onclick=()=>atToggle(el.dataset.atcheck));
   q('[data-atpipe]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); atPromote(el.dataset.atpipe); });
+  q('[data-atprio]','all').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); atPriority(el.dataset.atprio); });
   q('[data-atedit]','all').forEach(el=>el.onclick=()=>atEdit(el.dataset.atedit));
   q('[data-atdel]','all').forEach(el=>el.onclick=()=>atDelete(el.dataset.atdel));
   q('[data-atsched]','all').forEach(el=>el.onclick=()=>{ const [pid,id]=el.dataset.atsched.split('|'); openProjSchedule(pid,id); });
@@ -638,8 +665,9 @@ function renderProjectModal(){
           return `<div class="pm-row" data-pmdrag="${t.id}">
             <span class="pm-grip" title="drag to reorder">⋮⋮</span>
             <span class="box" data-pmdone="${t.id}">✓</span>
-            <span class="pm-txt">${esc(t.txt)}</span>
+            <span class="pm-txt">${t.priority?'<span class="prio-mark">🔥</span> ':''}${esc(t.txt)}</span>
             ${tag}
+            <span class="to-pipe prio ${t.priority?'on':''}" data-pmprio="${t.id}" title="${t.priority?'Priority — click to unflag':'Flag as priority'}">🔥</span>
             <span class="to-pipe" data-pmpipe="${t.id}" title="Promote to pipeline">↑</span>
             <span class="to-pipe" data-pmedit="${t.id}" title="Edit text">✎</span>
             <span class="x" data-pmdel="${t.id}">×</span>
@@ -660,11 +688,12 @@ function bindProjectModal(){
   const close=q('#pmClose'); if(close) close.onclick=()=>{ projModalId=null; closeReset(); };
   q('[data-pmdone]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmdone); if(t){ setProjTaskDone(p.id,t.id,!t.done); save(false); renderProjectModal(); rerender(); } });
   q('[data-pmdel]','all').forEach(el=>el.onclick=()=>{ p.tasks=p.tasks.filter(x=>x.id!==el.dataset.pmdel); save(); renderProjectModal(); rerender(); });
+  q('[data-pmprio]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmprio); if(!t) return; t.priority=!t.priority; allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===p.id && e.t.projTaskId===t.id) e.t.priority=t.priority; }); save(false); renderProjectModal(); rerender(); });
   q('[data-pmpipe]','all').forEach(el=>el.onclick=()=>{ promoteProjToPipeline(p.id, el.dataset.pmpipe); renderProjectModal(); });
   q('[data-pmedit]','all').forEach(el=>el.onclick=()=>{ const t=p.tasks.find(x=>x.id===el.dataset.pmedit); if(!t) return; const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return; t.txt=nv; allTimeBlockTasks().forEach(e=>{ if(e.t.projectId===p.id && e.t.projTaskId===t.id) e.t.txt=nv; }); save(); renderProjectModal(); rerender(); });
   q('[data-pmsched]','all').forEach(el=>el.onclick=()=>{ openProjSchedule(p.id, el.dataset.pmsched); });  // replaces modal with scheduler
   const ai=q('#pmAdd'); if(ai) ai.oninput=()=>{ projModalDraft=ai.value; };
-  const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false,kind:'project',mins:60}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
+  const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false,priority:false,kind:'project',mins:60}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
   const ab=q('#pmAddBtn'); if(ab) ab.onclick=addT;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addT(); };
   // drag-to-reorder p.tasks by the grip (mouse + touch), via the shared helper

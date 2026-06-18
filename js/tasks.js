@@ -75,7 +75,7 @@ function fmtDuration(m){
 
 function addTask(txt,kind,mins){
   txt=txt.trim(); if(!txt) return;
-  day().tasks.push({id:b(),txt,kind,done:false,mins:mins||(kind==='quick'?2:60),start:null,schedDate:null});
+  day().tasks.push({id:b(),txt,kind,done:false,priority:false,mins:mins||(kind==='quick'?2:60),start:null,schedDate:null});
   save();
 }
 function archiveCompleted(){

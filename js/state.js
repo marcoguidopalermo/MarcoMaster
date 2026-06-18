@@ -98,9 +98,13 @@ async function persist(opts){ return await Store.set('marcomaster', S, opts); }
 let saveTimer=null;
 function save(showToast=true){
   clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{
+  const myTimer = saveTimer = setTimeout(async()=>{
     setSyncStatus('syncing');             // persistent indicator: write in flight
     const synced=await persist();
+    // Clear the in-flight marker so the reconciler's `!saveTimer` check is accurate
+    // again and LIVE cross-device adoption resumes between edits. Only clear if no
+    // newer save was queued while this one was awaiting (id still matches).
+    if(saveTimer===myTimer) saveTimer=null;
     const r=Store._lastResult;
     // Roll a local auto-backup for any real, meaningful save (independent of the
     // cloud) — but never when the write was gate-deferred or guard-blocked.

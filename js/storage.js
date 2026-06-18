@@ -57,31 +57,42 @@ const Store = {
   async set(k,v,opts){
     const force = !!(opts && opts.force);   // explicit, confirmed action: bypass both gates
     const bump = !opts || opts.bump!==false;
-    if(v && typeof v==='object'){
+    const isMain = (k==='marcomaster' && v && typeof v==='object');
+    const newCount = isMain ? stateCount(v) : 0;
+
+    // ====== DATA-PROTECTION GATES (only the main state document) ======
+    // Decide UP FRONT whether this write will actually reach the cloud. The version
+    // stamp (updatedAt) is advanced ONLY for writes that genuinely commit — never for
+    // gated or guard-blocked ones. That's the convergence fix: merely opening a device
+    // (recurring injection, carry-over — all deferred behind the startup gate) can no
+    // longer bump its version and make a stale copy outrank a genuinely newer cloud.
+    let block=null;   // 'gate' | 'guard' | null
+    if(isMain && !force && (FB.user && FB.db)){
+      // GATE 1 — startup gate: no cloud writes until the first cloud snapshot has been
+      // received and reconciled, so an empty/stale device can't overwrite good data
+      // before it has even seen what's up there.
+      if(!this._gateOpen){ block='gate'; }
+      // GATE 2 — catastrophic-shrink guard (UNCHANGED): block a write that would
+      // collapse the CURRENT cloud state down to near-empty. Baseline = last cloud
+      // snapshot's count, so gradual one-by-one deletion is never blocked — only a
+      // single collapse from substantial → near-empty trips it.
+      else if(isCatastrophicShrink(this._cloudCount||0, newCount)){ block='guard'; }
+    }
+    const willCommit = (FB.user && FB.db) && !block;
+
+    // advance the durable version only for real, committing writes (or forced ones)
+    if(v && typeof v==='object' && (force || willCommit)){
       const prev=+v.updatedAt||0;
       if(bump || v.updatedAt==null) v.updatedAt=Math.max(Date.now(), prev+1);
     }
     this._lsSet(k,v);                       // localStorage cache — ALWAYS (never lose local work)
-    if(!(FB.user && FB.db)){ this._lastResult='offline'; return false; }
 
-    // ====== DATA-PROTECTION GATES (only the main state document) ======
-    if(k==='marcomaster' && v && typeof v==='object' && !force){
-      // GATE 1 — startup gate: do NOT touch the cloud until the first cloud snapshot
-      // has been received and reconciled. This is what stops an empty/stale device
-      // from overwriting good cloud data before it has even seen what's up there.
-      if(!this._gateOpen){ this._lastResult='gate'; return false; }
-      // GATE 2 — catastrophic-shrink guard: block a write that would collapse the
-      // CURRENT cloud state down to near-empty. Baseline is the last cloud snapshot's
-      // count (refreshed on every snapshot + successful write), so gradual one-by-one
-      // deletion always compares against the latest cloud and is never blocked — only
-      // a single collapse from substantial → near-empty trips it.
-      const newCount=stateCount(v);
-      const baseline=this._cloudCount||0;
-      if(isCatastrophicShrink(baseline, newCount)){
-        this._lastResult='guard';
-        if(typeof onGuardBlocked==='function'){ try{ onGuardBlocked(baseline, newCount); }catch(e){} }
-        return false;                       // cloud UNTOUCHED; local copy is kept
-      }
+    if(!(FB.user && FB.db)){ this._lastResult='offline'; return false; }
+    if(block==='gate'){ this._lastResult='gate'; return false; }          // deferred, not an error
+    if(block==='guard'){
+      this._lastResult='guard';
+      if(typeof onGuardBlocked==='function'){ try{ onGuardBlocked(this._cloudCount||0, newCount); }catch(e){} }
+      return false;                         // cloud UNTOUCHED; near-empty can't clobber a full cloud
     }
 
     const ts=(v && v.updatedAt!=null) ? +v.updatedAt : Date.now();   // mirror updatedAt exactly
@@ -96,7 +107,7 @@ const Store = {
         write,
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('write-timeout')), 8000)),
       ]);
-      if(k==='marcomaster' && v){ this._cloudCount=stateCount(v); }
+      if(isMain){ this._cloudCount=newCount; }
       this._lastResult='synced';
       return true;                          // server acknowledged → genuinely synced
     }catch(e){

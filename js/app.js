@@ -72,22 +72,28 @@ function startApp(){
    The app is already rendered from local cache; this listener silently folds in
    the authoritative cloud state when it arrives (e.g. newer data from another
    device) and on every later change, without ever blocking the UI. */
-let _cloudSettled=false;
+let _cloudSettled=false;     // UI only: first snapshot seen (or the 6s timeout fired)
+let _reconciledOnce=false;   // logic: have we run a real reconcile against a cloud snapshot yet?
 function subscribeCloud(){
   if(!(FB.user && FB.db)) return;           // local-only mode: nothing to sync
   setSyncStatus('syncing');
-  // If the first snapshot never arrives (e.g. offline), surface "not synced".
+  // If the first snapshot never arrives (e.g. offline), surface "not synced". This is
+  // a UI-only timeout — it does NOT open the write gate or mark us reconciled, so the
+  // gate still only opens on a real snapshot and protection is never bypassed.
   const settleTimer=setTimeout(()=>{ if(!_cloudSettled){ _cloudSettled=true; setSyncStatus('error'); } }, 6000);
   Store.watchUserDoc((snap)=>{
-    const firstSnap=!_cloudSettled;
-    if(firstSnap){ _cloudSettled=true; clearTimeout(settleTimer); }
+    if(!_cloudSettled){ _cloudSettled=true; clearTimeout(settleTimer); }
+    // The initial gate-open + local mirror-up is driven by the FIRST real reconcile,
+    // independent of the 6s UI timeout — so a device whose first snapshot arrives late
+    // still opens its gate and flushes correctly (offline gate handling).
+    const firstReconcile=!_reconciledOnce; _reconciledOnce=true;
     setSyncStatus('synced', Date.now());   // a live snapshot means the cloud is reachable
 
     // brand-new account (or no state field) → cloud is empty; our local copy is
     // authoritative. Open the gate and mirror local up (guard allows growth).
     const data = snap.exists ? (snap.data()||{}) : {};
     const incoming = data.marcomaster;
-    if(incoming==null){ Store._cloudCount=0; openGateAndFlush(firstSnap, false); return; }
+    if(incoming==null){ Store._cloudCount=0; openGateAndFlush(firstReconcile, false); return; }
 
     const cloudCount=stateCount(incoming);
     const localCount=stateCount(S);
@@ -100,14 +106,16 @@ function subscribeCloud(){
 
     // ---- decide adoption: newer-wins, hardened with the content magnitude ----
     let adopt = cloudV>localV;
-    // PROTECT: never adopt a cloud copy that is a catastrophic shrink of what we
-    // hold locally — even if it carries a newer timestamp. Empty data with a fresh
-    // stamp is exactly how the emptiness used to propagate. Keep local and re-assert
-    // it upward to HEAL the poisoned cloud.
-    if(adopt && isCatastrophicShrink(localCount, cloudCount)){
+    // PROTECT: never adopt a cloud copy that has collapsed to NEAR-EMPTY while we still
+    // hold a substantial state — even if it carries a newer timestamp. That's the exact
+    // data-loss signature (empty data with a fresh stamp). Keep local and re-assert it
+    // upward to HEAL the poisoned cloud. NOTE: narrowed to genuinely near-empty clouds
+    // only — a merely-smaller-but-substantial cloud (a real newer edit from your other
+    // device) is now adopted normally via newer-wins, so the devices converge.
+    if(adopt && cloudCount<=NEAR_EMPTY && localCount>=PROTECT_FLOOR){
       Store._gateOpen=true;
       if(typeof onCloudLooksEmptied==='function') onCloudLooksEmptied(localCount, cloudCount);
-      persist({bump:true, force:true});      // local is the good, larger copy → push it up
+      persist({bump:true, force:true});      // local is the good, full copy → push it up
       return;
     }
     // RECOVER: if our LOCAL copy is the catastrophic shrink (this device looks
@@ -125,7 +133,7 @@ function subscribeCloud(){
       try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
       renderNav(); rerender();
     }
-    openGateAndFlush(firstSnap, adopt);
+    openGateAndFlush(firstReconcile, adopt);
   });
 }
 /* Open the cloud-write gate after the first reconcile. If we did NOT adopt the

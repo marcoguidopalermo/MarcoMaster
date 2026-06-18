@@ -54,8 +54,10 @@ function startApp(){
   catch(e){ console.error('loadState failed — rendering with default state', e); try{ seedDefaults(); }catch(_){ } }
   applyTheme();
   try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
-  persist({bump:false});   // fire-and-forget; mirror local up WITHOUT advancing the
-                           // version, so a genuinely newer cloud copy can still win
+  // NOTE: we deliberately do NOT push to the cloud here. The write gate
+  // (Store._gateOpen=false) blocks all cloud writes until the first cloud snapshot
+  // has been received and reconciled — so an empty/stale device can never overwrite
+  // good cloud data on startup. subscribeCloud() opens the gate and mirrors local up.
   q('#resetBtn').onclick=openReset;
   const tb=q('#themeBtn'); if(tb) tb.onclick=toggleTheme;
   q('#resetModal').onclick=(e)=>{ if(e.target.id==='resetModal') closeReset(); };
@@ -77,30 +79,62 @@ function subscribeCloud(){
   // If the first snapshot never arrives (e.g. offline), surface "not synced".
   const settleTimer=setTimeout(()=>{ if(!_cloudSettled){ _cloudSettled=true; setSyncStatus('error'); } }, 6000);
   Store.watchUserDoc((snap)=>{
-    if(!_cloudSettled){ _cloudSettled=true; clearTimeout(settleTimer); }
+    const firstSnap=!_cloudSettled;
+    if(firstSnap){ _cloudSettled=true; clearTimeout(settleTimer); }
     setSyncStatus('synced', Date.now());   // a live snapshot means the cloud is reachable
-    if(!snap.exists){ persist({bump:false}); return; }   // brand-new account → create the doc
-    const data=snap.data()||{};
-    const incoming=data.marcomaster;
-    if(incoming==null) return;
-    // Newer-always-wins: both copies now carry a durable, content-tied version
-    // (updatedAt, stored INSIDE the state). Adopt the cloud copy ONLY when it is
-    // strictly newer than what we already hold locally — an older/emptier cloud
-    // snapshot can never clobber fresher local data. Fall back to the legacy
-    // sibling `_updated` for docs written before versioning, and to this echo
-    // check (equal version ⇒ our own write) for free.
+
+    // brand-new account (or no state field) → cloud is empty; our local copy is
+    // authoritative. Open the gate and mirror local up (guard allows growth).
+    const data = snap.exists ? (snap.data()||{}) : {};
+    const incoming = data.marcomaster;
+    if(incoming==null){ Store._cloudCount=0; openGateAndFlush(firstSnap, false); return; }
+
+    const cloudCount=stateCount(incoming);
+    const localCount=stateCount(S);
+    Store._cloudCount=cloudCount;
+
+    // Durable, content-tied version lives INSIDE the state (updatedAt); fall back to
+    // the legacy sibling _updated for pre-versioning docs.
     const cloudV=(+incoming.updatedAt) || (+data._updated) || 0;
     const localV=(+S.updatedAt) || 0;
-    if(cloudV<=localV) return;                // local is newer or equal → keep it
-    if(saveTimer) return;                     // a local edit is mid-flight; let it win
-    // Adopt the cloud state and silently re-render the current page.
-    S=incoming;
-    seedDefaults();
-    if((+S.updatedAt||0)<cloudV) S.updatedAt=cloudV;   // carry the version forward (legacy docs)
-    Store._lsSet('marcomaster', S);
-    try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
-    renderNav(); rerender();
+
+    // ---- decide adoption: newer-wins, hardened with the content magnitude ----
+    let adopt = cloudV>localV;
+    // PROTECT: never adopt a cloud copy that is a catastrophic shrink of what we
+    // hold locally — even if it carries a newer timestamp. Empty data with a fresh
+    // stamp is exactly how the emptiness used to propagate. Keep local and re-assert
+    // it upward to HEAL the poisoned cloud.
+    if(adopt && isCatastrophicShrink(localCount, cloudCount)){
+      Store._gateOpen=true;
+      if(typeof onCloudLooksEmptied==='function') onCloudLooksEmptied(localCount, cloudCount);
+      persist({bump:true, force:true});      // local is the good, larger copy → push it up
+      return;
+    }
+    // RECOVER: if our LOCAL copy is the catastrophic shrink (this device looks
+    // emptied/corrupted vs a substantial cloud), adopt the cloud regardless of
+    // timestamp — bias hard toward the copy that actually has data.
+    if(!adopt && isCatastrophicShrink(cloudCount, localCount)){
+      adopt=true;
+    }
+
+    if(adopt && !saveTimer){
+      S=incoming;
+      seedDefaults();
+      if((+S.updatedAt||0)<cloudV) S.updatedAt=cloudV;   // carry the version forward (legacy docs)
+      Store._lsSet('marcomaster', S);
+      try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
+      renderNav(); rerender();
+    }
+    openGateAndFlush(firstSnap, adopt);
   });
+}
+/* Open the cloud-write gate after the first reconcile. If we did NOT adopt the
+   cloud copy (our local is authoritative — newer, or cloud was empty), mirror the
+   local state up once so the cloud reflects this device. The shrink guard still
+   protects this write, so a near-empty local can never overwrite a fuller cloud. */
+function openGateAndFlush(firstSnap, adopted){
+  Store._gateOpen=true;
+  if(firstSnap && !adopted){ persist({bump:false}); }
 }
 
 /* ---------- persistent cloud-sync status indicator (sidebar brand) ----------
@@ -178,6 +212,34 @@ function setSyncWarning(on){
     }
     el.style.display='block';
   }else if(el){ el.style.display='none'; }
+}
+
+/* ---------- data-protection banner ---------- */
+function showDataBanner(html, actions){
+  let el=document.getElementById('dataGuardBanner');
+  if(!el){ el=document.createElement('div'); el.id='dataGuardBanner'; el.className='data-guard-banner'; document.body.appendChild(el); }
+  el.innerHTML=`<div class="dgb-inner"><span class="dgb-msg">${html}</span><span class="dgb-actions"></span></div>`;
+  const wrap=el.querySelector('.dgb-actions');
+  (actions||[]).forEach(a=>{ const b=document.createElement('button'); b.className='btn sm '+(a.cls||''); b.textContent=a.label; b.onclick=a.onClick; wrap.appendChild(b); });
+  el.style.display='block';
+}
+function hideDataBanner(){ const el=document.getElementById('dataGuardBanner'); if(el) el.style.display='none'; }
+/* a local write was BLOCKED because it would erase most of the cloud's data */
+function onGuardBlocked(baseline, newCount){
+  showDataBanner(
+    `🛡️ <b>Write blocked to protect your data.</b> This change would shrink your data from ~${baseline} items to ~${newCount}. Your cloud backup was <b>not</b> overwritten.`,
+    [
+      {label:'View backups', onClick:()=>{ hideDataBanner(); go('settings'); setTimeout(()=>{ const e=document.getElementById('dataProtection'); if(e) e.scrollIntoView({behavior:'smooth',block:'start'}); },60); }},
+      {label:'Override — write anyway', cls:'danger', onClick:()=>{ hideDataBanner(); Store._gateOpen=true; persist({force:true, bump:true}).then(ok=>{ toast(ok?'Written ✓':'Still not synced'); }); }},
+    ]
+  );
+}
+/* a newer-but-emptier cloud snapshot was rejected; local data was kept + restored */
+function onCloudLooksEmptied(localCount, cloudCount){
+  showDataBanner(
+    `🛡️ <b>Protected your data.</b> The cloud copy looked emptied (~${cloudCount} items vs ~${localCount} on this device). Kept this device's data and restored it to the cloud.`,
+    [ {label:'Dismiss', onClick:hideDataBanner} ]
+  );
 }
 
 /* sign out (exposed for a settings button) */

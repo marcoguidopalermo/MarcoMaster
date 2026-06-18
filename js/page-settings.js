@@ -40,16 +40,21 @@ function renderSettings(){
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-h"><h3>Data</h3></div>
-    <p class="inbox-rule" style="margin-top:0">Everything saves automatically${FB.user?' and syncs to your account across devices':' on this device'}.</p>
+  <div class="card" id="dataProtection">
+    <div class="card-h"><h3>🛡️ Data protection</h3></div>
+    <p class="inbox-rule" style="margin-top:0">Everything saves automatically${FB.user?' and syncs to your account across devices':' on this device'}. A safety guard blocks any save that would erase most of your data, and rolling local backups are kept automatically.</p>
     <div class="btn-row">
       <button class="btn ghost sm" id="exportData">⬇ Export / Backup (JSON)</button>
-      <button class="btn ghost sm" id="importData">⬆ Import / Restore</button>
+      <button class="btn ghost sm" id="importData">⬆ Import / Restore from file</button>
       <button class="btn ghost sm" id="wipeToday">Clear today's tasks</button>
       <button class="btn ghost sm danger" id="wipeAll">⚠ Wipe everything</button>
     </div>
-    <p class="list-note" style="margin-top:14px">Export downloads a full backup file. Import restores from such a file — it <b>replaces</b> your current data (export first if unsure). Wipe everything resets MarcoMaster to defaults — with a confirmation step.</p>
+
+    <div class="ab-section">
+      <div class="card-h" style="margin-top:18px"><h3 style="font-size:11px">Automatic backups</h3><span class="sub">last ${AB_SLOTS} snapshots</span></div>
+      ${renderAutoBackups()}
+      <p class="list-note" style="margin-top:10px">These are saved locally on this device as you work. Restoring <b>replaces</b> your current data (a fresh backup is taken first). Wipe everything is the only way to intentionally clear data — it bypasses the safety guard with a double confirmation.</p>
+    </div>
   </div>
 
   ${FB.user?`
@@ -66,6 +71,42 @@ function renderSettings(){
 function settingsHourOpts(sel,from,to){
   let o=''; for(let h=from;h<=to;h++) o+=`<option value="${h}" ${h===sel?'selected':''}>${fmtHour(h)}</option>`; return o;
 }
+/* the rolling local auto-backups, newest first, with timestamps + item counts */
+function renderAutoBackups(){
+  const list=listAutoBackups();
+  if(!list.length) return '<p class="list-note" style="margin-top:8px">No automatic backups yet — they appear here as you use the app.</p>';
+  return `<div class="autobackup-list">
+    ${list.map(e=>{
+      const s=e.summary||{};
+      const when=new Date(e.ts).toLocaleString('en-CA',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+      return `<div class="autobackup-row">
+        <div class="ab-main">
+          <span class="ab-when">${when}</span>
+          <span class="ab-counts">${s.projects||0} proj · ${s.tasks||0} tasks · ${s.appointments||0} appt · ${s.followups||0} f/u · ${s.meetings||0} mtg · ${s.days||0} days</span>
+        </div>
+        <button class="btn ghost sm" data-abrestore="${e.slot}">Restore</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+/* replace the current state with a restored one (file import or auto-backup). This
+   is an explicit, confirmed user action, so it FORCE-writes past the shrink guard.
+   A snapshot of the current state is taken first, so a restore is itself undoable. */
+function restoreState(newState, label){
+  if(!newState || typeof newState!=='object' || Array.isArray(newState)){ alert('That backup is unreadable.'); return; }
+  const cur=backupSummary(S), nw=backupSummary(newState);
+  const line=(s)=>`${s.projects} proj · ${s.tasks} tasks · ${s.appointments} appt · ${s.followups} f/u · ${s.meetings} mtg · ${s.days} days`;
+  if(!confirm(`Restore ${label}?\n\nReplaces current data:\n  now:  ${line(cur)}\n  new:  ${line(nw)}\n\nA backup of your current data is taken first.`)) return;
+  try{ recordAutoBackup(S); }catch(e){}
+  S=newState;
+  seedDefaults();
+  Store._lsSet('marcomaster', S);
+  Store._gateOpen=true;
+  persist({force:true, bump:true}).then(synced=>{
+    toast(synced?'Restored ✓ (synced)':'Restored ✓ (saved locally)');
+    location.reload();
+  });
+}
 function bindSettings(){
   bindProjects();      // add/edit/delete projects + names/colors + tasks within projects
   bindRecurring();     // recurring cadence manager
@@ -78,9 +119,16 @@ function bindSettings(){
   const ex=q('#exportData'); if(ex) ex.onclick=()=>{
     const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
-    a.href=url; a.download='marcomaster-backup-'+todayKey()+'.json'; a.click(); URL.revokeObjectURL(url);
+    const n=new Date(); const hhmm=String(n.getHours()).padStart(2,'0')+String(n.getMinutes()).padStart(2,'0');
+    a.href=url; a.download='marcomaster-backup-'+todayKey()+'-'+hhmm+'.json'; a.click(); URL.revokeObjectURL(url);
     toast('Exported ✓');
   };
+  // restore from an automatic local backup (explicit, confirmed → bypasses the guard)
+  q('[data-abrestore]','all').forEach(el=>el.onclick=()=>{
+    const st=getAutoBackupState(el.dataset.abrestore);
+    if(!st){ alert('That backup could not be read.'); return; }
+    restoreState(st, 'this automatic backup');
+  });
 
   // Import / Restore — read a backup JSON and REPLACE the current state with it.
   // Uses a throwaway file input so we don't need a permanent element in the DOM.
@@ -105,10 +153,13 @@ function bindSettings(){
           Object.keys(data.days||{}).length+' days of history',
         ].join(' · ');
         if(!confirm('Import this backup?\n\n'+summary+'\n\nThis REPLACES your current data. Export first if you want to keep what you have now.')) return;
+        // snapshot the CURRENT state first so an import is itself recoverable
+        try{ recordAutoBackup(S); }catch(e){}
         S=data;
         seedDefaults();                   // backfill any missing fields + run migrations
         Store._lsSet('marcomaster', S);   // cache immediately so a reload is safe
-        persist().then(synced=>{
+        Store._gateOpen=true;
+        persist({force:true, bump:true}).then(synced=>{   // explicit restore → bypass the shrink guard
           toast(synced?'Imported ✓ (synced)':'Imported ✓ (saved locally)');
           location.reload();              // re-render everything cleanly from the new state
         });
@@ -119,13 +170,20 @@ function bindSettings(){
   };
   const wt=q('#wipeToday'); if(wt) wt.onclick=()=>{
     if(confirm("Clear today's tasks? This removes all tasks in your Today list (completed and active).")){
-      day().tasks=[]; day().archive=[]; day().recurringAdded={}; save(); toast('Today cleared'); go('dashboard');
+      try{ recordAutoBackup(S); }catch(e){}          // recoverable even after a clear
+      day().tasks=[]; day().archive=[]; day().recurringAdded={};
+      Store._gateOpen=true;
+      persist({force:true, bump:true});              // explicit clear → bypass the guard
+      toast('Today cleared'); go('dashboard');
     }
   };
   const wa=q('#wipeAll'); if(wa) wa.onclick=()=>{
     if(confirm('Wipe EVERYTHING and reset to defaults? This cannot be undone. Consider exporting first.')){
       if(confirm('Are you absolutely sure? All your history, tasks and journals will be gone.')){
-        S={}; persist().then(()=>location.reload());
+        try{ recordAutoBackup(S); }catch(e){}        // last safety net before a full wipe
+        S={};
+        Store._gateOpen=true;
+        persist({force:true, bump:true}).then(()=>location.reload());   // intentional → bypass the guard
       }
     }
   };

@@ -101,10 +101,18 @@ function save(showToast=true){
   saveTimer=setTimeout(async()=>{
     setSyncStatus('syncing');             // persistent indicator: write in flight
     const synced=await persist();
+    const r=Store._lastResult;
+    // Roll a local auto-backup for any real, meaningful save (independent of the
+    // cloud) — but never when the write was gate-deferred or guard-blocked.
+    if(r!=='gate' && r!=='guard'){ try{ recordAutoBackup(S); }catch(e){} }
     if(synced){
       setSyncWarning(false);              // cloud confirmed
       setSyncStatus('synced', Date.now());
       if(showToast) toast('Saved ✓');
+    }else if(r==='gate'){
+      setSyncStatus('syncing');           // deferred until first cloud reconcile — NOT an error
+    }else if(r==='guard'){
+      setSyncStatus('error');             // a loud banner was already shown by onGuardBlocked
     }else{
       setSyncWarning(true);               // visible: changes are NOT in the cloud
       setSyncStatus(FB.user?'error':'local');

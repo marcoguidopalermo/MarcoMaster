@@ -11,6 +11,10 @@ function insightDays(n){
 }
 function dayDoneCount(d){ return (d.archive?.length||0)+(d.tasks?.filter(t=>t.done).length||0); }
 function dayAvgEnergy(d){
+  // Journal v2: prefer the new 1-5 star energy (morning + evening) when present.
+  const stars=[d.morning&&d.morning.energy, d.evening&&d.evening.energy].filter(v=>typeof v==='number'&&v>0);
+  if(stars.length) return stars.reduce((a,b)=>a+b,0)/stars.length;
+  // legacy fallback: throughout-day check-ins (Low/Med/High), then the old flat energy
   const ci=d.checkins||[]; if(!ci.length){ return energyToNum(d.energy); }
   const vals=ci.map(c=>energyToNum(c.energy)).filter(v=>v); if(!vals.length) return energyToNum(d.energy);
   return vals.reduce((a,b)=>a+b,0)/vals.length;

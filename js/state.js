@@ -87,7 +87,26 @@ function seedDefaults(){
   // migrate scheduled tasks (had start, no schedDate) across all days
   Object.keys(S.days||{}).forEach(dk=>{
     (S.days[dk].tasks||[]).forEach(t=>{ if(t.kind==='project' && t.start!=null && t.schedDate==null) t.schedDate=dk; if(t.priority==null) t.priority=false; });
+    migrateJournalV2(S.days[dk]);   // additive, gated by _jrnlV2 — never overwrites edits or loses data
   });
+}
+/* ---------- Journal v2 migration (1-10 → 1-5 stars; flat → morning/evening) ----------
+   NON-DESTRUCTIVE: legacy flat fields (mood word, energy, sleep, meds, feelings,
+   fulfillment) are KEPT intact for Insights/Shutdown; we only ADD morning/evening
+   sub-objects. Runs once per day record (the _jrnlV2 flag), so it never re-runs and
+   never overwrites a value the user later changes. */
+const ENERGY_STAR={Low:2,Medium:3,High:4};   // legacy Low/Med/High → 1-5 stars
+function fulfill10to5(n){ n=+n; if(!n||isNaN(n)) return null; return Math.max(1,Math.min(5,Math.ceil(n/2))); }
+function migrateJournalV2(d){
+  if(!d || d._jrnlV2) return;
+  d._jrnlV2=true;
+  if(!d.morning) d.morning={ energy:null, mood:null, anxiety:null, stress:null, intentions:'' };
+  if(!d.evening) d.evening={ mood:null, energy:null, anxiety:null, fulfillment:null, trained:null, trainNote:'', diet:'' };
+  // map legacy ratings into the new stars (only when the new field is still empty)
+  if(d.morning.energy==null && d.energy)  d.morning.energy = ENERGY_STAR[d.energy] || null;
+  if(d.morning.stress==null && d.stress)  d.morning.stress = ENERGY_STAR[d.stress] || null;
+  if(d.evening.fulfillment==null && d.fulfillment!=null && d.fulfillment!=='') d.evening.fulfillment = fulfill10to5(d.fulfillment);
+  // legacy d.mood (word) stays put as the kept mood-text field; d.feelings stays as reflection.
 }
 /* returns true only if the cloud write committed.
    opts.bump=false preserves the current in-state version (updatedAt) instead of
@@ -133,7 +152,12 @@ function blankDay(){
   return {
     reset:{}, focus:{biz:'',health:'',lev:'',content:'',not:''},
     workout:'', shutdownTime:'', energy:'', mood:'', sleep:'', stress:'',
-    meds:'', feelings:'', fulfillment:'',   // journal fields (reflection tab)
+    meds:'', feelings:'', fulfillment:'',   // legacy flat journal fields (kept for Insights/Shutdown)
+    // Journal v2 — morning/evening 1-5 star ratings + new text. _jrnlV2 marks a record
+    // as already in the new shape so the one-time migration never re-runs on it.
+    _jrnlV2:true,
+    morning:{ energy:null, mood:null, anxiety:null, stress:null, intentions:'' },
+    evening:{ mood:null, energy:null, anxiety:null, fulfillment:null, trained:null, trainNote:'', diet:'' },
     tasks:[],          // {id, txt, kind:'quick'|'project', done, mins, start:null, recurringId?}
     pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; unfinished carry over to the next day (see _seeded bridge)
     archive:[],        // completed tasks swept here: {id, txt, kind, mins, doneAt}
@@ -171,6 +195,7 @@ function day(){
   if(d.meds==null) d.meds='';
   if(d.feelings==null) d.feelings='';
   if(d.fulfillment==null) d.fulfillment='';
+  migrateJournalV2(d);   // ensure morning/evening exist + one-time legacy → stars migration
   if(d.dayStart==null) d.dayStart=(S.settings&&S.settings.dayStart)||8;
   if(d.dayEnd==null) d.dayEnd=(S.settings&&S.settings.dayEnd)||21;
   // migrate: a task that had a start hour but no schedDate was scheduled for its own day

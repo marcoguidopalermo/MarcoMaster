@@ -17,6 +17,11 @@ function apptDateLabel(k){
   const [y,m,d]=k.split('-').map(Number);
   return new Date(y,m-1,d).toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
 }
+/* "2026-06-23" → "June 23" (full month + day, for the prominent leading date) */
+function apptDateFull(k){
+  const [y,m,d]=k.split('-').map(Number);
+  return new Date(y,m-1,d).toLocaleDateString('en-CA',{month:'long',day:'numeric'});
+}
 
 /* TODAY — a lightweight glance strip pinned to the very top of the Dashboard:
    today's appointments first, then today's scheduled + overdue tasks (compact,
@@ -54,8 +59,8 @@ function renderTodayStrip(){
   if(!appts.length && !tasks.length) return '';
   const apptRow=(a)=>`
     <div class="glance-row appt">
+      <span class="appt-date-lead">${apptDateFull(a.date)}</span>
       <span class="glance-time">${fmtClock(a.time)||'—'}</span>
-      <span class="glance-ic">📅</span>
       <span class="glance-txt">${esc(a.title)}</span>
       <span class="x" data-apptdel="${a.id}" title="Delete appointment">×</span>
     </div>`;
@@ -90,9 +95,9 @@ function renderAppointments(){
   const upcoming=all.filter(a=>a.date>tk).sort((a,b)=>((a.date+(a.time||''))).localeCompare(b.date+(b.time||'')));
   const row=(a)=>`
     <div class="appt-row ${a.date===tk?'today':''}">
+      <span class="appt-date">${a.date===tk?'Today':apptDateFull(a.date)}</span>
       <span class="appt-time">${fmtClock(a.time)}</span>
       <span class="appt-title">${esc(a.title)}</span>
-      <span class="appt-date">${a.date===tk?'Today':apptDateLabel(a.date)}</span>
       <span class="x" data-apptdel="${a.id}">×</span>
     </div>`;
   return `

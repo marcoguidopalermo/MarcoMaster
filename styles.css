@@ -437,6 +437,8 @@ textarea{min-height:70px;line-height:1.55}
 .glance-row.appt{border-left:2px solid var(--amber)}
 .glance-row.task.overdue{border-left:2px solid var(--red)}
 .glance-time{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--txt-dim);min-width:52px;flex-shrink:0}
+/* prominent leading date on TODAY-strip appointment rows */
+.appt-date-lead{font-size:13px;font-weight:700;color:var(--txt);min-width:86px;flex-shrink:0;white-space:nowrap}
 .glance-ic{flex-shrink:0;font-size:12px}
 .glance-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .glance-od{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--red);background:color-mix(in srgb, var(--red) 16%, transparent);padding:2px 7px;border-radius:5px;flex-shrink:0}
@@ -690,7 +692,8 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 .appt-row.today{border-color:#3b82f655;background:var(--accent-soft)}
 .appt-time{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);width:70px;flex-shrink:0}
 .appt-title{flex:1;min-width:0;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.appt-date{font-family:var(--mono);font-size:11px;color:var(--txt-faint);flex-shrink:0}
+/* date now LEADS the row — prominent and readable, not tiny grey text */
+.appt-date{font-size:14px;font-weight:700;color:var(--txt);min-width:96px;flex-shrink:0;white-space:nowrap}
 .appt-row .x{color:var(--txt-faint);cursor:pointer;font-size:16px;flex-shrink:0;line-height:1}
 .appt-row .x:hover{color:var(--red)}
 

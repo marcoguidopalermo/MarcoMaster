@@ -22,6 +22,16 @@ function apptDateFull(k){
   const [y,m,d]=k.split('-').map(Number);
   return new Date(y,m-1,d).toLocaleDateString('en-CA',{month:'long',day:'numeric'});
 }
+/* has this appointment's date/time already PASSED? With a time, compare to the exact
+   moment; with no time, only overdue once the whole day is over (end of day). */
+function apptOverdue(a){
+  if(!a || !a.date) return false;
+  const [y,m,d]=a.date.split('-').map(Number);
+  let dt;
+  if(a.time){ const [h,mn]=a.time.split(':').map(Number); dt=new Date(y,m-1,d,h||0,mn||0,0); }
+  else { dt=new Date(y,m-1,d,23,59,59); }
+  return dt.getTime() < Date.now();
+}
 
 /* TODAY — a lightweight glance strip pinned to the very top of the Dashboard:
    today's appointments first, then today's scheduled + overdue tasks (compact,
@@ -31,7 +41,14 @@ function apptDateFull(k){
    reuses [data-atcheck] — both already bound (bindAppointments / bindAllTasks). */
 function renderTodayStrip(){
   const tk=todayKey();
-  const appts=(S.appointments||[]).filter(a=>a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  // today's appointments PLUS any overdue (past) ones — overdue stay visible at the
+  // top so they aren't forgotten, surfaced before today's still-upcoming ones.
+  const appts=(S.appointments||[]).filter(a=>a.date && (a.date===tk || apptOverdue(a)))
+    .sort((a,b)=>{
+      const oa=apptOverdue(a), ob=apptOverdue(b);
+      if(oa!==ob) return oa?-1:1;                                  // overdue surface first
+      return (a.date+(a.time||'')).localeCompare(b.date+(b.time||''));   // then by soonest
+    });
   // today's + overdue scheduled tasks (not done). Two sources, deduped by a
   // canonical key so each task shows once:
   //   1) the unified rows (covers OVERDUE past-due tasks + project tasks);
@@ -57,13 +74,14 @@ function renderTodayStrip(){
     return ka.localeCompare(kb);
   });
   if(!appts.length && !tasks.length) return '';
-  const apptRow=(a)=>`
-    <div class="glance-row appt">
+  const apptRow=(a)=>{ const od=apptOverdue(a); return `
+    <div class="glance-row appt ${od?'overdue':''}">
       <span class="appt-date-lead">${apptDateFull(a.date)}</span>
       <span class="glance-time">${fmtClock(a.time)||'—'}</span>
       <span class="glance-txt">${esc(a.title)}</span>
+      ${od?`<span class="glance-od">Overdue</span>`:''}
       <span class="x" data-apptdel="${a.id}" title="Delete appointment">×</span>
-    </div>`;
+    </div>`; };
   const taskRow=(r)=>{
     const label = r.source==='project'
       ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
@@ -90,19 +108,23 @@ function renderTodayStrip(){
 
 function renderAppointments(){
   const tk=todayKey();
-  const all=(S.appointments||[]).filter(a=>a.date && a.date>=tk);   // past drop off
-  const today=all.filter(a=>a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  const upcoming=all.filter(a=>a.date>tk).sort((a,b)=>((a.date+(a.time||''))).localeCompare(b.date+(b.time||'')));
-  const row=(a)=>`
-    <div class="appt-row ${a.date===tk?'today':''}">
-      <span class="appt-date">${a.date===tk?'Today':apptDateFull(a.date)}</span>
+  const list=(S.appointments||[]).filter(a=>a.date);
+  // overdue stay visible (never auto-dropped) until deleted; most recently missed first
+  const overdue=list.filter(apptOverdue)
+    .sort((a,b)=>(b.date+(b.time||'')).localeCompare(a.date+(a.time||'')));
+  const today=list.filter(a=>!apptOverdue(a) && a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const upcoming=list.filter(a=>!apptOverdue(a) && a.date>tk).sort((a,b)=>((a.date+(a.time||''))).localeCompare(b.date+(b.time||'')));
+  const row=(a)=>{ const od=apptOverdue(a); return `
+    <div class="appt-row ${od?'overdue':(a.date===tk?'today':'')}">
+      <span class="appt-date">${(a.date===tk && !od)?'Today':apptDateFull(a.date)}</span>
       <span class="appt-time">${fmtClock(a.time)}</span>
       <span class="appt-title">${esc(a.title)}</span>
+      ${od?`<span class="appt-od">Overdue</span>`:''}
       <span class="x" data-apptdel="${a.id}">×</span>
-    </div>`;
+    </div>`; };
   return `
   <div class="card appt-card">
-    <div class="card-h"><h3>📅 Appointments</h3><span class="sub">${today.length?today.length+' today · ':''}${upcoming.length} upcoming</span></div>
+    <div class="card-h"><h3>📅 Appointments</h3><span class="sub">${overdue.length?overdue.length+' overdue · ':''}${today.length?today.length+' today · ':''}${upcoming.length} upcoming</span></div>
 
     <div class="appt-add">
       <input type="text" id="apptTitle" value="${esc(apptDraft.title)}" placeholder="Appointment (e.g. Dentist)…">
@@ -111,13 +133,17 @@ function renderAppointments(){
       <button class="btn" id="apptAdd">Add</button>
     </div>
 
+    ${overdue.length?`
+      <div class="appt-group-lbl overdue-lbl">⚠ Overdue — follow up</div>
+      <div class="appt-list">${overdue.map(row).join('')}</div>`:''}
+
     ${today.length?`<p class="list-note" style="margin:4px 0 10px">Today's ${today.length} appointment${today.length>1?'s are':' is'} pinned to the top of the Dashboard.</p>`:''}
 
     ${upcoming.length?`
       <div class="appt-group-lbl">Upcoming</div>
       <div class="appt-list">${upcoming.map(row).join('')}</div>`:''}
 
-    ${(!today.length && !upcoming.length)?'<div class="empty">No appointments scheduled.</div>':''}
+    ${(!overdue.length && !today.length && !upcoming.length)?'<div class="empty">No appointments scheduled.</div>':''}
   </div>`;
 }
 

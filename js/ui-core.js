@@ -120,7 +120,6 @@ function rerender(){
 const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
   ['journal','✦','Journal'],
-  ['meetings','👥','Meetings'],
   ['settings','⚙','Settings'],
 ];
 function renderNav(){

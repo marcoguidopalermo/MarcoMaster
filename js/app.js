@@ -63,9 +63,26 @@ function startApp(){
   q('#resetModal').onclick=(e)=>{ if(e.target.id==='resetModal') closeReset(); };
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeReset(); });
   go('dashboard');
+  bindFlushHandlers();
   // 2) Now reconcile with the cloud in the background and keep syncing live.
   setSyncStatus(FB.user?'syncing':'local');
   subscribeCloud();
+}
+
+/* Flush a pending save the moment the page is hidden or torn down. Mobile browsers
+   freeze/kill backgrounded tabs without a reliable 'beforeunload', so
+   'visibilitychange'→hidden and 'pagehide' are the durable signals; 'beforeunload'
+   covers desktop reload/close. localStorage is already written synchronously on
+   every save() — this makes the last edit's cloud push fire immediately instead of
+   waiting out the 350ms debounce. Bound ONCE (startApp re-runs on every auth change). */
+let _flushHandlersBound=false;
+function bindFlushHandlers(){
+  if(_flushHandlersBound) return;
+  _flushHandlersBound=true;
+  const onHide=()=>{ try{ flushSave(); }catch(e){} };
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') onHide(); });
+  window.addEventListener('pagehide', onHide);
+  window.addEventListener('beforeunload', onHide);
 }
 
 /* ---- background cloud sync ----

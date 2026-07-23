@@ -143,32 +143,64 @@ function migrateJournalCalm(d){
 async function persist(opts){ return await Store.set('marcomaster', S, opts); }
 
 let saveTimer=null;
+let cloudDirty=false;   // local changes not yet handed to a cloud persist()
+
+/* Synchronous local cache write — mirror S to localStorage on EVERY save() call so a
+   reload/close/background never loses the last edit while the cloud push is still
+   debounced. Cheap (one JSON.stringify + setItem); never throws. Does NOT touch
+   updatedAt or the gate/guard logic — the debounced cloud push (persist) stays the
+   sole authority for versioning and convergence. */
+function cacheLocal(){ try{ Store._lsSet('marcomaster', S); }catch(e){} }
+
 function save(showToast=true){
-  clearTimeout(saveTimer);
-  const myTimer = saveTimer = setTimeout(async()=>{
-    setSyncStatus('syncing');             // persistent indicator: write in flight
-    const synced=await persist();
-    // Clear the in-flight marker so the reconciler's `!saveTimer` check is accurate
-    // again and LIVE cross-device adoption resumes between edits. Only clear if no
-    // newer save was queued while this one was awaiting (id still matches).
-    if(saveTimer===myTimer) saveTimer=null;
-    const r=Store._lastResult;
-    // Roll a local auto-backup for any real, meaningful save (independent of the
-    // cloud) — but never when the write was gate-deferred or guard-blocked.
-    if(r!=='gate' && r!=='guard'){ try{ recordAutoBackup(S); }catch(e){} }
-    if(synced){
-      setSyncWarning(false);              // cloud confirmed
-      setSyncStatus('synced', Date.now());
-      if(showToast) toast('Saved ✓');
-    }else if(r==='gate'){
-      setSyncStatus('syncing');           // deferred until first cloud reconcile — NOT an error
-    }else if(r==='guard'){
-      setSyncStatus('error');             // a loud banner was already shown by onGuardBlocked
-    }else{
-      setSyncWarning(true);               // visible: changes are NOT in the cloud
-      setSyncStatus(FB.user?'error':'local');
-    }
-  }, 350);
+  cacheLocal();                 // 1) INSTANT local durability — every call
+  cloudDirty=true;
+  clearTimeout(saveTimer);      // 2) debounce ONLY the cloud push
+  const myTimer = saveTimer = setTimeout(()=>doCloudPush(myTimer, showToast), 350);
+}
+
+/* the debounced cloud push. Also invoked directly by flushSave() on page hide. */
+async function doCloudPush(myTimer, showToast){
+  cloudDirty=false;                       // consuming the pending change
+  setSyncStatus('syncing');               // persistent indicator: write in flight
+  const synced=await persist();
+  // Clear the in-flight marker so the reconciler's `!saveTimer` check is accurate
+  // again and LIVE cross-device adoption resumes between edits. Only clear if no
+  // newer save was queued while this one was awaiting (id still matches).
+  if(saveTimer===myTimer) saveTimer=null;
+  const r=Store._lastResult;
+  // Roll a local auto-backup for any real, meaningful save (independent of the
+  // cloud) — but never when the write was gate-deferred or guard-blocked.
+  if(r!=='gate' && r!=='guard'){ try{ recordAutoBackup(S); }catch(e){} }
+  if(synced){
+    setSyncWarning(false);                // cloud confirmed
+    setSyncStatus('synced', Date.now());
+    if(showToast) toast('Saved ✓');
+  }else if(r==='gate'){
+    setSyncStatus('syncing');             // deferred until first cloud reconcile — NOT an error
+  }else if(r==='guard'){
+    setSyncStatus('error');               // a loud banner was already shown by onGuardBlocked
+  }else{
+    setSyncWarning(true);                 // visible: changes are NOT in the cloud
+    setSyncStatus(FB.user?'error':'local');
+  }
+}
+
+/* Flush any pending save immediately — called when the page is hidden/torn down.
+   localStorage is already current (written synchronously on every save()); if a
+   cloud push is still pending we fire it NOW instead of waiting out the debounce. */
+function flushSave(){
+  cacheLocal();                           // belt-and-suspenders: local always current
+  if(cloudDirty){                         // a debounced push is still pending → run it now
+    clearTimeout(saveTimer);
+    // MUST null the id: visibilitychange fires on every tab/app switch (not just
+    // close). A stale saveTimer would leave the reconciler's `adopt && !saveTimer`
+    // check permanently false, killing live cloud adoption for the rest of the
+    // session. Nulling here restores it (persist already has the latest S).
+    saveTimer=null;
+    cloudDirty=false;
+    try{ persist(); }catch(e){}           // fire-and-forget; local already safe
+  }
 }
 function toast(msg='Saved ✓'){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');

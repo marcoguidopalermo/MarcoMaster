@@ -91,6 +91,7 @@ function journalCompletedFor(dk){
 /* appointments + meetings that landed on a given day */
 function journalEventsFor(dk){
   const out=[];
+  // include done appointments too — a completed appointment still happened today
   (S.appointments||[]).forEach(a=>{ if(a.date===dk) out.push({time:a.time||'', label:a.title, type:'appt'}); });
   (S.meetings||[]).forEach(m=>{ if(m.nextMeeting && m.nextMeeting.date===dk) out.push({time:(m.nextMeeting.time||''), label:m.name, type:'mtg'}); });
   out.sort((a,b)=>(a.time||'').localeCompare(b.time||''));

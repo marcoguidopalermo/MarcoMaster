@@ -26,6 +26,7 @@ function apptDateFull(k){
    moment; with no time, only overdue once the whole day is over (end of day). */
 function apptOverdue(a){
   if(!a || !a.date) return false;
+  if(a.done) return false;   // done beats overdue — a completed appointment is never overdue
   const [y,m,d]=a.date.split('-').map(Number);
   let dt;
   if(a.time){ const [h,mn]=a.time.split(':').map(Number); dt=new Date(y,m-1,d,h||0,mn||0,0); }
@@ -43,8 +44,10 @@ function renderTodayStrip(){
   const tk=todayKey();
   // today's appointments PLUS any overdue (past) ones — overdue stay visible at the
   // top so they aren't forgotten, surfaced before today's still-upcoming ones.
+  // done appointments today still show (as "happened") but sink to the bottom, muted.
   const appts=(S.appointments||[]).filter(a=>a.date && (a.date===tk || apptOverdue(a)))
     .sort((a,b)=>{
+      if(!!a.done!==!!b.done) return a.done?1:-1;                  // completed sink to bottom
       const oa=apptOverdue(a), ob=apptOverdue(b);
       if(oa!==ob) return oa?-1:1;                                  // overdue surface first
       return (a.date+(a.time||'')).localeCompare(b.date+(b.time||''));   // then by soonest
@@ -75,9 +78,10 @@ function renderTodayStrip(){
   });
   if(!appts.length && !tasks.length) return '';
   const apptRow=(a)=>{ const od=apptOverdue(a); return `
-    <div class="glance-row appt ${od?'overdue':''}">
+    <div class="glance-row appt ${od?'overdue':''} ${a.done?'done':''}">
       <span class="appt-date-lead">${apptDateFull(a.date)}</span>
       <span class="glance-time">${fmtClock(a.time)||'—'}</span>
+      <div class="box glance-box" data-apptdone="${a.id}" title="${a.done?'Mark not done':'Mark done'}">✓</div>
       <span class="glance-txt">${esc(a.title)}</span>
       ${od?`<span class="glance-od">Overdue</span>`:''}
       <span class="x" data-apptdel="${a.id}" title="Delete appointment">×</span>
@@ -109,13 +113,17 @@ function renderTodayStrip(){
 function renderAppointments(){
   const tk=todayKey();
   const list=(S.appointments||[]).filter(a=>a.date);
+  const active=list.filter(a=>!a.done);
+  // completed appointments drop out of the main flow into their own group (kept, not deleted)
+  const done=list.filter(a=>a.done).sort((a,b)=>(b.date+(b.time||'')).localeCompare(a.date+(a.time||'')));
   // overdue stay visible (never auto-dropped) until deleted; most recently missed first
-  const overdue=list.filter(apptOverdue)
+  const overdue=active.filter(apptOverdue)
     .sort((a,b)=>(b.date+(b.time||'')).localeCompare(a.date+(a.time||'')));
-  const today=list.filter(a=>!apptOverdue(a) && a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  const upcoming=list.filter(a=>!apptOverdue(a) && a.date>tk).sort((a,b)=>((a.date+(a.time||''))).localeCompare(b.date+(b.time||'')));
+  const today=active.filter(a=>!apptOverdue(a) && a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const upcoming=active.filter(a=>!apptOverdue(a) && a.date>tk).sort((a,b)=>((a.date+(a.time||''))).localeCompare(b.date+(b.time||'')));
   const row=(a)=>{ const od=apptOverdue(a); return `
-    <div class="appt-row ${od?'overdue':(a.date===tk?'today':'')}">
+    <div class="appt-row ${od?'overdue':(a.date===tk?'today':'')} ${a.done?'done':''}">
+      <div class="box appt-box" data-apptdone="${a.id}" title="${a.done?'Mark not done':'Mark done'}">✓</div>
       <span class="appt-date">${(a.date===tk && !od)?'Today':apptDateFull(a.date)}</span>
       <span class="appt-time">${fmtClock(a.time)}</span>
       <span class="appt-title">${esc(a.title)}</span>
@@ -124,7 +132,7 @@ function renderAppointments(){
     </div>`; };
   return `
   <div class="card appt-card">
-    <div class="card-h"><h3>📅 Appointments</h3><span class="sub">${overdue.length?overdue.length+' overdue · ':''}${today.length?today.length+' today · ':''}${upcoming.length} upcoming</span></div>
+    <div class="card-h"><h3>📅 Appointments</h3><span class="sub">${overdue.length?overdue.length+' overdue · ':''}${today.length?today.length+' today · ':''}${upcoming.length} upcoming${done.length?' · '+done.length+' done':''}</span></div>
 
     <div class="appt-add">
       <input type="text" id="apptTitle" value="${esc(apptDraft.title)}" placeholder="Appointment (e.g. Dentist)…">
@@ -143,7 +151,11 @@ function renderAppointments(){
       <div class="appt-group-lbl">Upcoming</div>
       <div class="appt-list">${upcoming.map(row).join('')}</div>`:''}
 
-    ${(!overdue.length && !today.length && !upcoming.length)?'<div class="empty">No appointments scheduled.</div>':''}
+    ${done.length?`
+      <div class="appt-group-lbl done-lbl">✓ Completed</div>
+      <div class="appt-list">${done.map(row).join('')}</div>`:''}
+
+    ${(!overdue.length && !today.length && !upcoming.length && !done.length)?'<div class="empty">No appointments scheduled.</div>':''}
   </div>`;
 }
 
@@ -172,4 +184,6 @@ function bindAppointments(){
   const ab=q('#apptAdd'); if(ab) ab.onclick=addAppt;
   if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addAppt(); };
   q('[data-apptdel]','all').forEach(el=>el.onclick=()=>{ S.appointments=(S.appointments||[]).filter(x=>x.id!==el.dataset.apptdel); save(); rerender(); });
+  // toggle done — completing an appointment is distinct from deleting it (× stays)
+  q('[data-apptdone]','all').forEach(el=>el.onclick=()=>{ const a=(S.appointments||[]).find(x=>x.id===el.dataset.apptdone); if(a){ a.done=!a.done; save(); rerender(); } });
 }

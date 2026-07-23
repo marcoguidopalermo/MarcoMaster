@@ -744,6 +744,18 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 .appt-group-lbl.overdue-lbl{color:var(--red)}
 .appt-row .x{color:var(--txt-faint);cursor:pointer;font-size:16px;flex-shrink:0;line-height:1}
 .appt-row .x:hover{color:var(--red)}
+/* appointment done-checkbox + completed state (mirrors task done styling) */
+.appt-box{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:transparent;font-weight:700;font-size:10px;transition:all .15s}
+.appt-box:hover{border-color:var(--green)}
+.appt-row.done{opacity:.62}
+.appt-row.done .appt-box{background:var(--green);border-color:var(--green);color:#06210b}
+.appt-row.done .appt-title{color:var(--txt-faint);text-decoration:line-through}
+.appt-row.done .appt-date,.appt-row.done .appt-time{color:var(--txt-faint)}
+.appt-group-lbl.done-lbl{color:var(--green)}
+/* Today strip: appointment done-checkbox + completed state */
+.glance-row.appt.done{opacity:.6}
+.glance-row.appt.done .glance-box{background:var(--green);border-color:var(--green);color:#06210b}
+.glance-row.appt.done .glance-txt{color:var(--txt-faint);text-decoration:line-through}
 
 /* time blocker on dashboard: render full day at full height — NOT its own
    scroll window. The page scrolls to reveal it; the grid itself never scrolls. */

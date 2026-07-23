@@ -47,6 +47,8 @@ function seedDefaults(){
   S.projects.forEach(p=>{ if(!p.tasks) p.tasks=[]; if(p.note==null) p.note=''; p.tasks.forEach(t=>{ if(t.priority==null) t.priority=false; }); });
   if(!S.followups) S.followups = [];      // persistent open loops (new + existing accounts)
   if(!S.appointments) S.appointments = []; // fixed date/time commitments
+  // migrate: appointments gain a done flag (completing is distinct from deleting)
+  S.appointments.forEach(a=>{ if(a.done==null) a.done=false; });
   if(!S.meetings) S.meetings = [];        // recurring people/meetings: talking points + notes (migration: existing accounts get [])
   // migrate meetings for scheduling: nextMeeting (date/time) + linked appointment/block ids
   S.meetings.forEach(m=>{

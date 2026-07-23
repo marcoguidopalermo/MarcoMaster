@@ -231,6 +231,74 @@ function blankDay(){
     shutdown:{ well:'',drift:'',avoid:'',trained:false,health:false,time:false,firstMove:'',clear:'' }
   };
 }
+/* ============================================================
+   JOURNAL-AWARE MERGE — used by the cloud reconciler (app.js) so a whole-state
+   swap in EITHER direction never drops journal data. Whole-document last-writer-
+   wins is kept for everything else (tasks, pipeline, appointments, meetings,
+   projects, board, legacy checkins); only journal fields + spotlogs are unioned
+   per day here. All merges only ever PRESERVE or GROW journal content.
+   ============================================================ */
+const JOURNAL_FLAT_FIELDS=['mood','sleep','meds','feelings','fulfillment','energy','stress'];
+function jrnlEmpty(v){ return v==null || v===''; }   // cleared star = null, cleared text = ''
+
+/* one field: non-empty beats empty; on a real conflict the newer document wins */
+function pickField(baseVal, overVal, baseNewer){
+  if(jrnlEmpty(overVal)) return {v:baseVal, changed:false};
+  if(jrnlEmpty(baseVal)) return {v:overVal, changed:true};
+  if(baseNewer)          return {v:baseVal, changed:false};
+  return {v:overVal, changed:(overVal!==baseVal)};
+}
+/* union two spotlog arrays by id — keep base order, append overlay-only ids.
+   Pure union (never drops): a check-in still held by the other side can reappear
+   after a local delete. Accepted trade-off ("grow journal, never drop"). */
+function unionById(base, overlay){
+  const list=[]; const seen=new Set();
+  (base||[]).forEach(x=>{ if(x){ if(x.id!=null) seen.add(x.id); list.push(x); } });
+  let added=false;
+  (overlay||[]).forEach(x=>{ if(x && x.id!=null && !seen.has(x.id)){ seen.add(x.id); list.push(x); added=true; } });
+  return {list, added};
+}
+/* does a day record carry ANY non-empty journal content worth merging? */
+function dayHasJournal(o){
+  if(!o || typeof o!=='object') return false;
+  const scopeHas=(x)=> x && typeof x==='object' && Object.keys(x).some(k=>!jrnlEmpty(x[k]));
+  if(scopeHas(o.morning) || scopeHas(o.evening)) return true;
+  if((o.spotlogs||[]).length) return true;
+  if(JOURNAL_FLAT_FIELDS.some(f=>!jrnlEmpty(o[f]))) return true;
+  return false;
+}
+/* Merge overlay's journal (morning/evening/spotlogs + legacy flat fields) INTO
+   base, per day. Only journal is touched — base's tasks/pipeline/etc. and both
+   sides' updatedAt are left alone. Returns true if base actually changed.
+   baseNewer decides same-field conflicts; forceBaseNewer pins base as the winner
+   (used on the local-wins path, incl. protecting in-progress local edits). */
+function mergeJournalInto(base, baseV, overlay, overlayV, forceBaseNewer){
+  if(!base || typeof base!=='object' || !overlay || typeof overlay!=='object') return false;
+  const baseNewer = forceBaseNewer ? true : ((+baseV||0) >= (+overlayV||0));
+  const od=overlay.days||{}; if(!base.days) base.days={};
+  let changed=false;
+  Object.keys(od).forEach(dk=>{
+    const o=od[dk]; if(!o || typeof o!=='object') return;
+    let b=base.days[dk];
+    if(!b){ if(!dayHasJournal(o)) return; b=base.days[dk]=blankDay(); changed=true; }
+    // morning / evening — generic key union (covers stars, intentions, trained,
+    // trainNote, diet, and any legacy anxiety/stress still on old records)
+    ['morning','evening'].forEach(scope=>{
+      const os=o[scope]; if(!os || typeof os!=='object') return;
+      if(!b[scope] || typeof b[scope]!=='object') b[scope]={};
+      const bs=b[scope];
+      Object.keys(os).forEach(k=>{ const r=pickField(bs[k], os[k], baseNewer); if(r.changed){ bs[k]=r.v; changed=true; } });
+    });
+    // spotlogs — union by id
+    const u=unionById(b.spotlogs, o.spotlogs);
+    if(u.added){ b.spotlogs=u.list; changed=true; }
+    // legacy flat journal fields — explicit allowlist (NOT a generic union: the day
+    // record also holds tasks/pipeline/archive/checkins/reset/focus/…)
+    JOURNAL_FLAT_FIELDS.forEach(f=>{ const r=pickField(b[f], o[f], baseNewer); if(r.changed){ b[f]=r.v; changed=true; } });
+  });
+  return changed;
+}
+
 /* get-or-create ANY day's record (e.g. a future date a meeting is scheduled on).
    Unlike day() it runs no migrations or rollover bridge — those run when that
    date actually becomes "today". Used by meeting scheduling to land a block on a

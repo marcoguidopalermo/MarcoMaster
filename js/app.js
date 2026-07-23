@@ -131,6 +131,7 @@ function subscribeCloud(){
     // device) is now adopted normally via newer-wins, so the devices converge.
     if(adopt && cloudCount<=NEAR_EMPTY && localCount>=PROTECT_FLOOR){
       Store._gateOpen=true;
+      mergeJournalInto(S, localV, incoming, cloudV, true);   // rescue any journal on the emptied cloud (local wins)
       if(typeof onCloudLooksEmptied==='function') onCloudLooksEmptied(localCount, cloudCount);
       persist({bump:true, force:true});      // local is the good, full copy → push it up
       return;
@@ -142,21 +143,57 @@ function subscribeCloud(){
       adopt=true;
     }
 
-    if(adopt && !saveTimer){
+    // Journal-aware merge on EVERY whole-state swap so neither direction drops
+    // journal data. Non-journal state keeps whole-document last-writer-wins.
+    const adoptedFinal = adopt && !saveTimer;
+    let mergedChanged=false;
+    if(adoptedFinal){
+      // HOOK A — cloud wins: fold LOCAL-only journal into the adopted cloud state
+      // first (cloud wins field conflicts; local fills only cloud-empty fields).
+      mergedChanged = mergeJournalInto(incoming, cloudV, S, localV);
       S=incoming;
       seedDefaults();
       if((+S.updatedAt||0)<cloudV) S.updatedAt=cloudV;   // carry the version forward (legacy docs)
       Store._lsSet('marcomaster', S);
       try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
       renderNav(); rerender();
+    }else{
+      // HOOK B — local wins (newer/equal, or adoption deferred by a pending save):
+      // fold the incoming CLOUD journal into local. forceBaseNewer pins local as the
+      // winner, which also protects any in-progress local edits from being clobbered.
+      // This is the "phone morning + laptop evening" recovery path.
+      mergedChanged = mergeJournalInto(S, localV, incoming, cloudV, true);
+      if(mergedChanged){
+        Store._lsSet('marcomaster', S);
+        // Show merged-in journal immediately when idle; hold off only while a save is
+        // pending or a text field has focus, so we never disrupt active typing/caret.
+        if(!saveTimer && !textInputFocused()) rerender();
+      }
     }
-    openGateAndFlush(firstReconcile, adopt);
+
+    // ---- gate-open + push decision (loop-safe: push only on a real journal delta) ----
+    Store._gateOpen=true;
+    if(mergedChanged && !saveTimer){
+      persist({bump:true});                              // propagate the grown journal superset so others adopt it directly
+    }else if(!mergedChanged && firstReconcile && !adoptedFinal && !saveTimer){
+      persist({bump: Store._gateDirty ? true : false});  // first-connect mirror; bump if real gate-window edits are pending
+    }
+    // if a save is pending, the debounced writer carries the already-merged S — no push here
+    Store._gateDirty=false;
   });
 }
-/* Open the cloud-write gate after the first reconcile. If we did NOT adopt the
-   cloud copy (our local is authoritative — newer, or cloud was empty), mirror the
-   local state up once so the cloud reflects this device. The shrink guard still
-   protects this write, so a near-empty local can never overwrite a fuller cloud. */
+/* is a text-entry field currently focused? (used to hold off a merge rerender so
+   we never yank the caret out mid-typing) */
+function textInputFocused(){
+  const a=document.activeElement; if(!a) return false;
+  const tag=(a.tagName||'').toLowerCase();
+  if(tag==='textarea') return true;
+  if(tag==='input'){ const t=(a.type||'text').toLowerCase(); return !['checkbox','radio','button','submit','range','color'].includes(t); }
+  return !!a.isContentEditable;
+}
+/* Open the cloud-write gate after the first reconcile (brand-new / empty-cloud
+   path). The shrink guard still protects any write, so a near-empty local can
+   never overwrite a fuller cloud. */
 function openGateAndFlush(firstSnap, adopted){
   Store._gateOpen=true;
   if(firstSnap && !adopted){ persist({bump:false}); }

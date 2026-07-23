@@ -18,6 +18,8 @@ const Store = {
                       // an unreconciled (possibly empty/stale) device CANNOT write to cloud
   _cloudCount:0,      // stateCount of the last cloud snapshot — the shrink-guard baseline
   _lastResult:null,   // 'synced'|'gate'|'guard'|'offline'|'error' — drives save() messaging
+  _gateDirty:false,   // a real edit was gate-blocked before the first reconcile — the
+                      // reconciler bumps the first-connect mirror so pre-snapshot edits win
   _lsGet(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return this.mem[k]??null; } },
   _lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){ this.mem[k]=v; } },
 
@@ -88,7 +90,7 @@ const Store = {
     this._lsSet(k,v);                       // localStorage cache — ALWAYS (never lose local work)
 
     if(!(FB.user && FB.db)){ this._lastResult='offline'; return false; }
-    if(block==='gate'){ this._lastResult='gate'; return false; }          // deferred, not an error
+    if(block==='gate'){ this._lastResult='gate'; if(isMain) this._gateDirty=true; return false; }   // deferred, not an error; flag real gate-window edits
     if(block==='guard'){
       this._lastResult='guard';
       if(typeof onGuardBlocked==='function'){ try{ onGuardBlocked(this._cloudCount||0, newCount); }catch(e){} }

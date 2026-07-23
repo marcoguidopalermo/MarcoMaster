@@ -27,7 +27,7 @@ function renderMeetings(){
         <span class="x" data-mdel="${m.id}">×</span>
       </div>
 
-      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)}</div>`:''}
+      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)} <span class="mtg-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></div>`:''}
       <button class="btn ghost sm mtg-sched-btn" data-msched="${m.id}">📅 ${m.nextMeeting?'Reschedule':'Schedule next meeting'}</button>
 
       <div class="mtg-section-lbl">Talking points</div>
@@ -100,6 +100,8 @@ function bindMeetings(){
 
   // schedule / reschedule the next meeting (date+time picker → appointment + block)
   q('[data-msched]','all').forEach(el=>el.onclick=()=>openMeetingSchedule(el.dataset.msched));
+  // cancel / remove the scheduled next meeting (clean up its appointment + block)
+  q('[data-mcancel]','all').forEach(el=>el.onclick=()=>{ if(cancelMeetingSchedule(el.dataset.mcancel)) rerender(); });
 
   // add a meeting
   const ni=q('#newMeeting'); if(ni) ni.oninput=()=>{ newMeetingName=ni.value; };
@@ -141,7 +143,7 @@ function renderDashMeetings(){
           <span class="pcm-top"><span class="proj-swatch" style="background:var(--accent)"></span><span class="pcm-name">${esc(m.name)}</span></span>
           <div class="proj-track"><div class="proj-fill" style="width:${pct}%;background:var(--accent)"></div></div>
           <span class="pcm-count">${s.done}/${s.total} covered</span>
-          ${m.nextMeeting?`<span class="pcm-next">${meetingNextLabel(m)}</span>`:''}
+          ${m.nextMeeting?`<span class="pcm-next">${meetingNextLabel(m)} <span class="pcm-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></span>`:''}
         </button>`; }).join('')}
     </div>`:'<div class="empty sm">No meetings — add one in the Meetings tab.</div>'}
   </div>`;
@@ -159,7 +161,7 @@ function renderMeetingModal(){
     <div class="modal modal-lg">
       <span class="modal-close" id="mmClose">×</span>
       <h3><span class="proj-swatch" style="background:var(--accent);display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(m.name)}</h3>
-      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)}</div>`:''}
+      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)} <span class="mtg-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></div>`:''}
       <button class="btn ghost sm mtg-sched-btn" id="mmSched">📅 ${m.nextMeeting?'Reschedule':'Schedule next meeting'}</button>
       <div class="mtg-section-lbl">Talking points</div>
       <div class="pm-tasks">
@@ -193,6 +195,7 @@ function bindMeetingModal(){
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addP(); };
   const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)
   const sc=q('#mmSched'); if(sc) sc.onclick=()=>openMeetingSchedule(meetingModalId);
+  q('[data-mcancel]','all').forEach(el=>el.onclick=()=>{ if(cancelMeetingSchedule(el.dataset.mcancel)){ renderMeetingModal(); rerender(); } });
 }
 
 /* ============================================================
@@ -211,6 +214,16 @@ function meetingNextLabel(m){
 function removeMeetingLinks(m){
   if(m.apptId){ S.appointments=(S.appointments||[]).filter(a=>a.id!==m.apptId); }
   if(m.blockId){ const ref=findTaskGlobal(m.blockId); if(ref){ S.days[ref.dayKey].tasks=(S.days[ref.dayKey].tasks||[]).filter(x=>x.id!==m.blockId); } }
+}
+/* cancel a scheduled next-meeting: strip the linked appointment + calendar block
+   (via removeMeetingLinks) and clear the scheduling fields. The meeting itself —
+   person, talking points, notes — is untouched. Returns true if cancelled. */
+function cancelMeetingSchedule(mid){
+  const m=(S.meetings||[]).find(x=>x.id===mid); if(!m || !m.nextMeeting) return false;
+  if(!confirm(`Cancel the scheduled meeting for "${m.name}"? This removes its appointment and time block. The meeting itself — talking points and notes — stays.`)) return false;
+  removeMeetingLinks(m);
+  m.nextMeeting=null; m.apptId=null; m.blockId=null;
+  save(); return true;
 }
 function scheduleMeeting(m, date, time){
   // 1) Appointment — update the linked one in place, or create + link (if missing/deleted).

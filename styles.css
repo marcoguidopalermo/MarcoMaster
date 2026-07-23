@@ -908,6 +908,8 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .mtg-next{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.02em;margin:2px 0 8px}
 .mtg-sched-btn{margin-bottom:14px}
 .pcm-next{font-family:var(--mono);font-size:10px;color:var(--accent)}
+.mtg-cancel,.pcm-cancel{color:var(--txt-faint);cursor:pointer;padding:0 3px;line-height:1;font-family:var(--sans)}
+.mtg-cancel:hover,.pcm-cancel:hover{color:var(--red)}
 .ms-fields{display:flex;gap:10px;flex-wrap:wrap}
 .ms-fields input{flex:1;min-width:140px}
 

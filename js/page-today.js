@@ -803,6 +803,8 @@ function bindDashboard(){
 
   // Meetings: tap a card → open the meeting quick-view modal
   q('[data-mtgopen]','all').forEach(el=>el.onclick=()=>openMeetingModal(el.dataset.mtgopen));
+  // Cancel a scheduled meeting straight from the dashboard strip (don't open the modal)
+  q('[data-mcancel]','all').forEach(el=>el.onclick=e=>{ e.stopPropagation(); if(cancelMeetingSchedule(el.dataset.mcancel)) rerender(); });
 
   // Dashboard inline add: create a project / meeting right here (reuses the tab logic)
   const dap=q('#dashAddProj'); if(dap) dap.onclick=()=>{ const v=prompt('New project name'); if(v && createProject(v)) rerender(); };

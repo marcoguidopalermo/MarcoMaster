@@ -137,7 +137,7 @@ function renderRules(){
   }
   <div class="card" style="margin-top:24px">
     <div class="card-h"><h3>Future Self Narrative</h3><span class="sub">who you're becoming</span></div>
-    <textarea data-narrative style="min-height:160px" placeholder="Write, in present tense, who you are becoming. The version of Marco who has the systems, the health, the business, the freedom. Re-read and update quarterly.">${esc(S.narrative||'')}</textarea>
+    <textarea data-narrative style="min-height:160px" placeholder="Write, in present tense, who you are becoming. The version of Marco who has the systems, the health, the business, the freedom. Re-read and update quarterly.">${esc((S.narrative&&S.narrative.full)||'')}</textarea>
   </div>
   `;
 }
@@ -149,6 +149,6 @@ function bindRules(){
     const i=q('#newRule'); const v=i.value.trim(); if(!v)return; S.rules.push(v); save(); rerender();
   };
   const ni=q('#newRule'); if(ni) ni.onkeydown=e=>{ if(e.key==='Enter') q('#addRule').click(); };
-  const na=q('[data-narrative]'); if(na) na.oninput=()=>{ S.narrative=na.value; save(); };
+  const na=q('[data-narrative]'); if(na) na.oninput=()=>{ if(!S.narrative||typeof S.narrative!=='object') S.narrative={full:'',condensed:'',principles:''}; S.narrative.full=na.value; save(); };
 }
 

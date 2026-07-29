@@ -88,6 +88,7 @@ function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
    their own routes/nav. */
 const PAGES={
   dashboard:{render:renderDashboard,bind:bindDashboard},
+  fsn:{render:renderFSN,bind:bindFSN},
   journal:{render:renderJournal,bind:bindJournal},
   meetings:{render:renderMeetings,bind:bindMeetings},
   settings:{render:renderSettings,bind:bindSettings},
@@ -119,6 +120,7 @@ function rerender(){
 /* two tabs: Dashboard (execution) + Journal (reflection) */
 const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
+  ['fsn','☼','Future Self'],
   ['journal','✦','Journal'],
   ['settings','⚙','Settings'],
 ];

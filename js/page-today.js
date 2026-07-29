@@ -33,6 +33,12 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
+  <button class="fsn-cta" id="fsnCta">
+    <span class="fsn-cta-ic">☼</span>
+    <span class="fsn-cta-txt"><b>Read your Future Self Narrative</b><span>Start the morning by remembering where you're going</span></span>
+    <span class="fsn-cta-go">→</span>
+  </button>
+
   ${renderTodayStrip()}
 
   ${renderPipeline()}
@@ -786,6 +792,9 @@ function confirmProjSchedule(){
 /* draft state for the unified add row (kind + optional project + duration) */
 let taskDraft={kind:'quick', mins:60, customOpen:false, projectId:null};
 function bindDashboard(){
+  // Morning surfacing: jump straight into the Future Self Narrative reader
+  const fc=q('#fsnCta'); if(fc) fc.onclick=()=>go('fsn');
+
   // Things to think about (Parking Lot data)
   const ta=q('#thinkAdd'); const ti=q('#thinkInput');
   const addThink=()=>{ const v=(ti&&ti.value||'').trim(); if(!v) return; if(!S.board) S.board={mustwin:[],scheduled:[],parking:[]}; if(!S.board.parking) S.board.parking=[]; S.board.parking.push({id:b(),txt:v}); save(); rerender(); };

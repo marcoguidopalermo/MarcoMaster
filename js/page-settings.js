@@ -20,6 +20,19 @@ function renderSettings(){
   </div>
 
   <div class="card">
+    <div class="card-h"><h3>Future Self Narrative</h3><span class="sub">read it every morning</span></div>
+    <p class="list-note" style="margin-top:0">Plain text. Line breaks and paragraphs are preserved in the reader (Future Self tab). Saves automatically.</p>
+    <div class="set-fsn">
+      <label class="fsn-lbl">Full</label>
+      <textarea data-fsn="full" style="min-height:200px" placeholder="Write, in present tense, who you are becoming — the version of Marco who has the systems, the health, the business, the freedom. The full narrative you re-read to remember where you're going.">${esc((S.narrative&&S.narrative.full)||'')}</textarea>
+      <label class="fsn-lbl">Condensed</label>
+      <textarea data-fsn="condensed" style="min-height:120px" placeholder="A shorter version for days you only have a minute — the essence of the full narrative.">${esc((S.narrative&&S.narrative.condensed)||'')}</textarea>
+      <label class="fsn-lbl">Principles</label>
+      <textarea data-fsn="principles" style="min-height:120px" placeholder="The core principles / standards you live by — one per line.">${esc((S.narrative&&S.narrative.principles)||'')}</textarea>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-h"><h3>Preferences</h3></div>
     <div class="set-row">
       <label>Theme</label>
@@ -110,6 +123,10 @@ function restoreState(newState, label){
 function bindSettings(){
   bindProjects();      // add/edit/delete projects + names/colors + tasks within projects
   bindRecurring();     // recurring cadence manager
+
+  // Future Self Narrative editors — autosave through the normal save() path, no
+  // re-render (keep the caret where it is while typing).
+  q('[data-fsn]','all').forEach(el=>el.oninput=()=>{ if(!S.narrative) S.narrative={full:'',condensed:'',principles:''}; S.narrative[el.dataset.fsn]=el.value; save(); });
 
   const tb=q('#setTheme'); if(tb) tb.onclick=()=>{ toggleTheme(); rerender(); };
   const ds=q('#setDayStart'); if(ds) ds.onchange=()=>{ S.settings.dayStart=+ds.value; save(); };

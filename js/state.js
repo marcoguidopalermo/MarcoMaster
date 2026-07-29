@@ -36,7 +36,13 @@ function seedDefaults(){
   if(!S.rules) S.rules = [...DEFAULT_RULES];
   if(!S.board) S.board = JSON.parse(JSON.stringify(DEFAULT_BOARD));
   if(!S.season) S.season = 'Business Stabilization + Health Rebuild + Content Restart';
-  if(!S.narrative) S.narrative = '';
+  // Future Self Narrative: structured {full, condensed, principles}. Migration is
+  // non-destructive — a legacy plain-string narrative is preserved into .full.
+  if(typeof S.narrative==='string') S.narrative = { full:S.narrative, condensed:'', principles:'' };
+  if(!S.narrative || typeof S.narrative!=='object' || Array.isArray(S.narrative)) S.narrative = { full:'', condensed:'', principles:'' };
+  if(S.narrative.full==null) S.narrative.full='';
+  if(S.narrative.condensed==null) S.narrative.condensed='';
+  if(S.narrative.principles==null) S.narrative.principles='';
   if(!S.projects) S.projects = defaultProjects();
   // one-time backfill: if an existing account ended up with an empty projects
   // list, seed the two defaults once (the flag stops it re-seeding if the user

@@ -179,6 +179,9 @@ function renderMeetingModal(){
       <div class="mtg-section-lbl">Notes</div>
       <textarea class="mtg-notes" id="mmNotes" placeholder="Open notes / context for ${esc(m.name)}…">${esc(m.notes||'')}</textarea>
       <p class="list-note" style="margin-top:10px">Quick view · full management on the Meetings tab</p>
+      <div class="mtg-danger" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <button class="btn danger sm" id="mmDelMeeting">Delete meeting</button>
+      </div>
     </div>`;
   el.classList.add('show');
   bindMeetingModal();
@@ -196,6 +199,15 @@ function bindMeetingModal(){
   const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)
   const sc=q('#mmSched'); if(sc) sc.onclick=()=>openMeetingSchedule(meetingModalId);
   q('[data-mcancel]','all').forEach(el=>el.onclick=()=>{ if(cancelMeetingSchedule(el.dataset.mcancel)){ renderMeetingModal(); rerender(); } });
+  // delete the whole meeting — person, talking points, notes — and cancel anything scheduled
+  const dm=q('#mmDelMeeting'); if(dm) dm.onclick=()=>{
+    if(!confirm(`Delete meeting "${m.name}"? This removes the person, all talking points and notes, and cancels anything scheduled. This can't be undone.`)) return;
+    removeMeetingLinks(m);   // clean up its linked appointment + calendar block
+    S.meetings=(S.meetings||[]).filter(x=>x.id!==m.id);
+    save();
+    meetingModalId=null; closeReset();
+    rerender();
+  };
 }
 
 /* ============================================================

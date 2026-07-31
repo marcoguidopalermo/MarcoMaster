@@ -17,11 +17,15 @@ const { setGlobalOptions } = require('firebase-functions/v2');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
-const admin = require('firebase-admin');
+// firebase-admin v14 dropped the `admin.firestore()/admin.messaging()` namespace
+// helpers — use the modular subpath imports instead.
+const { initializeApp } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const { getMessaging } = require('firebase-admin/messaging');
 const { DateTime } = require('luxon');
 
-admin.initializeApp();
-const db = admin.firestore();
+initializeApp();
+const db = getFirestore();
 
 setGlobalOptions({ region: 'us-central1' });
 
@@ -75,7 +79,7 @@ async function pruneTokens(uid, deadSet){
 async function sendPush(uid, { title, body, url }){
   const tokens = await readTokens(uid);
   if (!tokens.length) return { tokens: 0, sent: 0, failed: 0 };
-  const res = await admin.messaging().sendEachForMulticast({
+  const res = await getMessaging().sendEachForMulticast({
     tokens,
     data: {
       title: String(title || 'MarcoMaster'),

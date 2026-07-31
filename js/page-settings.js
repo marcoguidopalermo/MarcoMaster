@@ -133,6 +133,16 @@ function setNotif(path, val){
   for(let i=0;i<keys.length-1;i++){ if(!o[keys[i]] || typeof o[keys[i]]!=='object') o[keys[i]]={}; o=o[keys[i]]; }
   o[keys[keys.length-1]]=val;
 }
+/* Time-of-day options at 15-min increments (:00/:15/:30/:45 — all exact scheduler
+   ticks) from fromHour:00 to toHour:00 inclusive. Value = minutes since midnight. */
+function settingsTimeOpts(selMin, fromHour, toHour){
+  let o='';
+  for(let m=fromHour*60; m<=toHour*60; m+=15){
+    const lbl=fmtClock(String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'));
+    o+=`<option value="${m}" ${m===selMin?'selected':''}>${lbl}</option>`;
+  }
+  return o;
+}
 /* Options for the "minutes before" and check-in "interval" selects. */
 function notifMinsOpts(sel, pairs){
   return pairs.map(([v,lbl])=>`<option value="${v}" ${v===sel?'selected':''}>${lbl}</option>`).join('');
@@ -177,7 +187,7 @@ function renderNotifConfig(state){
           ${sw(digest.enabled, 'appt.digest.enabled')}
         </div>
         ${digest.enabled ? `<div class="set-row"><label>Digest time</label>
-          <select data-notif="appt.digest.hour">${settingsHourOpts(digest.hour,5,12)}</select></div>` : ''}
+          <select data-notif="appt.digest.atMin">${settingsTimeOpts(digest.atMin,5,12)}</select></div>` : ''}
       ` : ''}
     </div>
     <div class="notif-sub">
@@ -190,9 +200,9 @@ function renderNotifConfig(state){
         <div class="set-row"><label>Every</label>
           <select data-notif="checkin.intervalMin">${notifMinsOpts(checkin.intervalMin, INTERVAL)}</select></div>
         <div class="set-row"><label>Between</label>
-          <select data-notif="checkin.startHour">${settingsHourOpts(checkin.startHour,5,22)}</select>
+          <select data-notif="checkin.startMin">${settingsTimeOpts(checkin.startMin,5,22)}</select>
           <label>and</label>
-          <select data-notif="checkin.endHour">${settingsHourOpts(checkin.endHour,6,23)}</select></div>
+          <select data-notif="checkin.endMin">${settingsTimeOpts(checkin.endMin,6,23)}</select></div>
       ` : ''}
     </div>
     <div class="notif-sub">
@@ -202,7 +212,7 @@ function renderNotifConfig(state){
         ${sw((ns.night||{}).enabled, 'night.enabled')}
       </div>
       ${(ns.night||{}).enabled ? `<div class="set-row"><label>At</label>
-        <select data-notif="night.hour">${settingsHourOpts((ns.night||{}).hour==null?21:ns.night.hour,17,23)}</select></div>` : ''}
+        <select data-notif="night.atMin">${settingsTimeOpts((ns.night||{}).atMin==null?21*60:ns.night.atMin,17,23)}</select></div>` : ''}
     </div>
     ` : ''}
   </div>`;

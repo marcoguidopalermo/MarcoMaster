@@ -50,6 +50,21 @@ function clockLabel(time){
   let disp = h % 12; if (disp === 0) disp = 12;
   return disp + ':' + String(m || 0).padStart(2, '0') + ampm;
 }
+/* Resolve a time-of-day as minutes since midnight, 15-min aligned. Prefers the
+   new atMin/startMin/endMin field, falls back to the legacy whole-hour field,
+   then a default — so the function is correct whether it reads pre- or
+   post-migration state. defMin is in minutes since midnight. */
+function resolveTimeMin(minVal, legacyHour, defMin){
+  if(Number.isInteger(minVal) && minVal >= 0 && minVal <= 1439) return Math.round(minVal / 15) * 15;
+  if(Number.isInteger(legacyHour) && legacyHour >= 0 && legacyHour <= 23) return legacyHour * 60;
+  return defMin;
+}
+/* minutes since midnight → "HH:MM" (24h) — used in dedupe keys so a changed
+   time produces a new key and re-arms rather than being blocked by a stale marker. */
+function hhmm(min){
+  return String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+}
+
 /* Read notifSettings from app state with every field defaulted defensively —
    a missing object, a partial one, or garbage values can never throw and always
    yield sensible behaviour (matching the client defaults). */
@@ -61,7 +76,6 @@ function readNotifSettings(state){
   const night = ns.night || {};
   const LEAD = [15, 30, 60, 120];
   const INT = [30, 60, 90, 120];
-  const hr = (h, def) => (Number.isInteger(h) && h >= 0 && h <= 23) ? h : def;
   return {
     master: ns.master !== false,                    // default ON
     appt: {
@@ -71,18 +85,18 @@ function readNotifSettings(state){
       minutesBefore2: LEAD.includes(appt.minutesBefore2) ? appt.minutesBefore2 : null,
       digest: {
         enabled: digest.enabled === true,           // default OFF
-        hour: hr(digest.hour, 8),
+        atMin: resolveTimeMin(digest.atMin, digest.hour, 8 * 60),
       },
     },
     checkin: {
       enabled: checkin.enabled === true,            // default OFF
       intervalMin: INT.includes(checkin.intervalMin) ? checkin.intervalMin : 60,
-      startHour: hr(checkin.startHour, 9),
-      endHour: hr(checkin.endHour, 17),
+      startMin: resolveTimeMin(checkin.startMin, checkin.startHour, 9 * 60),
+      endMin: resolveTimeMin(checkin.endMin, checkin.endHour, 17 * 60),
     },
     night: {
       enabled: night.enabled === true,              // default OFF
-      hour: hr(night.hour, 21),                     // 9:00pm
+      atMin: resolveTimeMin(night.atMin, night.hour, 21 * 60),   // 9:00pm
     },
   };
 }
@@ -200,9 +214,9 @@ exports.appointmentReminders = onSchedule(
         }
       }
 
-      // 2) DAILY DIGEST — one push at the configured hour listing today's appts.
-      if (cfg.appt.digest.enabled && tor.hour === cfg.appt.digest.hour) {
-        const key = `digest|${todayKey}`;
+      // 2) DAILY DIGEST — one push at the configured time listing today's appts.
+      if (cfg.appt.digest.enabled && minutesNow === cfg.appt.digest.atMin) {
+        const key = `digest|${todayKey}|${hhmm(cfg.appt.digest.atMin)}`;
         if (!nextSent[key]) {
           const todays = appts
             .filter(a => a && !a.done && a.date === todayKey && a.time)
@@ -223,9 +237,9 @@ exports.appointmentReminders = onSchedule(
 
     // 3) CHECK-IN REMINDERS — at interval slots within the active window.
     const ci = cfg.checkin;
-    if (ci.enabled && ci.endHour > ci.startHour) {
-      const windowStart = ci.startHour * 60;
-      const windowEnd = ci.endHour * 60;
+    if (ci.enabled && ci.endMin > ci.startMin) {
+      const windowStart = ci.startMin;
+      const windowEnd = ci.endMin;
       const inWindow = minutesNow >= windowStart && minutesNow <= windowEnd;
       const onSlot = ((minutesNow - windowStart) % ci.intervalMin) === 0;
       if (inWindow && onSlot) {
@@ -243,10 +257,10 @@ exports.appointmentReminders = onSchedule(
       }
     }
 
-    // 4) NIGHT REMINDER — one evening push at the configured hour: journal nudge +
+    // 4) NIGHT REMINDER — one evening push at the configured time: journal nudge +
     //    tomorrow's appointment preview (omitted if none) + a bedtime line.
-    if (cfg.night.enabled && tor.hour === cfg.night.hour) {
-      const key = `night|${todayKey}`;
+    if (cfg.night.enabled && minutesNow === cfg.night.atMin) {
+      const key = `night|${todayKey}|${hhmm(cfg.night.atMin)}`;
       if (!nextSent[key]) {
         const tomorrowKey = tor.plus({ days: 1 }).toFormat('yyyy-LL-dd');
         const tomorrow = appts

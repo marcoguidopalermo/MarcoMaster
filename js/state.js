@@ -97,15 +97,17 @@ function seedDefaults(){
     if(ns.appt.minutesBefore2===undefined) ns.appt.minutesBefore2=null;   // optional 2nd reminder, off by default
     if(!ns.appt.digest || typeof ns.appt.digest!=='object') ns.appt.digest={};
     if(ns.appt.digest.enabled==null) ns.appt.digest.enabled=false;
-    if(ns.appt.digest.hour==null) ns.appt.digest.hour=8;
+    // time-of-day stored as minutes since midnight (15-min granular); migrate
+    // non-destructively from the legacy whole-hour value.
+    if(ns.appt.digest.atMin==null) ns.appt.digest.atMin = Number.isInteger(ns.appt.digest.hour) ? ns.appt.digest.hour*60 : 8*60;
     if(!ns.checkin || typeof ns.checkin!=='object') ns.checkin={};
     if(ns.checkin.enabled==null) ns.checkin.enabled=false;
     if(ns.checkin.intervalMin==null) ns.checkin.intervalMin=60;
-    if(ns.checkin.startHour==null) ns.checkin.startHour=9;
-    if(ns.checkin.endHour==null) ns.checkin.endHour=17;
+    if(ns.checkin.startMin==null) ns.checkin.startMin = Number.isInteger(ns.checkin.startHour) ? ns.checkin.startHour*60 : 9*60;
+    if(ns.checkin.endMin==null) ns.checkin.endMin = Number.isInteger(ns.checkin.endHour) ? ns.checkin.endHour*60 : 17*60;
     if(!ns.night || typeof ns.night!=='object') ns.night={};
     if(ns.night.enabled==null) ns.night.enabled=false;   // default OFF
-    if(ns.night.hour==null) ns.night.hour=21;             // 9:00pm
+    if(ns.night.atMin==null) ns.night.atMin = Number.isInteger(ns.night.hour) ? ns.night.hour*60 : 21*60;   // 9:00pm
   }
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};

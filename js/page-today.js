@@ -39,11 +39,15 @@ function renderDashboard(){
     <span class="fsn-cta-go">→</span>
   </button>
 
+  ${renderFireCTA()}
+
   ${renderTodayStrip()}
 
   ${renderPipeline()}
 
   ${renderCompletedToday()}
+
+  ${renderFireEvidence()}
 
   ${renderAllTasks()}
 
@@ -794,6 +798,8 @@ let taskDraft={kind:'quick', mins:60, customOpen:false, projectId:null};
 function bindDashboard(){
   // Morning surfacing: jump straight into the Future Self Narrative reader
   const fc=q('#fsnCta'); if(fc) fc.onclick=()=>go('fsn');
+  // Fire Station: start-a-fire CTA / return-to-fire, and evidence card
+  bindFireDash();
 
   // Things to think about (Parking Lot data)
   const ta=q('#thinkAdd'); const ti=q('#thinkInput');

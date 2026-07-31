@@ -75,8 +75,10 @@ function fmtDuration(m){
 
 function addTask(txt,kind,mins){
   txt=txt.trim(); if(!txt) return;
-  day().tasks.push({id:b(),txt,kind,done:false,priority:false,mins:mins||(kind==='quick'?2:60),start:null,schedDate:null});
+  const t={id:b(),txt,kind,done:false,priority:false,mins:mins||(kind==='quick'?2:60),start:null,schedDate:null};
+  day().tasks.push(t);
   save();
+  return t.id;   // callers (e.g. Fire Station "Queue a fire") record the new id
 }
 function archiveCompleted(){
   const d=day();

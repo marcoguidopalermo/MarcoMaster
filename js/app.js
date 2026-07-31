@@ -70,6 +70,8 @@ function startApp(){
   // push is unused/unsupported. Token storage is fully isolated from app state.
   try{ onForegroundMessage(); }catch(e){ console.warn('onForegroundMessage failed', e); }
   try{ refreshPushToken(); }catch(e){ console.warn('refreshPushToken failed', e); }
+  // Fire Station: resume an active fire (bar only) + bind visibility repaint.
+  try{ initFire(); }catch(e){ console.warn('initFire failed', e); }
   // 2) Now reconcile with the cloud in the background and keep syncing live.
   setSyncStatus(FB.user?'syncing':'local');
   subscribeCloud();

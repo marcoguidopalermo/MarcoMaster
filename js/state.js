@@ -109,6 +109,11 @@ function seedDefaults(){
     if(ns.night.enabled==null) ns.night.enabled=false;   // default OFF
     if(ns.night.atMin==null) ns.night.atMin = Number.isInteger(ns.night.hour) ? ns.night.hour*60 : 21*60;   // 9:00pm
   }
+  // Fire Station: focus-session records + the single active fire. Additive —
+  // fires are normal tasks; task.defOfDone is an optional field on the task
+  // (no backfill needed; absence = none). Non-destructive.
+  if(!S.fireSessions) S.fireSessions=[];
+  if(S.activeFireId===undefined) S.activeFireId=null;
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
   S.recurring.forEach(r=>{

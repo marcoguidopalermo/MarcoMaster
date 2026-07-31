@@ -64,9 +64,26 @@ function startApp(){
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeReset(); });
   go('dashboard');
   bindFlushHandlers();
+  registerServiceWorker();
   // 2) Now reconcile with the cloud in the background and keep syncing live.
   setSyncStatus(FB.user?'syncing':'local');
   subscribeCloud();
+}
+
+/* Register the FCM service worker (Phase 1: register-only — proves the worker's
+   scope resolves on the /MarcoMaster/ GitHub Pages subpath). The worker does NO
+   caching and NO fetch interception, so this is a genuine no-op for page behaviour:
+   every request, including ?v= cache-busts, still goes straight to the network.
+   No token/getToken logic yet — that arrives in a later phase. Relative path so it
+   resolves correctly under the subpath; guarded so it runs once. */
+let _swRegistered=false;
+function registerServiceWorker(){
+  if(_swRegistered) return;
+  if(!('serviceWorker' in navigator)) return;
+  _swRegistered=true;
+  navigator.serviceWorker.register('firebase-messaging-sw.js')
+    .then(reg=>{ console.log('SW registered, scope:', reg.scope); })
+    .catch(err=>{ console.warn('SW registration failed', err); });
 }
 
 /* Flush a pending save the moment the page is hidden or torn down. Mobile browsers

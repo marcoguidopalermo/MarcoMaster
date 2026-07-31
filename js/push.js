@@ -73,8 +73,8 @@ function getMessaging(){
    transaction so concurrent devices don't clobber each other. Written DIRECTLY
    via FB.db — completely outside Store.persist() and all its guards. */
 async function savePushToken(token){
-  if(!token) return false;
-  if(!(FB.user && FB.db)){ toast('Sign in to sync notifications'); return false; }
+  if(!token){ console.error('savePushToken: no token to save'); return false; }
+  if(!(FB.user && FB.db)){ console.error('savePushToken: not signed in — token not saved'); toast('Sign in to sync notifications'); return false; }
   const now = Date.now();
   const platform = platformTag();
   const ref = FB.db.collection('pushTokens').doc(FB.user.uid);
@@ -89,7 +89,26 @@ async function savePushToken(token){
       tx.set(ref, { tokens }, { merge: true });
     });
     return true;
-  }catch(e){ console.warn('savePushToken failed', e); return false; }
+  }catch(e){ console.error('savePushToken failed (token NOT persisted)', e); return false; }
+}
+
+/* Cross-browser Notification.requestPermission: supports both the modern Promise
+   form and Safari's legacy callback form (which returns undefined synchronously,
+   not a Promise). Resolves once to the resulting permission string. */
+function requestPermissionCompat(){
+  return new Promise((resolve)=>{
+    try{
+      const r = Notification.requestPermission(resolve);   // legacy: fills the callback
+      if(r && typeof r.then === 'function') r.then(resolve, ()=>resolve(Notification.permission));
+    }catch(e){ resolve(Notification.permission); }
+  });
+}
+
+/* Fetch the FCM token, reusing the Phase-1 service worker via
+   navigator.serviceWorker.ready — this module never re-registers the worker. */
+async function getPushToken(m){
+  const reg = await navigator.serviceWorker.ready;
+  return m.getToken({ vapidKey: PUSH_VAPID_KEY, serviceWorkerRegistration: reg });
 }
 
 /* ---------- enable (TAP-GATED — the only path that prompts) ---------- */
@@ -99,30 +118,36 @@ async function enablePush(){
   const m = getMessaging();
   if(!m){ return 'unsupported'; }
   try{
-    const perm = await Notification.requestPermission();
+    // Prompt ONLY if not already granted. When permission is already granted
+    // (from a previous session), skip the prompt and proceed straight to token
+    // retrieval — never depend on requestPermission's return value, which is
+    // undefined in Safari's legacy callback form and would short-circuit here.
+    let perm = ('Notification' in window) ? Notification.permission : 'default';
+    if(perm !== 'granted'){ perm = await requestPermissionCompat(); }
     if(perm !== 'granted') return (perm === 'denied') ? 'denied' : 'supported';
-    // Reuse the Phase-1 service worker — do NOT register again.
-    const reg = await navigator.serviceWorker.ready;
-    const token = await m.getToken({ vapidKey: PUSH_VAPID_KEY, serviceWorkerRegistration: reg });
-    if(!token){ console.warn('getToken returned empty'); return 'supported'; }
-    await savePushToken(token);
-    toast('Notifications enabled ✓');
+    // Granted (either way) → always fetch + persist the token.
+    const token = await getPushToken(m);
+    if(!token){ console.error('enablePush: getToken returned empty — token NOT persisted'); return 'supported'; }
+    const saved = await savePushToken(token);
+    if(saved) toast('Notifications enabled ✓');
     return 'granted';
-  }catch(e){ console.warn('enablePush failed', e); return pushSupport(); }
+  }catch(e){ console.error('enablePush failed', e); return pushSupport(); }
 }
 
 /* ---------- load-time refresh (NEVER prompts) ---------- */
 /* Only if permission is already granted: fetch the (possibly rotated) token and
-   re-upsert it so it stays live across token rotation. Reuses the Phase-1 SW. */
+   re-upsert it so it stays live across token rotation. Reuses the Phase-1 SW.
+   This is the automatic path that persists the token for a device that was
+   granted in a previous session but whose token was never saved. */
 async function refreshPushToken(){
   try{
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
     const m = getMessaging();
     if(!m) return;
-    const reg = await navigator.serviceWorker.ready;
-    const token = await m.getToken({ vapidKey: PUSH_VAPID_KEY, serviceWorkerRegistration: reg });
-    if(token) await savePushToken(token);
-  }catch(e){ console.warn('refreshPushToken failed', e); }
+    const token = await getPushToken(m);
+    if(token){ await savePushToken(token); }
+    else { console.error('refreshPushToken: getToken returned empty — token NOT persisted'); }
+  }catch(e){ console.error('refreshPushToken failed', e); }
 }
 
 /* ---------- foreground messages → in-app toast ---------- */

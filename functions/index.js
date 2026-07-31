@@ -34,7 +34,6 @@ const TZ = 'America/Toronto';
 // whole users collection (that would read the entire app-state doc every run).
 const USER_UID = 'OgEsKyNilhhmmh5FmwIQXh1qRwu1';
 const APP_URL = 'https://marcoguidopalermo.github.io/MarcoMaster/';
-const REMINDER_MINUTES = 30;   // fire when an appointment starts within this many minutes
 const MARKER_TTL_MS = 24 * 60 * 60 * 1000;   // prune sent-markers older than 24h
 
 // FCM error codes that mean the token is dead and should be pruned.
@@ -50,6 +49,35 @@ function clockLabel(time){
   const ampm = (h >= 12) ? 'pm' : 'am';
   let disp = h % 12; if (disp === 0) disp = 12;
   return disp + ':' + String(m || 0).padStart(2, '0') + ampm;
+}
+/* Read notifSettings from app state with every field defaulted defensively —
+   a missing object, a partial one, or garbage values can never throw and always
+   yield sensible behaviour (matching the client defaults). */
+function readNotifSettings(state){
+  const ns = (state && state.notifSettings) || {};
+  const appt = ns.appt || {};
+  const digest = appt.digest || {};
+  const checkin = ns.checkin || {};
+  const LEAD = [15, 30, 60, 120];
+  const INT = [30, 60, 90, 120];
+  const hr = (h, def) => (Number.isInteger(h) && h >= 0 && h <= 23) ? h : def;
+  return {
+    master: ns.master !== false,                    // default ON
+    appt: {
+      enabled: appt.enabled !== false,              // default ON
+      minutesBefore: LEAD.includes(appt.minutesBefore) ? appt.minutesBefore : 30,
+      digest: {
+        enabled: digest.enabled === true,           // default OFF
+        hour: hr(digest.hour, 8),
+      },
+    },
+    checkin: {
+      enabled: checkin.enabled === true,            // default OFF
+      intervalMin: INT.includes(checkin.intervalMin) ? checkin.intervalMin : 60,
+      startHour: hr(checkin.startHour, 9),
+      endHour: hr(checkin.endHour, 17),
+    },
+  };
 }
 
 /* Read this user's push tokens (array of token strings) from pushTokens/{uid}. */
@@ -98,7 +126,9 @@ async function sendPush(uid, { title, body, url }){
   return { tokens: tokens.length, sent: res.successCount, failed: res.failureCount };
 }
 
-/* ---------- scheduled: appointment reminders ---------- */
+/* ---------- scheduled: reminders (lead / digest / check-in) ----------
+   Ticks every 15 min, so every configured time resolves to the nearest tick.
+   All behaviour is driven by notifSettings and gated by the master switch. */
 exports.appointmentReminders = onSchedule(
   { schedule: 'every 15 minutes', timeZone: TZ },
   async () => {
@@ -106,10 +136,17 @@ exports.appointmentReminders = onSchedule(
     const userSnap = await db.collection('users').doc(uid).get();
     if (!userSnap.exists) { logger.info('no user doc; nothing to do'); return; }
     const state = (userSnap.data() || {}).marcomaster || {};
-    const appts = Array.isArray(state.appointments) ? state.appointments : [];
-    if (!appts.length) return;
+    const cfg = readNotifSettings(state);
+    if (!cfg.master) return;   // master switch off → send nothing
 
+    const appts = Array.isArray(state.appointments) ? state.appointments : [];
     const now = Date.now();
+
+    // "Now" in Toronto, floored to the 15-min tick for slot alignment.
+    const tor = DateTime.now().setZone(TZ);
+    const tickMin = Math.floor(tor.minute / 15) * 15;
+    const minutesNow = tor.hour * 60 + tickMin;     // minutes since local midnight, tick-aligned
+    const todayKey = tor.toFormat('yyyy-LL-dd');
 
     // Load dedupe markers, pruning any older than the TTL so the map stays bounded.
     const sentRef = db.collection('sentReminders').doc(uid);
@@ -121,33 +158,74 @@ exports.appointmentReminders = onSchedule(
       if (typeof v === 'number' && (now - v) < MARKER_TTL_MS) nextSent[k] = v;
       else changed = true;   // dropped a stale marker
     }
+    const mark = (key) => { nextSent[key] = now; changed = true; };
 
-    for (const a of appts) {
-      if (!a || a.done === true) continue;      // skip completed
-      if (!a.date || !a.time) continue;         // need a concrete start time
-      const [y, mo, d] = String(a.date).split('-').map(Number);
-      const [h, mi] = String(a.time).split(':').map(Number);
-      const dt = DateTime.fromObject(
-        { year: y, month: mo, day: d, hour: h || 0, minute: mi || 0 },
-        { zone: TZ }
-      );
-      if (!dt.isValid) continue;
-      const minutesUntil = (dt.toMillis() - now) / 60000;
-      if (!(minutesUntil > 0 && minutesUntil <= REMINDER_MINUTES)) continue;
+    // 1) LEAD REMINDERS — one per appointment, within the configured window.
+    if (cfg.appt.enabled) {
+      const lead = cfg.appt.minutesBefore;
+      for (const a of appts) {
+        if (!a || a.done === true) continue;
+        if (!a.date || !a.time) continue;
+        const [y, mo, d] = String(a.date).split('-').map(Number);
+        const [h, mi] = String(a.time).split(':').map(Number);
+        const dt = DateTime.fromObject(
+          { year: y, month: mo, day: d, hour: h || 0, minute: mi || 0 }, { zone: TZ });
+        if (!dt.isValid) continue;
+        const minutesUntil = (dt.toMillis() - now) / 60000;
+        if (!(minutesUntil > 0 && minutesUntil <= lead)) continue;
+        // Composite key → a reschedule re-fires; unchanged fires once, ever.
+        const key = `lead|${a.id}|${a.date}|${a.time}`;
+        if (nextSent[key]) continue;
+        const result = await sendPush(uid, {
+          title: a.title || 'Appointment reminder',
+          body: `Starts at ${clockLabel(a.time)} — in about ${lead} minutes`,
+          url: APP_URL,
+        });
+        logger.info('lead reminder sent', { key, ...result });
+        mark(key);
+      }
 
-      // Composite key → a reschedule (new date/time) fires a fresh reminder;
-      // an unchanged appointment fires exactly once, ever.
-      const key = `${a.id}|${a.date}|${a.time}`;
-      if (nextSent[key]) continue;   // already fired
+      // 2) DAILY DIGEST — one push at the configured hour listing today's appts.
+      if (cfg.appt.digest.enabled && tor.hour === cfg.appt.digest.hour) {
+        const key = `digest|${todayKey}`;
+        if (!nextSent[key]) {
+          const todays = appts
+            .filter(a => a && !a.done && a.date === todayKey && a.time)
+            .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+          if (todays.length) {   // skip entirely if there are none
+            const body = todays.map(a => `${clockLabel(a.time)} ${a.title || 'Appointment'}`).join(' · ');
+            const result = await sendPush(uid, {
+              title: `Today's appointments (${todays.length})`,
+              body,
+              url: APP_URL,
+            });
+            logger.info('digest sent', { key, count: todays.length, ...result });
+            mark(key);
+          }
+        }
+      }
+    }
 
-      const result = await sendPush(uid, {
-        title: a.title || 'Appointment reminder',
-        body: `Starts at ${clockLabel(a.time)} — in about ${REMINDER_MINUTES} minutes`,
-        url: APP_URL,
-      });
-      logger.info('reminder sent', { key, title: a.title, ...result });
-      nextSent[key] = now;
-      changed = true;
+    // 3) CHECK-IN REMINDERS — at interval slots within the active window.
+    const ci = cfg.checkin;
+    if (ci.enabled && ci.endHour > ci.startHour) {
+      const windowStart = ci.startHour * 60;
+      const windowEnd = ci.endHour * 60;
+      const inWindow = minutesNow >= windowStart && minutesNow <= windowEnd;
+      const onSlot = ((minutesNow - windowStart) % ci.intervalMin) === 0;
+      if (inWindow && onSlot) {
+        const slot = `${String(tor.hour).padStart(2, '0')}:${String(tickMin).padStart(2, '0')}`;
+        const key = `checkin|${todayKey}|${slot}`;
+        if (!nextSent[key]) {
+          const result = await sendPush(uid, {
+            title: 'Check-in',
+            body: "How are you doing? Take a moment to log a quick check-in.",
+            url: APP_URL,
+          });
+          logger.info('check-in sent', { key, ...result });
+          mark(key);
+        }
+      }
     }
 
     // Overwrite the sent field wholesale (not merge) so pruned keys are removed.

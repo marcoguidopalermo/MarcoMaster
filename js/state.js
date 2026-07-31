@@ -83,6 +83,26 @@ function seedDefaults(){
   if(S.settings.dayEnd==null) S.settings.dayEnd=21;
   if(S.settings.autoAddRecurring==null) S.settings.autoAddRecurring=true;
   if(S.settings.showMore==null) S.settings.showMore=false;
+  // Notification settings (drives the Cloud Function; lives in app state so it
+  // syncs across devices and rides in backups). Non-destructive: create if absent
+  // and backfill each field. Defaults preserve current behavior — appointment
+  // reminders ON at 30 min, master ON; digest + check-ins OFF.
+  if(!S.notifSettings || typeof S.notifSettings!=='object') S.notifSettings={};
+  {
+    const ns=S.notifSettings;
+    if(ns.master==null) ns.master=true;
+    if(!ns.appt || typeof ns.appt!=='object') ns.appt={};
+    if(ns.appt.enabled==null) ns.appt.enabled=true;
+    if(ns.appt.minutesBefore==null) ns.appt.minutesBefore=30;
+    if(!ns.appt.digest || typeof ns.appt.digest!=='object') ns.appt.digest={};
+    if(ns.appt.digest.enabled==null) ns.appt.digest.enabled=false;
+    if(ns.appt.digest.hour==null) ns.appt.digest.hour=8;
+    if(!ns.checkin || typeof ns.checkin!=='object') ns.checkin={};
+    if(ns.checkin.enabled==null) ns.checkin.enabled=false;
+    if(ns.checkin.intervalMin==null) ns.checkin.intervalMin=60;
+    if(ns.checkin.startHour==null) ns.checkin.startHour=9;
+    if(ns.checkin.endHour==null) ns.checkin.endHour=17;
+  }
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
   S.recurring.forEach(r=>{

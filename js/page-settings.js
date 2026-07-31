@@ -120,6 +120,78 @@ function renderPushCard(){
   <div class="card" id="pushCard">
     <div class="card-h"><h3>🔔 Notifications</h3></div>
     ${body}
+    ${renderNotifConfig(state)}
+  </div>`;
+}
+/* Read/write a dotted path within S.notifSettings (e.g. "appt.digest.enabled"). */
+function getNotif(path){
+  return path.split('.').reduce((o,k)=> (o==null?undefined:o[k]), S.notifSettings);
+}
+function setNotif(path, val){
+  if(!S.notifSettings || typeof S.notifSettings!=='object') S.notifSettings={};
+  const keys=path.split('.'); let o=S.notifSettings;
+  for(let i=0;i<keys.length-1;i++){ if(!o[keys[i]] || typeof o[keys[i]]!=='object') o[keys[i]]={}; o=o[keys[i]]; }
+  o[keys[keys.length-1]]=val;
+}
+/* Options for the "minutes before" and check-in "interval" selects. */
+function notifMinsOpts(sel, pairs){
+  return pairs.map(([v,lbl])=>`<option value="${v}" ${v===sel?'selected':''}>${lbl}</option>`).join('');
+}
+/* Account-level push behaviour — selects + toggles, autosaved. Times are
+   whole-hour selects: the scheduler ticks every 15 min, so honest resolution.
+   Rendered in every permission state (it drives the server for all devices). */
+function renderNotifConfig(state){
+  const ns=S.notifSettings||{};
+  const appt=ns.appt||{}, digest=appt.digest||{}, checkin=ns.checkin||{};
+  const sw=(on,path)=>`<button class="switch ${on?'on':''}" data-notif="${path}"><span class="knob"></span></button>`;
+  const LEAD=[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[120,'2 hours']];
+  const INTERVAL=[[30,'30 min'],[60,'1 hour'],[90,'90 min'],[120,'2 hours']];
+  const notThisDevice = (state!=='granted')
+    ? `<p class="list-note" style="margin-top:0">These apply to all your devices. Enable notifications on <b>this</b> device above to receive them here.</p>` : '';
+  return `
+  <div class="notif-config">
+    ${notThisDevice}
+    <div class="set-toggle">
+      <div><div class="st-title">All push notifications</div>
+      <div class="st-desc">Master switch — off pauses everything below.</div></div>
+      ${sw(ns.master, 'master')}
+    </div>
+    ${ns.master ? `
+    <div class="notif-sub">
+      <div class="set-toggle">
+        <div><div class="st-title">Appointment reminders</div>
+        <div class="st-desc">A heads-up before each appointment.</div></div>
+        ${sw(appt.enabled, 'appt.enabled')}
+      </div>
+      ${appt.enabled ? `
+        <div class="set-row"><label>Remind me</label>
+          <select data-notif="appt.minutesBefore">${notifMinsOpts(appt.minutesBefore, LEAD)}</select>
+          <label>before</label></div>
+        <div class="set-toggle">
+          <div><div class="st-title">Daily digest</div>
+          <div class="st-desc">One morning push listing today's appointments.</div></div>
+          ${sw(digest.enabled, 'appt.digest.enabled')}
+        </div>
+        ${digest.enabled ? `<div class="set-row"><label>Digest time</label>
+          <select data-notif="appt.digest.hour">${settingsHourOpts(digest.hour,5,12)}</select></div>` : ''}
+      ` : ''}
+    </div>
+    <div class="notif-sub">
+      <div class="set-toggle">
+        <div><div class="st-title">Check-in reminders</div>
+        <div class="st-desc">Periodic nudges to log how you're doing.</div></div>
+        ${sw(checkin.enabled, 'checkin.enabled')}
+      </div>
+      ${checkin.enabled ? `
+        <div class="set-row"><label>Every</label>
+          <select data-notif="checkin.intervalMin">${notifMinsOpts(checkin.intervalMin, INTERVAL)}</select></div>
+        <div class="set-row"><label>Between</label>
+          <select data-notif="checkin.startHour">${settingsHourOpts(checkin.startHour,5,22)}</select>
+          <label>and</label>
+          <select data-notif="checkin.endHour">${settingsHourOpts(checkin.endHour,6,23)}</select></div>
+      ` : ''}
+    </div>
+    ` : ''}
   </div>`;
 }
 /* the rolling local auto-backups, newest first, with timestamps + item counts */
@@ -173,6 +245,14 @@ function bindSettings(){
     try{ await enablePush(); }catch(e){ console.warn('enablePush failed', e); }
     rerender();
   };
+  // Notification settings — nested-path toggles + selects, autosaved. Toggles
+  // re-render (they reveal/hide sub-controls); selects save without re-render.
+  q('[data-notif]','all').forEach(el=>{
+    const path=el.dataset.notif;
+    if(el.tagName==='SELECT'){ el.onchange=()=>{ setNotif(path, +el.value); save(); }; }
+    else { el.onclick=()=>{ setNotif(path, !getNotif(path)); save(); rerender(); }; }
+  });
+
   // Fire a test push to this account's devices on demand (calls the callable).
   const tp=q('#testPushBtn'); if(tp) tp.onclick=async()=>{
     tp.disabled=true; const label=tp.textContent; tp.textContent='Sending…';

@@ -1145,3 +1145,9 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .push-steps{margin:10px 0 0;padding-left:20px;color:var(--txt-dim);font-size:13px;line-height:1.55}
 .push-steps li{margin-bottom:6px}
 .push-steps b{color:var(--txt)}
+/* notification behaviour config — master toggle + indented sub-sections */
+.notif-config{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+.notif-sub{margin-top:12px;padding-left:14px;border-left:2px solid var(--line-soft)}
+.notif-sub .set-row{margin-top:12px}
+.notif-sub .set-row label{color:var(--txt-dim);font-size:13px}
+.notif-sub .set-row select{margin:0 2px}

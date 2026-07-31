@@ -150,6 +150,18 @@ async function refreshPushToken(){
   }catch(e){ console.error('refreshPushToken failed', e); }
 }
 
+/* ---------- on-demand test push (calls the sendTestNotification callable) ---------- */
+async function sendTestPush(){
+  try{
+    if(typeof firebase === 'undefined' || !firebase.functions){ toast('Test unavailable'); return; }
+    const callable = firebase.app().functions('us-central1').httpsCallable('sendTestNotification');
+    const res = await callable();
+    const d = (res && res.data) || {};
+    if(d.tokens === 0) toast('No devices registered yet');
+    else toast(`Test sent → ${d.sent || 0}/${d.tokens || 0} device(s)`);
+  }catch(e){ console.error('sendTestPush failed', e); toast('Test failed — see console'); }
+}
+
 /* ---------- foreground messages → in-app toast ---------- */
 /* When the app is open, surface a message as the existing in-app toast instead
    of an OS notification. Bound once at startup. */

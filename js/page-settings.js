@@ -93,7 +93,8 @@ function renderPushCard(){
   let body;
   if(state==='granted'){
     body = `<div class="push-state"><span class="push-dot on"></span><div><div class="st-title">Notifications enabled</div>
-      <div class="st-desc">This device will receive reminders. You can turn them off in your browser or device settings.</div></div></div>`;
+      <div class="st-desc">This device will receive reminders. You can turn them off in your browser or device settings.</div></div></div>
+      <div class="btn-row" style="margin-top:12px"><button class="btn ghost sm" id="testPushBtn">Send test notification</button></div>`;
   }else if(state==='supported'){
     body = `<div class="set-toggle">
         <div><div class="st-title">Get reminders on this device</div>
@@ -171,6 +172,12 @@ function bindSettings(){
     ep.disabled=true; ep.textContent='Enabling…';
     try{ await enablePush(); }catch(e){ console.warn('enablePush failed', e); }
     rerender();
+  };
+  // Fire a test push to this account's devices on demand (calls the callable).
+  const tp=q('#testPushBtn'); if(tp) tp.onclick=async()=>{
+    tp.disabled=true; const label=tp.textContent; tp.textContent='Sending…';
+    try{ await sendTestPush(); }catch(e){ console.error('sendTestPush failed', e); }
+    tp.disabled=false; tp.textContent=label;
   };
 
   const tb=q('#setTheme'); if(tb) tb.onclick=()=>{ toggleTheme(); rerender(); };

@@ -53,6 +53,8 @@ function renderSettings(){
     </div>
   </div>
 
+  ${renderPushCard()}
+
   <div class="card" id="dataProtection">
     <div class="card-h"><h3>🛡️ Data protection</h3></div>
     <p class="inbox-rule" style="margin-top:0">Everything saves automatically${FB.user?' and syncs to your account across devices':' on this device'}. A safety guard blocks any save that would erase most of your data, and rolling local backups are kept automatically.</p>
@@ -83,6 +85,41 @@ function renderSettings(){
 }
 function settingsHourOpts(sel,from,to){
   let o=''; for(let h=from;h<=to;h++) o+=`<option value="${h}" ${h===sel?'selected':''}>${fmtHour(h)}</option>`; return o;
+}
+/* Notifications card — reflects pushSupport() state. Tap-gated enable only; no
+   nagging prompts. The button (state 'supported') is the sole path that prompts. */
+function renderPushCard(){
+  const state = (typeof pushSupport==='function') ? pushSupport() : 'unsupported';
+  let body;
+  if(state==='granted'){
+    body = `<div class="push-state"><span class="push-dot on"></span><div><div class="st-title">Notifications enabled</div>
+      <div class="st-desc">This device will receive reminders. You can turn them off in your browser or device settings.</div></div></div>`;
+  }else if(state==='supported'){
+    body = `<div class="set-toggle">
+        <div><div class="st-title">Get reminders on this device</div>
+        <div class="st-desc">A single tap asks your browser for permission. Nothing is sent yet — this just registers the device.</div></div>
+        <button class="btn ghost sm" id="enablePushBtn">Enable notifications</button>
+      </div>`;
+  }else if(state==='denied'){
+    body = `<div class="push-state"><span class="push-dot off"></span><div><div class="st-title">Notifications are blocked</div>
+      <div class="st-desc">Turn them back on for this site in your browser or device settings, then reload.</div></div></div>`;
+  }else if(state==='ios-not-installed'){
+    body = `<div class="push-state"><span class="push-dot off"></span><div><div class="st-title">Add to Home Screen first</div>
+      <div class="st-desc">On iPhone/iPad, notifications only work when MarcoMaster runs as an installed app:</div>
+      <ol class="push-steps">
+        <li>Tap the <b>Share</b> button in Safari (the square with an up-arrow).</li>
+        <li>Choose <b>Add to Home Screen</b>.</li>
+        <li>Open MarcoMaster from the new Home Screen icon, then come back here to enable notifications.</li>
+      </ol></div></div>`;
+  }else{
+    body = `<div class="push-state"><span class="push-dot off"></span><div><div class="st-title">Not supported here</div>
+      <div class="st-desc">This browser doesn't support push notifications.</div></div></div>`;
+  }
+  return `
+  <div class="card" id="pushCard">
+    <div class="card-h"><h3>🔔 Notifications</h3></div>
+    ${body}
+  </div>`;
 }
 /* the rolling local auto-backups, newest first, with timestamps + item counts */
 function renderAutoBackups(){
@@ -127,6 +164,14 @@ function bindSettings(){
   // Future Self Narrative editors — autosave through the normal save() path, no
   // re-render (keep the caret where it is while typing).
   q('[data-fsn]','all').forEach(el=>el.oninput=()=>{ if(!S.narrative) S.narrative={full:'',condensed:'',principles:''}; S.narrative[el.dataset.fsn]=el.value; save(); });
+
+  // Notifications: tap-gated enable (the only path that prompts). Re-render to
+  // reflect the new state (enabled / blocked) after the browser resolves.
+  const ep=q('#enablePushBtn'); if(ep) ep.onclick=async()=>{
+    ep.disabled=true; ep.textContent='Enabling…';
+    try{ await enablePush(); }catch(e){ console.warn('enablePush failed', e); }
+    rerender();
+  };
 
   const tb=q('#setTheme'); if(tb) tb.onclick=()=>{ toggleTheme(); rerender(); };
   const ds=q('#setDayStart'); if(ds) ds.onchange=()=>{ S.settings.dayStart=+ds.value; save(); };

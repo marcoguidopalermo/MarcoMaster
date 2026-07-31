@@ -65,6 +65,11 @@ function startApp(){
   go('dashboard');
   bindFlushHandlers();
   registerServiceWorker();
+  // Push (Phase 2): bind the foreground→toast handler, and refresh a rotated token
+  // if permission was already granted. Neither prompts; both are safe no-ops when
+  // push is unused/unsupported. Token storage is fully isolated from app state.
+  try{ onForegroundMessage(); }catch(e){ console.warn('onForegroundMessage failed', e); }
+  try{ refreshPushToken(); }catch(e){ console.warn('refreshPushToken failed', e); }
   // 2) Now reconcile with the cloud in the background and keep syncing live.
   setSyncStatus(FB.user?'syncing':'local');
   subscribeCloud();

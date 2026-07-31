@@ -58,6 +58,7 @@ function readNotifSettings(state){
   const appt = ns.appt || {};
   const digest = appt.digest || {};
   const checkin = ns.checkin || {};
+  const night = ns.night || {};
   const LEAD = [15, 30, 60, 120];
   const INT = [30, 60, 90, 120];
   const hr = (h, def) => (Number.isInteger(h) && h >= 0 && h <= 23) ? h : def;
@@ -66,6 +67,8 @@ function readNotifSettings(state){
     appt: {
       enabled: appt.enabled !== false,              // default ON
       minutesBefore: LEAD.includes(appt.minutesBefore) ? appt.minutesBefore : 30,
+      // Optional second reminder — null (or any non-LEAD value, incl. 0) means off.
+      minutesBefore2: LEAD.includes(appt.minutesBefore2) ? appt.minutesBefore2 : null,
       digest: {
         enabled: digest.enabled === true,           // default OFF
         hour: hr(digest.hour, 8),
@@ -76,6 +79,10 @@ function readNotifSettings(state){
       intervalMin: INT.includes(checkin.intervalMin) ? checkin.intervalMin : 60,
       startHour: hr(checkin.startHour, 9),
       endHour: hr(checkin.endHour, 17),
+    },
+    night: {
+      enabled: night.enabled === true,              // default OFF
+      hour: hr(night.hour, 21),                     // 9:00pm
     },
   };
 }
@@ -160,29 +167,37 @@ exports.appointmentReminders = onSchedule(
     }
     const mark = (key) => { nextSent[key] = now; changed = true; };
 
-    // 1) LEAD REMINDERS — one per appointment, within the configured window.
+    // 1) LEAD REMINDERS — up to two per appointment (primary + optional second),
+    //    each within its own configured window. Key namespaced by lead minutes so
+    //    the two never collide and each fires exactly once.
     if (cfg.appt.enabled) {
-      const lead = cfg.appt.minutesBefore;
-      for (const a of appts) {
-        if (!a || a.done === true) continue;
-        if (!a.date || !a.time) continue;
-        const [y, mo, d] = String(a.date).split('-').map(Number);
-        const [h, mi] = String(a.time).split(':').map(Number);
-        const dt = DateTime.fromObject(
-          { year: y, month: mo, day: d, hour: h || 0, minute: mi || 0 }, { zone: TZ });
-        if (!dt.isValid) continue;
-        const minutesUntil = (dt.toMillis() - now) / 60000;
-        if (!(minutesUntil > 0 && minutesUntil <= lead)) continue;
-        // Composite key → a reschedule re-fires; unchanged fires once, ever.
-        const key = `lead|${a.id}|${a.date}|${a.time}`;
-        if (nextSent[key]) continue;
-        const result = await sendPush(uid, {
-          title: a.title || 'Appointment reminder',
-          body: `Starts at ${clockLabel(a.time)} — in about ${lead} minutes`,
-          url: APP_URL,
-        });
-        logger.info('lead reminder sent', { key, ...result });
-        mark(key);
+      const leads = [cfg.appt.minutesBefore];
+      if (cfg.appt.minutesBefore2 && !leads.includes(cfg.appt.minutesBefore2)) {
+        leads.push(cfg.appt.minutesBefore2);
+      }
+      for (const lead of leads) {
+        for (const a of appts) {
+          if (!a || a.done === true) continue;
+          if (!a.date || !a.time) continue;
+          const [y, mo, d] = String(a.date).split('-').map(Number);
+          const [h, mi] = String(a.time).split(':').map(Number);
+          const dt = DateTime.fromObject(
+            { year: y, month: mo, day: d, hour: h || 0, minute: mi || 0 }, { zone: TZ });
+          if (!dt.isValid) continue;
+          const minutesUntil = (dt.toMillis() - now) / 60000;
+          if (!(minutesUntil > 0 && minutesUntil <= lead)) continue;
+          // Composite key incl. lead → two lead times never collide; a reschedule
+          // re-fires; an unchanged appointment fires once per lead, ever.
+          const key = `lead|${lead}|${a.id}|${a.date}|${a.time}`;
+          if (nextSent[key]) continue;
+          const result = await sendPush(uid, {
+            title: a.title || 'Appointment reminder',
+            body: `Starts at ${clockLabel(a.time)} — in about ${lead} minutes`,
+            url: APP_URL,
+          });
+          logger.info('lead reminder sent', { key, ...result });
+          mark(key);
+        }
       }
 
       // 2) DAILY DIGEST — one push at the configured hour listing today's appts.
@@ -225,6 +240,31 @@ exports.appointmentReminders = onSchedule(
           logger.info('check-in sent', { key, ...result });
           mark(key);
         }
+      }
+    }
+
+    // 4) NIGHT REMINDER — one evening push at the configured hour: journal nudge +
+    //    tomorrow's appointment preview (omitted if none) + a bedtime line.
+    if (cfg.night.enabled && tor.hour === cfg.night.hour) {
+      const key = `night|${todayKey}`;
+      if (!nextSent[key]) {
+        const tomorrowKey = tor.plus({ days: 1 }).toFormat('yyyy-LL-dd');
+        const tomorrow = appts
+          .filter(a => a && !a.done && a.date === tomorrowKey)
+          .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+        const lines = ['Time for your evening journal.'];
+        if (tomorrow.length) {
+          const titles = tomorrow.map(a => a.title || 'Appointment').join(', ');
+          lines.push(`Tomorrow: ${tomorrow.length} appointment${tomorrow.length > 1 ? 's' : ''} — ${titles}`);
+        }
+        lines.push('Nights get decided the night before — start easing toward bed.');
+        const result = await sendPush(uid, {
+          title: 'Wind down',
+          body: lines.join('\n'),
+          url: APP_URL,
+        });
+        logger.info('night reminder sent', { key, tomorrow: tomorrow.length, ...result });
+        mark(key);
       }
     }
 

@@ -94,6 +94,7 @@ function seedDefaults(){
     if(!ns.appt || typeof ns.appt!=='object') ns.appt={};
     if(ns.appt.enabled==null) ns.appt.enabled=true;
     if(ns.appt.minutesBefore==null) ns.appt.minutesBefore=30;
+    if(ns.appt.minutesBefore2===undefined) ns.appt.minutesBefore2=null;   // optional 2nd reminder, off by default
     if(!ns.appt.digest || typeof ns.appt.digest!=='object') ns.appt.digest={};
     if(ns.appt.digest.enabled==null) ns.appt.digest.enabled=false;
     if(ns.appt.digest.hour==null) ns.appt.digest.hour=8;
@@ -102,6 +103,9 @@ function seedDefaults(){
     if(ns.checkin.intervalMin==null) ns.checkin.intervalMin=60;
     if(ns.checkin.startHour==null) ns.checkin.startHour=9;
     if(ns.checkin.endHour==null) ns.checkin.endHour=17;
+    if(!ns.night || typeof ns.night!=='object') ns.night={};
+    if(ns.night.enabled==null) ns.night.enabled=false;   // default OFF
+    if(ns.night.hour==null) ns.night.hour=21;             // 9:00pm
   }
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};

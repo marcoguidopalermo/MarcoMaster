@@ -145,6 +145,7 @@ function renderNotifConfig(state){
   const appt=ns.appt||{}, digest=appt.digest||{}, checkin=ns.checkin||{};
   const sw=(on,path)=>`<button class="switch ${on?'on':''}" data-notif="${path}"><span class="knob"></span></button>`;
   const LEAD=[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[120,'2 hours']];
+  const LEAD2=[[0,'Off'],[15,'15 min'],[30,'30 min'],[60,'1 hour'],[120,'2 hours']];
   const INTERVAL=[[30,'30 min'],[60,'1 hour'],[90,'90 min'],[120,'2 hours']];
   const notThisDevice = (state!=='granted')
     ? `<p class="list-note" style="margin-top:0">These apply to all your devices. Enable notifications on <b>this</b> device above to receive them here.</p>` : '';
@@ -166,6 +167,9 @@ function renderNotifConfig(state){
       ${appt.enabled ? `
         <div class="set-row"><label>Remind me</label>
           <select data-notif="appt.minutesBefore">${notifMinsOpts(appt.minutesBefore, LEAD)}</select>
+          <label>before</label></div>
+        <div class="set-row"><label>Also remind</label>
+          <select data-notif="appt.minutesBefore2">${notifMinsOpts(appt.minutesBefore2||0, LEAD2)}</select>
           <label>before</label></div>
         <div class="set-toggle">
           <div><div class="st-title">Daily digest</div>
@@ -190,6 +194,15 @@ function renderNotifConfig(state){
           <label>and</label>
           <select data-notif="checkin.endHour">${settingsHourOpts(checkin.endHour,6,23)}</select></div>
       ` : ''}
+    </div>
+    <div class="notif-sub">
+      <div class="set-toggle">
+        <div><div class="st-title">Night reminder</div>
+        <div class="st-desc">Evening journal nudge, a preview of tomorrow's appointments, and a bedtime prompt.</div></div>
+        ${sw((ns.night||{}).enabled, 'night.enabled')}
+      </div>
+      ${(ns.night||{}).enabled ? `<div class="set-row"><label>At</label>
+        <select data-notif="night.hour">${settingsHourOpts((ns.night||{}).hour==null?21:ns.night.hour,17,23)}</select></div>` : ''}
     </div>
     ` : ''}
   </div>`;

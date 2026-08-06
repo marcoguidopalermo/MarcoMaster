@@ -117,12 +117,20 @@ function createMeeting(name){
   save(); return true;
 }
 
-function addMeetingPoint(mid){
-  const m=(S.meetings||[]).find(x=>x.id===mid); if(!m) return;
-  const v=(meetingDraftText[mid]||'').trim(); if(!v) return;
+/* add a talking point to a meeting. The single writer for m.points — shared by the
+   Meetings card input, the meeting modal, and unified Capture, so the point shape
+   lives in exactly one place. Returns true if it was added. */
+function createMeetingPoint(mid, txt){
+  const m=(S.meetings||[]).find(x=>x.id===mid); if(!m) return false;
+  const v=(txt||'').trim(); if(!v) return false;
   if(!m.points) m.points=[];
   m.points.push({id:b(), txt:v, done:false});
-  meetingDraftText[mid]=''; save(); rerender();
+  save();
+  return true;
+}
+function addMeetingPoint(mid){
+  if(!createMeetingPoint(mid, meetingDraftText[mid])) return;
+  meetingDraftText[mid]=''; rerender();
 }
 
 /* ============================================================
@@ -193,7 +201,7 @@ function bindMeetingModal(){
   q('[data-mmdone]','all').forEach(el=>el.onclick=()=>{ const p=(m.points||[]).find(x=>x.id===el.dataset.mmdone); if(p){ p.done=!p.done; save(false); renderMeetingModal(); rerender(); } });
   q('[data-mmdel]','all').forEach(el=>el.onclick=()=>{ m.points=(m.points||[]).filter(x=>x.id!==el.dataset.mmdel); save(); renderMeetingModal(); rerender(); });
   const ai=q('#mmAdd'); if(ai) ai.oninput=()=>{ meetingModalDraft=ai.value; };
-  const addP=()=>{ const v=(meetingModalDraft||'').trim(); if(!v) return; if(!m.points) m.points=[]; m.points.push({id:b(),txt:v,done:false}); meetingModalDraft=''; save(); renderMeetingModal(); rerender(); };
+  const addP=()=>{ if(!createMeetingPoint(m.id, meetingModalDraft)) return; meetingModalDraft=''; renderMeetingModal(); rerender(); };
   const ab=q('#mmAddBtn'); if(ab) ab.onclick=addP;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addP(); };
   const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)

@@ -33,6 +33,8 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
+  ${renderCapture()}
+
   <button class="fsn-cta" id="fsnCta">
     <span class="fsn-cta-ic">☼</span>
     <span class="fsn-cta-txt"><b>Read your Future Self Narrative</b><span>Start the morning by remembering where you're going</span></span>
@@ -43,8 +45,6 @@ function renderDashboard(){
     ${renderFireCTA()}
     ${renderLeakCta()}
   </div>
-
-  ${renderLeakCapture()}
 
   ${renderLeakSection()}
 
@@ -285,7 +285,6 @@ function renderAllTasks(){
   const openCt=quickActive.length + schedActive.length;
   const overdueCt=schedActive.filter(r=>r.overdue).length;
   const archiveAll=completedRows('all');
-  const active=(S.projects||[]).filter(p=>!p.done);
   return `
   <div class="card all-tasks" style="border-top:3px solid var(--accent)">
     <div class="card-h">
@@ -293,27 +292,7 @@ function renderAllTasks(){
       <span class="sub">${openCt} open${overdueCt?` · <span class="at-overdue-ct">${overdueCt} overdue</span>`:''}</span>
     </div>
 
-    <div class="task-add">
-      <input type="text" id="taskInput" placeholder="Add a task…">
-      <div class="kind-pick" id="kindPick">
-        <button data-kind="quick" class="${taskDraft.kind==='quick'?'active':''}">⚡ Quick</button>
-        <button data-kind="project" class="${taskDraft.kind==='project'?'active':''}">▣ Time block</button>
-      </div>
-      <select id="taskProjPick" class="proj-pick" title="Assign to a project (optional)">
-        <option value="">— No project —</option>
-        ${active.map(p=>`<option value="${p.id}" ${taskDraft.projectId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}
-      </select>
-      <button class="btn" id="taskAddBtn">Add</button>
-    </div>
-    ${taskDraft.kind==='project'?`
-    <div class="dur-pick" id="durPick">
-      <span class="dur-lab">Duration:</span>
-      ${DURATION_PRESETS.map(m=>`<button class="dur-btn ${taskDraft.mins===m?'sel':''}" data-dur="${m}">${fmtDuration(m)}</button>`).join('')}
-      <button class="dur-btn ${!DURATION_PRESETS.includes(taskDraft.mins)&&!taskDraft.customOpen?'sel':''}" id="durCustom">${!DURATION_PRESETS.includes(taskDraft.mins)?fmtDuration(taskDraft.mins):'custom'}</button>
-      ${taskDraft.customOpen?`<span class="dur-custom-wrap"><input type="number" min="1" max="600" id="durCustomInput" value="${!DURATION_PRESETS.includes(taskDraft.mins)?taskDraft.mins:''}" placeholder="min" class="num-in"><span class="dur-lab">min</span></span>`:''}
-    </div>`:''}
-
-    ${renderTaskSection('⚡ Quick', prioritySort(quickActive), 'Nothing quick — add one above.')}
+    ${renderTaskSection('⚡ Quick', prioritySort(quickActive), 'Nothing quick — capture one at the top.')}
 
     <div class="at-section">
       <div class="at-sec-h">
@@ -324,7 +303,7 @@ function renderAllTasks(){
         </span>
       </div>
       ${schedShow.length?`<div class="at-rows">${prioritySort(schedShow).map(renderTaskRow).join('')}</div>`
-        :`<div class="empty sm">${showAllSched?'No project tasks yet — add one above.':'Nothing scheduled for today.'+(hidden>0?` ${hidden} in backlog — “See all project tasks”.`:'')}</div>`}
+        :`<div class="empty sm">${showAllSched?'No project tasks yet — capture one at the top.':'Nothing scheduled for today.'+(hidden>0?` ${hidden} in backlog — “See all project tasks”.`:'')}</div>`}
     </div>
 
     ${renderArchiveSection(archiveAll)}
@@ -561,15 +540,9 @@ function unscheduleProjTask(pid, ptId){
   toast('Unscheduled — task kept in project'); rerender();
 }
 function bindAllTasks(){
-  // ---- add row (kind toggle + optional project + duration) ----
-  q('#kindPick [data-kind]','all').forEach(el=>el.onclick=()=>{ taskDraft.kind=el.dataset.kind; rerender(); });
-  const pp=q('#taskProjPick'); if(pp) pp.onchange=()=>{ taskDraft.projectId=pp.value||null; };
-  q('[data-dur]','all').forEach(el=>el.onclick=()=>{ taskDraft.mins=+el.dataset.dur; taskDraft.customOpen=false; rerender(); });
-  const dc=q('#durCustom'); if(dc) dc.onclick=()=>{ taskDraft.customOpen=true; rerender(); setTimeout(()=>{ const ci=q('#durCustomInput'); if(ci) ci.focus(); },0); };
-  const dci=q('#durCustomInput'); if(dci) dci.oninput=()=>{ const n=parseInt(dci.value,10); if(!isNaN(n)&&n>0) taskDraft.mins=n; };
-  const doAdd=()=>{ const i=q('#taskInput'); const v=i.value.trim(); if(!v) return; addUnifiedTask(v, taskDraft.kind, taskDraft.projectId, taskDraft.kind==='project'?taskDraft.mins:2); rerender(); };
-  const addBtn=q('#taskAddBtn'); if(addBtn) addBtn.onclick=doAdd;
-  const ti=q('#taskInput'); if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') doAdd(); };
+  // Adding lives in unified Capture at the top of the Dashboard (capture.js) —
+  // this list is a view + row actions only. addUnifiedTask() is still the writer,
+  // now called from there.
   // ---- focus toggle + archive dropdown ----
   const st=q('#schedToggle'); if(st) st.onclick=()=>{ showAllSched=!showAllSched; rerender(); };
   const arch=q('[data-archtoggle]'); if(arch) arch.onclick=()=>{ archiveOpen=!archiveOpen; rerender(); };
@@ -800,16 +773,16 @@ function confirmProjSchedule(){
   save(); closeReset(); toast('Scheduled'); rerender();
 }
 
-/* draft state for the unified add row (kind + optional project + duration) */
-let taskDraft={kind:'quick', mins:60, customOpen:false, projectId:null};
 function bindDashboard(){
   // Morning surfacing: jump straight into the Future Self Narrative reader
   const fc=q('#fsnCta'); if(fc) fc.onclick=()=>go('fsn');
   // Fire Station: start-a-fire CTA / return-to-fire, and evidence card
   bindFireDash();
-  // Leak Management: the two leak CTAs, the one-line capture card, and the
-  // collapsible Leaks dropdown (full list + detail + closed group + delete)
-  bindLeakCapture();
+  // Unified capture — the app's single general entry point (top of the Dashboard)
+  bindCapture();
+  // Leak Management: the CTA (opens Capture pre-set to Leak) and the collapsible
+  // Leaks dropdown (full list + detail + closed group + delete)
+  bindLeakCta();
   bindLeakSection();
 
   // Things to think about (Parking Lot data)

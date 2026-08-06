@@ -3,8 +3,6 @@
    calls, doctor…), distinct from tasks. Prominent on the Dashboard.
    Item: { id, title, date (YYYY-MM-DD), time (HH:MM), createdAt }
    ============================================================ */
-let apptDraft={title:'',date:todayKey(),time:''};
-
 /* "14:00" → "2:00pm" */
 function fmtClock(hhmm){
   if(!hhmm) return '';
@@ -134,13 +132,6 @@ function renderAppointments(){
   <div class="card appt-card">
     <div class="card-h"><h3>📅 Appointments</h3><span class="sub">${overdue.length?overdue.length+' overdue · ':''}${today.length?today.length+' today · ':''}${upcoming.length} upcoming${done.length?' · '+done.length+' done':''}</span></div>
 
-    <div class="appt-add">
-      <input type="text" id="apptTitle" value="${esc(apptDraft.title)}" placeholder="Appointment (e.g. Dentist)…">
-      <input type="date" id="apptDate" min="${tk}" value="${esc(apptDraft.date||tk)}">
-      <input type="time" id="apptTime" value="${esc(apptDraft.time)}">
-      <button class="btn" id="apptAdd">Add</button>
-    </div>
-
     ${overdue.length?`
       <div class="appt-group-lbl overdue-lbl">⚠ Overdue — follow up</div>
       <div class="appt-list">${overdue.map(row).join('')}</div>`:''}
@@ -168,21 +159,9 @@ function createAppointment(title, date, time){
   return appt;
 }
 function bindAppointments(){
-  const ti=q('#apptTitle'); if(ti) ti.oninput=()=>{ apptDraft.title=ti.value; };
-  const di=q('#apptDate'); if(di) di.oninput=()=>{ apptDraft.date=di.value; };
-  const tmi=q('#apptTime'); if(tmi) tmi.oninput=()=>{ apptDraft.time=tmi.value; };
-  const addAppt=()=>{
-    const title=(apptDraft.title||'').trim();
-    const date=apptDraft.date||'';
-    const time=apptDraft.time||'';
-    if(!title){ toast('Add a title'); return; }
-    if(!date || !time){ toast('Pick a date and time'); return; }
-    createAppointment(title, date, time);
-    apptDraft={title:'',date:todayKey(),time:''};
-    save(); toast('Appointment added'); rerender();
-  };
-  const ab=q('#apptAdd'); if(ab) ab.onclick=addAppt;
-  if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addAppt(); };
+  // Adding lives in unified Capture at the top of the Dashboard (capture.js), which
+  // calls createAppointment() below. Meeting scheduling calls it too. This card is
+  // the list + its row actions.
   q('[data-apptdel]','all').forEach(el=>el.onclick=()=>{ S.appointments=(S.appointments||[]).filter(x=>x.id!==el.dataset.apptdel); save(); rerender(); });
   // toggle done — completing an appointment is distinct from deleting it (× stays)
   q('[data-apptdone]','all').forEach(el=>el.onclick=()=>{ const a=(S.appointments||[]).find(x=>x.id===el.dataset.apptdone); if(a){ a.done=!a.done; save(); rerender(); } });

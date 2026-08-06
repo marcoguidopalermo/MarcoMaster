@@ -176,11 +176,10 @@ function leakAdoptStrandedPending(surface){
 /* ---------- DASHBOARD surface ----------
    Water to the Fire Station's fire: leaks carry 💧 and the app's blue, fires carry
    🔥 and red, so the two read as opposites at a glance. */
-function leakOpenCount(){ return (S.leaks||[]).filter(l=>l.status!=='closed').length; }
-
 /* The leak CTA. Rendered beside the fire CTA so the dashboard reads as two parallel
-   moves: Start a fire · Capture a leak. Fixing a leak happens in the dropdown
-   directly below, which opens from its own header. */
+   moves: Start a fire · Capture a leak. It opens unified Capture pre-set to Leak —
+   the same control that sits at the top of the Dashboard, not a second input.
+   Fixing a leak happens in the dropdown below, which opens from its own header. */
 function renderLeakCta(){
   return `
   <button class="fsn-cta leak-cta" id="leakCaptureCta">
@@ -190,26 +189,8 @@ function renderLeakCta(){
   </button>`;
 }
 
-function renderLeakCapture(){
-  leakAdoptStrandedPending('dash');
-  const pending=(leakPending && leakPending.surface==='dash');
-  return `
-  <div class="card leak-cap-card" id="leakCapCard">
-    <div class="card-h"><h3>💧 Capture a leak</h3><span class="sub">${leakOpenCount()} open</span></div>
-    ${pending ? leakConfirmHTML(leakPending) : leakInputHTML()}
-    <div class="leak-cap-foot">
-      <span>First occurrence acts. Second notices. Third decides.</span>
-    </div>
-  </div>`;
-}
-function bindLeakCapture(){
-  bindLeakCaptureIn(q('#leakCapCard'), 'dash', ()=>rerender());   // rerender keeps scroll position
-  // "Capture a leak" jumps to the one-line input rather than hiding it behind a
-  // click — capture has to stay one line and one keystroke away.
-  const cc=q('#leakCaptureCta'); if(cc) cc.onclick=()=>{
-    const i=q('#leakCapCard [data-leakinput]') || q('#leakCapCard [data-leakconfirm]');
-    if(i){ i.scrollIntoView({behavior:'smooth',block:'center'}); if(i.matches('input')) i.focus(); }
-  };
+function bindLeakCta(){
+  const cc=q('#leakCaptureCta'); if(cc) cc.onclick=()=>openCaptureModal('leak');
 }
 
 /* ---------- FIRE STATION surface ----------

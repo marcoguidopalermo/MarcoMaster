@@ -90,6 +90,7 @@ const PAGES={
   dashboard:{render:renderDashboard,bind:bindDashboard},
   fsn:{render:renderFSN,bind:bindFSN},
   journal:{render:renderJournal,bind:bindJournal},
+  leaks:{render:renderLeaks,bind:bindLeaks},
   meetings:{render:renderMeetings,bind:bindMeetings},
   settings:{render:renderSettings,bind:bindSettings},
 };
@@ -122,6 +123,7 @@ const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
   ['fsn','☼','Future Self'],
   ['journal','✦','Journal'],
+  ['leaks','◍','Leaks'],
   ['settings','⚙','Settings'],
 ];
 function renderNav(){

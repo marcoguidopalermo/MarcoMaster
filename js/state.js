@@ -114,6 +114,25 @@ function seedDefaults(){
   // (no backfill needed; absence = none). Non-destructive.
   if(!S.fireSessions) S.fireSessions=[];
   if(S.activeFireId===undefined) S.activeFireId=null;
+  // Leak Management: recurring interruptions that shouldn't reach you. Additive and
+  // idempotent — existing accounts get [], and EVERY field is backfilled per leak so
+  // a partially-shaped record (old backup, hand edit, an aborted write) can never
+  // break the list render. Nothing existing is touched or rewritten.
+  if(!Array.isArray(S.leaks)) S.leaks=[];
+  S.leaks.forEach(l=>{
+    if(!l || typeof l!=='object') return;
+    if(!Array.isArray(l.occurrences)) l.occurrences = l.createdAt ? [l.createdAt] : [];
+    if(l.createdAt==null)  l.createdAt  = l.occurrences[0] || Date.now();
+    if(l.lastSeenAt==null) l.lastSeenAt = l.occurrences[l.occurrences.length-1] || l.createdAt;
+    if(!l.status) l.status='open';                       // 'open' | 'progress' | 'closed'
+    if(l.resolutionType===undefined) l.resolutionType=null;
+    if(l.owner==null)        l.owner='';
+    if(l.nextAction==null)   l.nextAction='';
+    if(l.dueDate==null)      l.dueDate='';
+    if(l.defOfClosed==null)  l.defOfClosed='';
+    if(l.followUpDate==null) l.followUpDate='';
+    if(l.closedAt===undefined) l.closedAt=null;
+  });
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
   S.recurring.forEach(r=>{

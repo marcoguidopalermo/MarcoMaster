@@ -1240,3 +1240,67 @@ body.fire-active .app{padding-bottom:76px}
 .fire-ev-foot{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:10px;
   font-family:var(--mono);font-size:12px;color:var(--txt-dim)}
 @media(max-width:600px){.fire-title{font-size:24px}.fire-clock-big{font-size:60px}}
+
+/* ---------- LEAK MANAGEMENT ---------- */
+.leak-cap-card{margin-bottom:14px}
+.leak-cap-row{display:flex;gap:8px}
+.leak-cap-row input{flex:1;font-size:13px;padding:9px 11px}
+.leak-cap-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;
+  font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.leak-cap-link{background:none;border:none;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--accent);padding:0}
+.leak-cap-link:hover{text-decoration:underline}
+.leak-page-cap{margin-bottom:16px}
+
+/* the "same as…?" prompt — identical on every capture surface */
+.leak-confirm{border:1px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:12px 14px}
+.leak-confirm-q{font-size:14px;color:var(--txt);line-height:1.45}
+.leak-confirm-q b{font-weight:700}
+.leak-confirm-meta{font-family:var(--mono);font-size:11px;color:var(--txt-dim);margin-top:5px}
+.leak-confirm-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+
+/* list */
+.leak-list{display:flex;flex-direction:column;gap:8px}
+.leak-row{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.leak-row.expanded{border-color:var(--accent)}
+.leak-row.is-closed{opacity:.72}
+.leak-head{width:100%;display:flex;align-items:center;gap:13px;padding:13px 15px;background:none;border:none;
+  cursor:pointer;text-align:left;font-family:var(--sans);color:var(--txt);transition:background .12s}
+.leak-head:hover{background:var(--panel-2)}
+.leak-n{flex:none;min-width:38px;text-align:center;font-family:var(--mono);font-size:13px;font-weight:700;
+  color:var(--txt-dim);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.leak-n.warm{color:var(--amber);border-color:var(--amber)}
+.leak-n.hot{color:var(--red);border-color:var(--red)}
+.leak-main{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.leak-txt{font-size:14.5px;font-weight:600;color:var(--txt);line-height:1.35}
+.leak-row.is-closed .leak-txt{text-decoration:line-through;color:var(--txt-dim)}
+.leak-meta{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.leak-caret{flex:none;font-size:11px;color:var(--txt-faint)}
+
+/* detail */
+.leak-detail{border-top:1px solid var(--line);padding:14px 15px 15px;display:flex;flex-direction:column;gap:13px;animation:fade .2s}
+.leak-field{display:flex;flex-direction:column;gap:6px}
+.leak-field label{font-family:var(--mono);font-size:10.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--txt-faint)}
+.leak-field input,.leak-field textarea{font-size:13.5px;padding:9px 11px}
+.leak-field textarea{min-height:58px}
+.leak-dates{display:flex;gap:12px}
+.leak-dates .leak-field{flex:1;min-width:0}
+.leak-chips{display:flex;gap:7px;flex-wrap:wrap}
+.leak-chip{padding:7px 13px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
+  border-radius:999px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
+.leak-chip:hover{border-color:var(--accent);color:var(--accent)}
+.leak-chip.on{border-color:var(--accent);background:var(--accent);color:#fff}
+.leak-stat-toggle{display:flex;gap:7px;flex-wrap:wrap}
+.leak-stat-opt{flex:1;min-width:88px;padding:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
+  border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
+.leak-stat-opt:hover{border-color:var(--accent);color:var(--accent)}
+.leak-stat-opt.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.leak-detail-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border-top:1px solid var(--line);padding-top:12px}
+.leak-hist{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.leak-del:hover{border-color:var(--red);color:var(--red)}
+
+/* fire-station capture row (inside the takeover) */
+.fire-leak-inline{margin-top:12px}
+.fire-leak-inline[hidden]{display:none}
+.fire-leak-inline .leak-cap-row input{flex:1}
+@media(max-width:600px){.leak-dates{flex-direction:column;gap:13px}.leak-head{gap:10px;padding:12px}}

@@ -119,6 +119,7 @@ function fireScreenHTML(s){
     <div class="fire-actions">
       <button class="btn fire-extinguish" id="fireExtinguish">✓ Extinguished</button>
       <button class="btn ghost" id="fireQueueBtn">+ Queue a fire</button>
+      <button class="btn ghost" id="fireLeakBtn">+ Capture a leak</button>
       ${s.mode==='timer'?`<button class="btn ghost" id="fireExtend">Extend</button>`:''}
       <button class="btn ghost fire-override-btn" id="fireOverride">Emergency override</button>
     </div>
@@ -126,6 +127,7 @@ function fireScreenHTML(s){
       <input type="text" id="fireQueueInput" placeholder="Capture it — you'll fight it later">
       <button class="btn sm" id="fireQueueSave">Capture</button>
     </div>
+    ${renderFireLeakCapture()}
     ${q1?`<div class="fire-queue-count">${q1} captured for later</div>`:''}
   </div>`;
 }
@@ -137,6 +139,9 @@ function bindFireScreen(){
   const qi=q('#fireQueueInput'); if(qi) qi.onkeydown=e=>{ if(e.key==='Enter') fireQueueSave(); };
   const en=q('#fireExtend'); if(en) en.onclick=()=>fireExtend();
   const ov=q('#fireOverride'); if(ov) ov.onclick=openFireOverride;
+  // Leak capture — lives entirely inside #fireScreen. It never navigates, never
+  // rerenders #main, and never touches the session or its clock (see page-leaks.js).
+  bindFireLeakCapture();
 }
 
 function openFireScreen(){ fireScreenOpen=true; paintFire(); window.scrollTo(0,0); }

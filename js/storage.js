@@ -153,6 +153,7 @@ function stateCount(s){
   n+=(s.followups||[]).length;
   n+=(s.meetings||[]).length;
   n+=(s.appointments||[]).length;
+  n+=(s.leaks||[]).length;
   const days=s.days||{};
   Object.keys(days).forEach(k=>{ const d=days[k]||{};
     n+=(d.tasks||[]).length + (d.pipeline||[]).length + (d.archive||[]).length + (d.checkins||[]).length + (d.spotlogs||[]).length; });

@@ -41,6 +41,8 @@ function renderDashboard(){
 
   ${renderFireCTA()}
 
+  ${renderLeakCapture()}
+
   ${renderTodayStrip()}
 
   ${renderPipeline()}
@@ -800,6 +802,8 @@ function bindDashboard(){
   const fc=q('#fsnCta'); if(fc) fc.onclick=()=>go('fsn');
   // Fire Station: start-a-fire CTA / return-to-fire, and evidence card
   bindFireDash();
+  // Leak Management: one-line capture card (+ link into the Leaks section)
+  bindLeakCapture();
 
   // Things to think about (Parking Lot data)
   const ta=q('#thinkAdd'); const ti=q('#thinkInput');

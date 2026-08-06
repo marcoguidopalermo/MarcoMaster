@@ -12,6 +12,7 @@
     "ignore": [
       "firebase.json",
       "**/.*",
+      "**/.*/**",
       "**/node_modules/**",
       "functions/**",
       "firestore.rules",
@@ -23,6 +24,13 @@
     "cleanUrls": false,
     "trailingSlash": false,
     "headers": [
+      {
+        "//": "THE ROOT URL. Header globs match the REQUEST PATH, not the file finally served: a request for '/' contains no '.html', so the rule below never fires for it and Firebase's default max-age=3600 applies. That is exactly the stale-index.html trap this migration exists to close — the root is the one URL everybody actually visits, and index.html is what carries every ?v= cache-bust. Verified with curl after deploy; do not remove.",
+        "source": "/",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        ]
+      },
       {
         "//": "Code + config: always revalidate. no-cache still CACHES — it just never serves a stale copy without asking (a 304 costs one conditional request, not a re-download). This is what ends the stale-file fights; the ?v= query strings are now belt-and-braces.",
         "source": "**/*.@(html|js|css|json)",

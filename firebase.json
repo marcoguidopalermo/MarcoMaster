@@ -6,5 +6,44 @@
     "source": "functions",
     "codebase": "default",
     "runtime": "nodejs22"
+  },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "functions/**",
+      "firestore.rules",
+      "firebase-debug.log",
+      "seed-once.js",
+      "MarcoMaster.html",
+      "README.md"
+    ],
+    "cleanUrls": false,
+    "trailingSlash": false,
+    "headers": [
+      {
+        "//": "Code + config: always revalidate. no-cache still CACHES — it just never serves a stale copy without asking (a 304 costs one conditional request, not a re-download). This is what ends the stale-file fights; the ?v= query strings are now belt-and-braces.",
+        "source": "**/*.@(html|js|css|json)",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        ]
+      },
+      {
+        "//": "The service worker must never be served stale, or a bad worker sticks around.",
+        "source": "/firebase-messaging-sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate" }
+        ]
+      },
+      {
+        "//": "Static assets never change in place — a new icon means a new filename — so cache them hard.",
+        "source": "**/*.@(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        ]
+      }
+    ]
   }
 }

@@ -1,8 +1,9 @@
 /* ============================================================
    MarcoMaster — Firebase Cloud Messaging service worker.
 
-   Served at /MarcoMaster/firebase-messaging-sw.js so its default scope is
-   /MarcoMaster/, which covers the whole app on GitHub Pages (subpath host).
+   Served at /firebase-messaging-sw.js on Firebase Hosting, so its default scope
+   is / — the whole app. (It previously lived under the /MarcoMaster/ GitHub Pages
+   subpath; the origin move is why every path below is root-relative.)
 
    PHASE 1 (PWA foundation) — SCAFFOLDING ONLY:
      • Handles background FCM messages (onBackgroundMessage) + notification clicks.
@@ -29,9 +30,9 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// App home on the GitHub Pages subpath — used for the notification icon + click target.
-const APP_URL = '/MarcoMaster/';
-const NOTIF_ICON = '/MarcoMaster/icons/icon-192-any.png';
+// App home at the hosting root — used for the notification icon + click target.
+const APP_URL = '/';
+const NOTIF_ICON = '/icons/icon-192-any.png';
 
 // Background message (app not in foreground): show a system notification.
 messaging.onBackgroundMessage((payload) => {
@@ -54,7 +55,13 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if (client.url.indexOf(APP_URL) !== -1 && 'focus' in client) return client.focus();
+        // Match on ORIGIN, not a substring of the path. At the hosting root APP_URL
+        // is '/', and indexOf('/') is true for EVERY url — which would silently turn
+        // this into "focus whatever window comes first". Comparing origins is what
+        // the check always meant, and it survives any future path change.
+        let sameOrigin = false;
+        try { sameOrigin = (new URL(client.url).origin === self.location.origin); } catch (e) {}
+        if (sameOrigin && 'focus' in client) return client.focus();
       }
       if (self.clients.openWindow) return self.clients.openWindow(target);
     })

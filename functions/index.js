@@ -33,7 +33,10 @@ const TZ = 'America/Toronto';
 // Single-user app: read this one user document directly by UID — never scan the
 // whole users collection (that would read the entire app-state doc every run).
 const USER_UID = 'OgEsKyNilhhmmh5FmwIQXh1qRwu1';
-const APP_URL = 'https://marcoguidopalermo.github.io/MarcoMaster/';
+// Firebase Hosting root (migrated from the GitHub Pages subpath). This is the
+// tap-through target baked into every notification, so it must match the origin
+// the app is actually served from or taps open a dead URL.
+const APP_URL = 'https://marcomaster-c4930.web.app/';
 const MARKER_TTL_MS = 24 * 60 * 60 * 1000;   // prune sent-markers older than 24h
 
 // FCM error codes that mean the token is dead and should be pruned.

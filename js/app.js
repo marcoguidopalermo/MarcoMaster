@@ -77,8 +77,12 @@ function startApp(){
   subscribeCloud();
 }
 
-/* Register the FCM service worker (Phase 1: register-only — proves the worker's
-   scope resolves on the /MarcoMaster/ GitHub Pages subpath). The worker does NO
+/* Register the FCM service worker (Phase 1: register-only). The path stays
+   RELATIVE: served from the Firebase Hosting root it resolves to
+   /firebase-messaging-sw.js with default scope '/', covering the whole app.
+   (It resolved to the /MarcoMaster/ subpath on GitHub Pages the same way — the
+   relative form is what let the origin move without touching this line.)
+   The worker does NO
    caching and NO fetch interception, so this is a genuine no-op for page behaviour:
    every request, including ?v= cache-busts, still goes straight to the network.
    No token/getToken logic yet — that arrives in a later phase. Relative path so it

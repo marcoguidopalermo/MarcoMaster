@@ -2,31 +2,31 @@
   "name": "MarcoMaster",
   "short_name": "MarcoMaster",
   "display": "standalone",
-  "start_url": "/MarcoMaster/",
-  "scope": "/MarcoMaster/",
+  "start_url": "/",
+  "scope": "/",
   "theme_color": "#3b82f6",
   "background_color": "#0c0d0e",
   "icons": [
     {
-      "src": "/MarcoMaster/icons/icon-192-any.png",
+      "src": "/icons/icon-192-any.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/MarcoMaster/icons/icon-192-maskable.png",
+      "src": "/icons/icon-192-maskable.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/MarcoMaster/icons/icon-512-any.png",
+      "src": "/icons/icon-512-any.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/MarcoMaster/icons/icon-512-maskable.png",
+      "src": "/icons/icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

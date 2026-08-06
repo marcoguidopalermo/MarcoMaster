@@ -1,7 +1,12 @@
 /* ============================================================
    PUSH NOTIFICATIONS — permission, token, and subscription storage.
    (Phase 2. Ports the shape of CrewMaster's src/lib/messaging.ts to
-   this plain-JS app on the GitHub Pages subpath /MarcoMaster/.)
+   this plain-JS app, served from the Firebase Hosting root.)
+
+   NOTE ON ORIGIN: an FCM web token is bound to (origin + service-worker
+   registration + VAPID key). Moving origin therefore invalidates nothing but
+   inherits nothing either — the new origin starts at Notification.permission
+   'default' and mints a brand-new token on first enable.
 
    Design guarantees:
    • Tokens are stored in their OWN Firestore collection (pushTokens/{uid}),

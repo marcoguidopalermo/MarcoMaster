@@ -41,7 +41,7 @@ function renderDashboard(){
 
   <div class="dash-actions">
     ${renderFireCTA()}
-    ${renderLeakCtas()}
+    ${renderLeakCta()}
   </div>
 
   ${renderLeakCapture()}

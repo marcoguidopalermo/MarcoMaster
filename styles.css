@@ -1247,8 +1247,8 @@ body.fire-active .app{padding-bottom:76px}
    deliberately var(--blue) (not var(--accent)) so a leak never reads as a generic
    primary action, and the fixed-alpha washes mirror how .fire-cta tints itself. */
 
-/* the three parallel dashboard moves: start a fire · capture a leak · fix a leak */
-.dash-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+/* the two parallel dashboard moves: start a fire · capture a leak */
+.dash-actions{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
 .dash-actions .fsn-cta{margin:0;height:100%}
 @media(max-width:900px){.dash-actions{grid-template-columns:1fr}}
 
@@ -1320,6 +1320,17 @@ body.fire-active .app{padding-bottom:76px}
   border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
 .leak-stat-opt:hover{border-color:var(--blue);color:var(--blue)}
 .leak-stat-opt.on{border-color:var(--blue);background:#58a6ff1c;color:var(--blue);font-weight:600}
+.leak-task-field .leak-task-make{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.leak-task-btn{background:var(--blue);border-color:var(--blue)}
+.leak-task-btn[disabled]{opacity:.45;cursor:not-allowed;background:none;border:1px solid var(--line);color:var(--txt-faint)}
+.leak-task-hint{font-family:var(--mono);font-size:11px;color:var(--txt-faint);min-width:0;flex:1}
+.leak-task-linked{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--blue);
+  border-radius:8px;background:#58a6ff1c;font-size:13px;color:var(--txt)}
+.leak-task-linked.done{border-color:var(--green);background:transparent;color:var(--txt-dim)}
+.leak-task-ic{flex:none;color:var(--blue);font-family:var(--mono)}
+.leak-task-linked.done .leak-task-ic{color:var(--green)}
+.leak-task-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.leak-task-state{flex:none;font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
 .leak-detail-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
   border-top:1px solid var(--line);padding-top:12px}
 .leak-hist{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}

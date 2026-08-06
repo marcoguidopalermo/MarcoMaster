@@ -74,7 +74,7 @@ function leakCreate(text){
   const now=Date.now();
   const l={ id:b(), text:text, occurrences:[now], createdAt:now, lastSeenAt:now,
     status:'open', resolutionType:null, owner:'', nextAction:'', dueDate:'',
-    defOfClosed:'', followUpDate:'', closedAt:null };
+    defOfClosed:'', followUpDate:'', closedAt:null, taskId:null };
   if(!Array.isArray(S.leaks)) S.leaks=[];
   S.leaks.push(l);
   save(false);
@@ -178,20 +178,15 @@ function leakAdoptStrandedPending(surface){
    🔥 and red, so the two read as opposites at a glance. */
 function leakOpenCount(){ return (S.leaks||[]).filter(l=>l.status!=='closed').length; }
 
-/* The two leak CTAs. Rendered beside the fire CTA so the dashboard reads as three
-   parallel moves: Start a fire · Capture a leak · Fix a leak. */
-function renderLeakCtas(){
-  const n=leakOpenCount();
+/* The leak CTA. Rendered beside the fire CTA so the dashboard reads as two parallel
+   moves: Start a fire · Capture a leak. Fixing a leak happens in the dropdown
+   directly below, which opens from its own header. */
+function renderLeakCta(){
   return `
   <button class="fsn-cta leak-cta" id="leakCaptureCta">
     <span class="fsn-cta-ic">💧</span>
     <span class="fsn-cta-txt"><b>Capture a leak</b><span>One line. Decide who owns it later.</span></span>
     <span class="fsn-cta-go">→</span>
-  </button>
-  <button class="fsn-cta leak-cta" id="leakFixCta">
-    <span class="fsn-cta-ic">💧</span>
-    <span class="fsn-cta-txt"><b>Fix a leak</b><span>${n?`${n} open · close ${n===1?'it':'one'} for good`:'Nothing leaking right now'}</span></span>
-    <span class="fsn-cta-go">${leakSectionOpen?'▾':'→'}</span>
   </button>`;
 }
 
@@ -214,11 +209,6 @@ function bindLeakCapture(){
   const cc=q('#leakCaptureCta'); if(cc) cc.onclick=()=>{
     const i=q('#leakCapCard [data-leakinput]') || q('#leakCapCard [data-leakconfirm]');
     if(i){ i.scrollIntoView({behavior:'smooth',block:'center'}); if(i.matches('input')) i.focus(); }
-  };
-  // "Fix a leak" opens the dropdown below and scrolls it into view
-  const fc=q('#leakFixCta'); if(fc) fc.onclick=()=>{
-    leakSectionOpen=true; rerender();
-    const el=q('#leakSection'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
   };
 }
 
@@ -271,6 +261,66 @@ function leakDateStr(s){
   return d.toLocaleDateString('en-CA',opts);
 }
 
+/* The text a "Create task" would use: the next action if there is one, else the leak
+   itself. Also what the button previews, so there's no surprise. */
+function leakTaskText(l){ return ((l.nextAction||'').trim() || (l.text||'').trim()); }
+
+/* Resolve the task this leak spawned. Tasks move: unfinished ones are carried into
+   the next day's record, and completed ones are swept into that day's archive (same
+   id both times) — so look across every day, then the archives, before concluding
+   it was deleted. Returns null when the leak was never linked. */
+function leakLinkedTask(l){
+  if(!l || !l.taskId) return null;
+  const g=(typeof findTaskGlobal==='function') ? findTaskGlobal(l.taskId) : null;
+  if(g && g.t) return { txt:g.t.txt, done:!!g.t.done, gone:false };
+  const days=S.days||{};
+  for(const dk of Object.keys(days)){
+    const a=((days[dk]||{}).archive||[]).find(x=>x && x.id===l.taskId);
+    if(a) return { txt:a.txt, done:true, gone:false };
+  }
+  return { txt:'', done:false, gone:true };   // linked, but the task no longer exists
+}
+/* Turn the resolution into a real task. It goes through the NORMAL quick-task path,
+   so it lands in today's tasks and behaves like any other — schedulable, completable,
+   and selectable as a fire. The new id is stored on the leak so the detail can show
+   the link. */
+function leakCreateTask(l){
+  const txt=leakTaskText(l);
+  if(!txt) return null;
+  const id=addTask(txt,'quick');   // addTask() saves
+  if(!id) return null;
+  l.taskId=id;
+  save(false);
+  return id;
+}
+
+/* "Create task" — the one place a leak crosses into the normal task system. Once
+   linked the row says so; if that task was deleted, offer to create another rather
+   than silently claiming a link that no longer exists. */
+function leakTaskHTML(l){
+  const link=leakLinkedTask(l);
+  const txt=leakTaskText(l);
+  if(link && !link.gone){
+    return `<div class="leak-field leak-task-field">
+      <label>Task</label>
+      <div class="leak-task-linked ${link.done?'done':''}">
+        <span class="leak-task-ic">${link.done?'✓':'→'}</span>
+        <span class="leak-task-txt">Task created${link.txt?` — ${esc(link.txt)}`:''}</span>
+        <span class="leak-task-state">${link.done?'done':'open'}</span>
+      </div>
+    </div>`;
+  }
+  return `<div class="leak-field leak-task-field">
+    <label>Task</label>
+    <div class="leak-task-make">
+      <button class="btn sm leak-task-btn" data-leaktask="${l.id}" ${txt?'':'disabled'}>+ Create task</button>
+      <span class="leak-task-hint">${txt
+        ? `“${esc(txt)}”${(l.nextAction||'').trim()?'':' — from the leak itself; a next action would be used instead'}`
+        : 'Write a next action first'}${(link&&link.gone)?' · the task you made earlier is gone':''}</span>
+    </div>
+  </div>`;
+}
+
 function leakDetailHTML(l){
   const chip=(t)=>`<button class="leak-chip ${l.resolutionType===t?'on':''}" data-leakres="${l.id}|${t}">${t}</button>`;
   const stat=([k,lbl])=>`<button class="leak-stat-opt ${((l.status||'open')===k)?'on':''}" data-leakstatus="${l.id}|${k}">${lbl}</button>`;
@@ -306,6 +356,7 @@ function leakDetailHTML(l){
       <label>Status</label>
       <div class="leak-stat-toggle">${LEAK_STATUSES.map(stat).join('')}</div>
     </div>
+    ${leakTaskHTML(l)}
     <div class="leak-detail-foot">
       <span class="leak-hist">Seen ${leakCount(l)}× · first ${leakDay(l.createdAt)} · last ${leakDay(l.lastSeenAt)}${l.closedAt?` · closed ${leakDay(l.closedAt)}`:''}</span>
       <button class="btn ghost sm leak-del" data-leakdel="${l.id}">Delete</button>
@@ -410,6 +461,14 @@ function bindLeakSection(){
     else l.closedAt=null;
     save(false); rerender();
     toast(st==='closed'?'Leak closed ✓':'Status updated');
+  });
+
+  // create the resolution as a normal quick task and link it to the leak
+  q('[data-leaktask]','all').forEach(el=>el.onclick=()=>{
+    const l=byId(el.dataset.leaktask); if(!l) return;
+    if(!leakCreateTask(l)){ toast('Write a next action first'); return; }
+    rerender();
+    toast('Task created ✓');
   });
 
   // delete (confirm) — the occurrence count is the evidence, so say what's lost

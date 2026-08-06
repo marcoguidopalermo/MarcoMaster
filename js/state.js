@@ -132,6 +132,7 @@ function seedDefaults(){
     if(l.defOfClosed==null)  l.defOfClosed='';
     if(l.followUpDate==null) l.followUpDate='';
     if(l.closedAt===undefined) l.closedAt=null;
+    if(l.taskId===undefined) l.taskId=null;   // the task this leak's resolution spawned, if any
   });
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};

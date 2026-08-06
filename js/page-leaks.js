@@ -173,24 +173,53 @@ function leakAdoptStrandedPending(surface){
   }
 }
 
-/* ---------- DASHBOARD surface ---------- */
+/* ---------- DASHBOARD surface ----------
+   Water to the Fire Station's fire: leaks carry 💧 and the app's blue, fires carry
+   🔥 and red, so the two read as opposites at a glance. */
+function leakOpenCount(){ return (S.leaks||[]).filter(l=>l.status!=='closed').length; }
+
+/* The two leak CTAs. Rendered beside the fire CTA so the dashboard reads as three
+   parallel moves: Start a fire · Capture a leak · Fix a leak. */
+function renderLeakCtas(){
+  const n=leakOpenCount();
+  return `
+  <button class="fsn-cta leak-cta" id="leakCaptureCta">
+    <span class="fsn-cta-ic">💧</span>
+    <span class="fsn-cta-txt"><b>Capture a leak</b><span>One line. Decide who owns it later.</span></span>
+    <span class="fsn-cta-go">→</span>
+  </button>
+  <button class="fsn-cta leak-cta" id="leakFixCta">
+    <span class="fsn-cta-ic">💧</span>
+    <span class="fsn-cta-txt"><b>Fix a leak</b><span>${n?`${n} open · close ${n===1?'it':'one'} for good`:'Nothing leaking right now'}</span></span>
+    <span class="fsn-cta-go">${leakSectionOpen?'▾':'→'}</span>
+  </button>`;
+}
+
 function renderLeakCapture(){
   leakAdoptStrandedPending('dash');
-  const open=(S.leaks||[]).filter(l=>l.status!=='closed').length;
   const pending=(leakPending && leakPending.surface==='dash');
   return `
   <div class="card leak-cap-card" id="leakCapCard">
-    <div class="card-h"><h3>Capture a leak</h3><span class="sub">${open} open</span></div>
+    <div class="card-h"><h3>💧 Capture a leak</h3><span class="sub">${leakOpenCount()} open</span></div>
     ${pending ? leakConfirmHTML(leakPending) : leakInputHTML()}
     <div class="leak-cap-foot">
       <span>First occurrence acts. Second notices. Third decides.</span>
-      <button class="leak-cap-link" id="leakCapGo">All leaks ›</button>
     </div>
   </div>`;
 }
 function bindLeakCapture(){
   bindLeakCaptureIn(q('#leakCapCard'), 'dash', ()=>rerender());   // rerender keeps scroll position
-  const go2=q('#leakCapGo'); if(go2) go2.onclick=()=>go('leaks');
+  // "Capture a leak" jumps to the one-line input rather than hiding it behind a
+  // click — capture has to stay one line and one keystroke away.
+  const cc=q('#leakCaptureCta'); if(cc) cc.onclick=()=>{
+    const i=q('#leakCapCard [data-leakinput]') || q('#leakCapCard [data-leakconfirm]');
+    if(i){ i.scrollIntoView({behavior:'smooth',block:'center'}); if(i.matches('input')) i.focus(); }
+  };
+  // "Fix a leak" opens the dropdown below and scrolls it into view
+  const fc=q('#leakFixCta'); if(fc) fc.onclick=()=>{
+    leakSectionOpen=true; rerender();
+    const el=q('#leakSection'); if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  };
 }
 
 /* ---------- FIRE STATION surface ----------
@@ -217,6 +246,7 @@ function bindFireLeakCapture(){
    ============================================================ */
 let leakOpenId=null;          // which leak's detail is expanded (one at a time)
 let leakClosedOpen=false;     // the collapsed "Closed" group
+let leakSectionOpen=false;    // the dashboard dropdown itself — collapsed by default
 
 function leakCount(l){ return (l.occurrences||[]).length; }
 /* most draining first: occurrence count desc, then most recently seen */
@@ -307,42 +337,44 @@ function leakRowHTML(l){
   </div>`;
 }
 
-function renderLeaks(){
-  leakAdoptStrandedPending('page');
+/* The Leaks dropdown — lives on the Dashboard, collapsed by default, header
+   carrying the open count. Expanded it holds everything the dedicated page did:
+   the sorted list, inline detail with every resolution field, the collapsed Closed
+   group, and delete. */
+function renderLeakSection(){
   const all=(S.leaks||[]);
   const active=all.filter(l=>l.status!=='closed').slice().sort(leakSort);
   const closed=all.filter(l=>l.status==='closed').slice().sort((a,b)=>(b.closedAt||0)-(a.closedAt||0));
-  const pending=(leakPending && leakPending.surface==='page');
   return `
-  <div class="phead">
-    <div class="kicker">Close it, don't complete it</div>
-    <h2>Leaks</h2>
-    <p>Every one of these reached you when it shouldn't have. The goal isn't to handle the interruption — it's to permanently close the leak. First occurrence acts, second notices, third decides.</p>
-  </div>
-
-  <div class="card leak-page-cap" id="leakPageCap">
-    ${pending ? leakConfirmHTML(leakPending) : leakInputHTML()}
-  </div>
-
-  <div class="leak-list">
-    ${active.length?active.map(leakRowHTML).join('')
-      :'<div class="empty">No open leaks. Capture the next thing that reaches you when it shouldn\'t.</div>'}
-  </div>
-
-  ${closed.length?`
-  <div class="panel ${leakClosedOpen?'open':''}" style="margin-top:16px">
-    <button class="panel-h" id="leakClosedPanel">
-      <span class="panel-caret">${leakClosedOpen?'▾':'▸'}</span>
-      <span class="panel-title">Closed</span>
-      <span class="panel-meta">${closed.length}</span>
+  <div class="panel leak-panel ${leakSectionOpen?'open':''}" id="leakSection">
+    <button class="panel-h" id="leakSectionToggle">
+      <span class="panel-caret">${leakSectionOpen?'▾':'▸'}</span>
+      <span class="panel-title">💧 Leaks (${active.length})</span>
+      <span class="panel-meta">close it, don't complete it</span>
     </button>
-    ${leakClosedOpen?`<div class="panel-body"><div class="leak-list">${closed.map(leakRowHTML).join('')}</div></div>`:''}
-  </div>`:''}
-  `;
+    ${leakSectionOpen?`<div class="panel-body">
+      <div class="panel-note">Every one of these reached you when it shouldn't have. The goal isn't to handle the interruption — it's to permanently close the leak.</div>
+
+      <div class="leak-list">
+        ${active.length?active.map(leakRowHTML).join('')
+          :'<div class="empty">No open leaks. Capture the next thing that reaches you when it shouldn\'t.</div>'}
+      </div>
+
+      ${closed.length?`
+      <div class="panel ${leakClosedOpen?'open':''}" style="margin-top:14px">
+        <button class="panel-h" id="leakClosedPanel">
+          <span class="panel-caret">${leakClosedOpen?'▾':'▸'}</span>
+          <span class="panel-title">Closed</span>
+          <span class="panel-meta">${closed.length}</span>
+        </button>
+        ${leakClosedOpen?`<div class="panel-body"><div class="leak-list">${closed.map(leakRowHTML).join('')}</div></div>`:''}
+      </div>`:''}
+    </div>`:''}
+  </div>`;
 }
 
-function bindLeaks(){
-  bindLeakCaptureIn(q('#leakPageCap'), 'page', ()=>rerender());
+function bindLeakSection(){
+  const st=q('#leakSectionToggle'); if(st) st.onclick=()=>{ leakSectionOpen=!leakSectionOpen; rerender(); };
 
   const byId=(id)=>(S.leaks||[]).find(x=>x.id===id);
   const pair=(v)=>{ const i=String(v).indexOf('|'); return [String(v).slice(0,i), String(v).slice(i+1)]; };

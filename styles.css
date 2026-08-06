@@ -1241,33 +1241,57 @@ body.fire-active .app{padding-bottom:76px}
   font-family:var(--mono);font-size:12px;color:var(--txt-dim)}
 @media(max-width:600px){.fire-title{font-size:24px}.fire-clock-big{font-size:60px}}
 
-/* ---------- LEAK MANAGEMENT ---------- */
-.leak-cap-card{margin-bottom:14px}
+/* ---------- LEAK MANAGEMENT ----------
+   Water to the Fire Station's fire: leaks wear 💧 and the app's BLUE, fires wear 🔥
+   and red, so the two systems read as opposites at a glance. Blue accents here are
+   deliberately var(--blue) (not var(--accent)) so a leak never reads as a generic
+   primary action, and the fixed-alpha washes mirror how .fire-cta tints itself. */
+
+/* the three parallel dashboard moves: start a fire · capture a leak · fix a leak */
+.dash-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.dash-actions .fsn-cta{margin:0;height:100%}
+@media(max-width:900px){.dash-actions{grid-template-columns:1fr}}
+
+/* dashboard CTAs reuse .fsn-cta; water accent (opposite of .fire-cta) */
+.leak-cta{background:linear-gradient(120deg,#58a6ff1f,transparent 70%),var(--panel);border-left-color:var(--blue)}
+.leak-cta .fsn-cta-ic{color:var(--blue)}
+.leak-cta:hover{border-color:var(--blue);border-left-color:var(--blue)}
+.leak-cta:hover .fsn-cta-go{color:var(--blue)}
+
+.leak-cap-card{margin-bottom:14px;border-left:3px solid var(--blue)}
 .leak-cap-row{display:flex;gap:8px}
 .leak-cap-row input{flex:1;font-size:13px;padding:9px 11px}
+.leak-cap-row input:focus{border-color:var(--blue)}
+.leak-cap-row .btn{background:var(--blue);border-color:var(--blue)}
 .leak-cap-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;
   font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
-.leak-cap-link{background:none;border:none;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--accent);padding:0}
-.leak-cap-link:hover{text-decoration:underline}
-.leak-page-cap{margin-bottom:16px}
+
+/* the Leaks dropdown on the Dashboard */
+.leak-panel{border-left:3px solid var(--blue);margin-bottom:14px}
+.leak-panel > .panel-h .panel-title{color:var(--txt)}
+.leak-panel.open > .panel-h{border-bottom:1px solid var(--line)}
 
 /* the "same as…?" prompt — identical on every capture surface */
-.leak-confirm{border:1px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:12px 14px}
+.leak-confirm{border:1px solid var(--blue);background:#58a6ff1c;border-radius:8px;padding:12px 14px}
 .leak-confirm-q{font-size:14px;color:var(--txt);line-height:1.45}
 .leak-confirm-q b{font-weight:700}
 .leak-confirm-meta{font-family:var(--mono);font-size:11px;color:var(--txt-dim);margin-top:5px}
 .leak-confirm-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.leak-confirm-btns .btn:not(.ghost){background:var(--blue);border-color:var(--blue)}
+.leak-confirm-btns .btn.ghost:hover{border-color:var(--blue);color:var(--blue)}
 
 /* list */
 .leak-list{display:flex;flex-direction:column;gap:8px}
-.leak-row{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
-.leak-row.expanded{border-color:var(--accent)}
-.leak-row.is-closed{opacity:.72}
+.leak-row{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:10px;
+  background:var(--panel);overflow:hidden}
+.leak-row.expanded{border-color:var(--blue)}
+.leak-row.is-closed{opacity:.72;border-left-color:var(--line)}
 .leak-head{width:100%;display:flex;align-items:center;gap:13px;padding:13px 15px;background:none;border:none;
   cursor:pointer;text-align:left;font-family:var(--sans);color:var(--txt);transition:background .12s}
 .leak-head:hover{background:var(--panel-2)}
 .leak-n{flex:none;min-width:38px;text-align:center;font-family:var(--mono);font-size:13px;font-weight:700;
-  color:var(--txt-dim);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+  color:var(--blue);border:1px solid var(--blue);border-radius:6px;padding:4px 6px}
+/* the count IS the evidence — it warms as it repeats (2nd notices, 3rd decides) */
 .leak-n.warm{color:var(--amber);border-color:var(--amber)}
 .leak-n.hot{color:var(--red);border-color:var(--red)}
 .leak-main{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
@@ -1275,25 +1299,27 @@ body.fire-active .app{padding-bottom:76px}
 .leak-row.is-closed .leak-txt{text-decoration:line-through;color:var(--txt-dim)}
 .leak-meta{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
 .leak-caret{flex:none;font-size:11px;color:var(--txt-faint)}
+.leak-row.expanded .leak-caret{color:var(--blue)}
 
 /* detail */
 .leak-detail{border-top:1px solid var(--line);padding:14px 15px 15px;display:flex;flex-direction:column;gap:13px;animation:fade .2s}
 .leak-field{display:flex;flex-direction:column;gap:6px}
 .leak-field label{font-family:var(--mono);font-size:10.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--txt-faint)}
 .leak-field input,.leak-field textarea{font-size:13.5px;padding:9px 11px}
+.leak-field input:focus,.leak-field textarea:focus{border-color:var(--blue)}
 .leak-field textarea{min-height:58px}
 .leak-dates{display:flex;gap:12px}
 .leak-dates .leak-field{flex:1;min-width:0}
 .leak-chips{display:flex;gap:7px;flex-wrap:wrap}
 .leak-chip{padding:7px 13px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
   border-radius:999px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
-.leak-chip:hover{border-color:var(--accent);color:var(--accent)}
-.leak-chip.on{border-color:var(--accent);background:var(--accent);color:#fff}
+.leak-chip:hover{border-color:var(--blue);color:var(--blue)}
+.leak-chip.on{border-color:var(--blue);background:var(--blue);color:#fff}
 .leak-stat-toggle{display:flex;gap:7px;flex-wrap:wrap}
 .leak-stat-opt{flex:1;min-width:88px;padding:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
   border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
-.leak-stat-opt:hover{border-color:var(--accent);color:var(--accent)}
-.leak-stat-opt.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.leak-stat-opt:hover{border-color:var(--blue);color:var(--blue)}
+.leak-stat-opt.on{border-color:var(--blue);background:#58a6ff1c;color:var(--blue);font-weight:600}
 .leak-detail-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
   border-top:1px solid var(--line);padding-top:12px}
 .leak-hist{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}

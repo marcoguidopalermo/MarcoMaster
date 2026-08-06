@@ -39,9 +39,14 @@ function renderDashboard(){
     <span class="fsn-cta-go">→</span>
   </button>
 
-  ${renderFireCTA()}
+  <div class="dash-actions">
+    ${renderFireCTA()}
+    ${renderLeakCtas()}
+  </div>
 
   ${renderLeakCapture()}
+
+  ${renderLeakSection()}
 
   ${renderTodayStrip()}
 
@@ -802,8 +807,10 @@ function bindDashboard(){
   const fc=q('#fsnCta'); if(fc) fc.onclick=()=>go('fsn');
   // Fire Station: start-a-fire CTA / return-to-fire, and evidence card
   bindFireDash();
-  // Leak Management: one-line capture card (+ link into the Leaks section)
+  // Leak Management: the two leak CTAs, the one-line capture card, and the
+  // collapsible Leaks dropdown (full list + detail + closed group + delete)
   bindLeakCapture();
+  bindLeakSection();
 
   // Things to think about (Parking Lot data)
   const ta=q('#thinkAdd'); const ti=q('#thinkInput');

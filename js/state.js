@@ -153,8 +153,26 @@ function seedDefaults(){
       if(l.status==='progress')          folded.push('Status was: In progress');
       if(folded.length) l.notes = folded.join('\n') + (l.notes ? '\n\n'+l.notes : '');
     }
-    // status simplifies to open | closed — 'progress' folds into notes above, then maps to open
-    if(l.status!=='open' && l.status!=='closed') l.status='open';
+    // ---- Leaks v3: a leak is a CONTAINER that holds tasks, like a project ----
+    // Additive: existing leaks default to Open with an empty task list, which is
+    // indistinguishable from a leak created today.
+    if(!Array.isArray(l.tasks)) l.tasks=[];
+    l.tasks.forEach(t=>{
+      if(!t || typeof t!=='object') return;
+      if(t.id==null) t.id=b();
+      if(t.done==null) t.done=false;
+      if(t.doneAt===undefined) t.doneAt=null;
+      if(t.priority==null) t.priority=false;
+      t.kind='quick';                       // leak tasks are quick-only (no time-block machinery)
+    });
+    // regression = the fix didn't hold. Counted from BOTH Watching→Open (unproven)
+    // and Closed→Open (declared solved, and it came back — the stronger signal), with
+    // the closed subset tracked separately so the detail can say "2 regressions, 1 from closed".
+    if(l.regressions==null) l.regressions=0;
+    if(l.regressionsFromClosed==null) l.regressionsFromClosed=0;
+    // status: open | watching | closed. 'watching' is new so there's nothing to remap;
+    // the retired 'progress' already folded into notes above.
+    if(l.status!=='open' && l.status!=='watching' && l.status!=='closed') l.status='open';
   });
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
@@ -441,10 +459,12 @@ function day(){
         let done;
         if(it.taskId){ const t=(prev.tasks||[]).find(x=>x.id===it.taskId); done=t?t.done:!!it.done; }
         else if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId); done=t?t.done:!!it.done; }
+        else if(it.leakId){ const l=(S.leaks||[]).find(x=>x.id===it.leakId); const t=l&&(l.tasks||[]).find(x=>x.id===it.leakTaskId); done=t?t.done:!!it.done; }
         else { done=!!it.done; }
         if(done) return;                      // completed → drop on the new day
         const carried={id:b(), txt:it.txt, done:false};
         if(it.projectId){ carried.projectId=it.projectId; carried.projTaskId=it.projTaskId; }  // keep persistent project link
+        if(it.leakId){ carried.leakId=it.leakId; carried.leakTaskId=it.leakTaskId; }              // keep persistent leak link
         d.pipeline.push(carried);
       });
     }

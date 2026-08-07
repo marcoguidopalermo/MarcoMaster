@@ -31,8 +31,9 @@ function fireDayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String
 
 /* ---------- task resolution (keys are atToggle-format) ---------- */
 function fireTaskByKey(key){
-  if(fireLeakByKey(key)) return null;      // a leak is not a task: nothing to stamp defOfDone on
+  if(fireLeakByKey(key)) return null;      // the leak ITSELF is not a task: nothing to stamp defOfDone on
   const k=atKey(key);
+  if(k.src==='leak') return leakTask(k.leakId, k.id);
   if(k.src==='project'){ const p=(S.projects||[]).find(x=>x.id===k.projId); return p&&(p.tasks||[]).find(x=>x.id===k.id); }
   const id=fireStandaloneId(key, k);
   let t=day().tasks.find(x=>x.id===id); if(!t){ const g=findTaskGlobal(id); t=g&&g.t; } return t;
@@ -72,11 +73,23 @@ function firePickGroups(){
     if(g.items.length) groups.push(g);
   });
 
-  // Leaks are fightable directly — fixing one IS the work, and it needs no task first.
-  const leaks={title:'💧 Leaks', cls:'g-leak', color:'var(--blue)', items:[]};
-  (S.leaks||[]).filter(l=>l.status!=='closed').slice().sort(leakSort).forEach(l=>
-    add(leaks, 'L|'+l.id, l.text, {badge:leakCount(l)+'×', badgeCls:leakBadgeClass(l)}));
-  if(leaks.items.length) groups.push(leaks);
+  // Leaks are containers now, so they follow the PROJECT pattern: a leak with open
+  // tasks contributes its own group of tasks; a leak with none is still fightable
+  // directly. So the picker never offers both a leak and its tasks — exactly one way
+  // to fire on any piece of work.
+  const openLeaks=(S.leaks||[]).filter(l=>l.status!=='closed').slice().sort(leakSort);
+  const bare={title:'💧 Leaks', cls:'g-leak', color:'var(--blue)', items:[]};
+  openLeaks.forEach(l=>{
+    const open=(l.tasks||[]).filter(t=>!t.done);
+    if(open.length){
+      const g={title:'💧 '+l.text, cls:'g-leak', color:'var(--blue)', items:[]};
+      open.forEach(t=> add(g, 'L|'+l.id+'|'+t.id, t.txt, {priority:!!t.priority}));
+      if(g.items.length) groups.push(g);
+    }else{
+      add(bare, 'L|'+l.id, l.text, {badge:leakCount(l)+'×', badgeCls:leakBadgeClass(l)});
+    }
+  });
+  if(bare.items.length) groups.push(bare);
 
   groups.forEach(g=>g.items.sort((a,b)=>(b.priority?1:0)-(a.priority?1:0)));   // 🔥 to the top of its group
   return groups;
@@ -85,7 +98,9 @@ function firePickGroups(){
    which is shared with the task-row handlers in page-today.js */
 function fireLeakByKey(key){
   if(typeof key!=='string' || key.slice(0,2)!=='L|') return null;
-  return (S.leaks||[]).find(l=>l.id===key.slice(2)) || null;
+  const a=key.split('|');
+  if(a.length!==2) return null;                    // 3 segments = a leak TASK, not the leak
+  return (S.leaks||[]).find(l=>l.id===a[1]) || null;
 }
 
 /* complete the task through the NORMAL completion path, forced done=true. */
@@ -95,6 +110,7 @@ function fireCompleteTask(key){
   // the leak's detail. The session is still recorded in fireSessions either way.
   if(fireLeakByKey(key)) return;
   const k=atKey(key);
+  if(k.src==='leak'){ setLeakTaskDone(k.leakId, k.id, true); return; }   // may promote the leak to Watching
   if(k.src==='project'){ setProjTaskDone(k.projId, k.id, true); return; }
   const id=fireStandaloneId(key, k);
   let t=day().tasks.find(x=>x.id===id); if(!t){ const g=findTaskGlobal(id); t=g&&g.t; }

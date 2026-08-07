@@ -1390,3 +1390,37 @@ body.pick-open{overflow:hidden}
   .pick-screen.dense .pick-body,.pick-screen.denser .pick-body{columns:1}
   .pick-inner{padding:14px 14px calc(16px + env(safe-area-inset-bottom))}
 }
+
+/* ---------- leaks as containers: tasks, watching, regressions ---------- */
+.leak-d-lbl{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:0.09em;text-transform:uppercase;color:var(--txt-faint);margin:16px 0 7px}
+.leak-d-ct{color:var(--blue)}
+.leak-t-list{display:flex;flex-direction:column;gap:3px}
+.leak-t-row{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--line);
+  border-left:3px solid var(--blue);border-radius:7px;background:var(--panel);font-size:13.5px}
+.leak-t-row.done{opacity:.6;border-left-color:var(--line)}
+.leak-t-row.done .leak-t-txt{text-decoration:line-through;color:var(--txt-dim)}
+.leak-t-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.leak-t-add{display:flex;gap:8px;margin-top:8px}
+.leak-t-add input{flex:1;font-size:13px;padding:8px 10px}
+.leak-t-add input:focus{border-color:var(--blue)}
+.leak-t-add .btn{background:var(--blue);border-color:var(--blue)}
+
+/* watching: the quiet counter is the evidence for closing */
+.leak-watching{display:flex;flex-direction:column;gap:3px;margin:12px 0 2px;padding:11px 13px;
+  border:1px solid var(--blue);border-radius:9px;background:#58a6ff14}
+.leak-watch-big{font-size:14.5px;font-weight:700;color:var(--blue)}
+.leak-watch-note{font-size:12px;color:var(--txt-dim)}
+.leak-watch-mark{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--blue)}
+.leak-task-ct{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
+
+/* regression: the fix didn't hold — loud wherever it appears */
+.leak-regressed{margin:12px 0 2px;padding:11px 13px;border:1px solid var(--red);border-radius:9px;
+  background:#f8514916;color:var(--txt);font-size:13px}
+.leak-regress-mark{flex:none;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--red)}
+.pick-row.is-regressed{border-color:var(--red)}
+.leak-confirm.is-regression{border-color:var(--red);background:#f8514916}
+.leak-confirm.is-regression .leak-confirm-btns .btn:not(.ghost){background:var(--red);border-color:var(--red)}
+
+/* leak tasks in All Tasks / Completed reuse the project chip in water blue */
+.leak-task-chip{--pc:var(--blue)}

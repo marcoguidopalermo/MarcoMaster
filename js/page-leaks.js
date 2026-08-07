@@ -21,7 +21,7 @@
    Store: S.leaks — see seedDefaults() in state.js for the shape.
    ============================================================ */
 
-const LEAK_STATUSES=[['open','Open'],['closed','Closed']];
+const LEAK_STATUSES=[['open','Open'],['watching','Watching'],['closed','Closed']];
 function leakStatusLabel(s){ const f=LEAK_STATUSES.find(x=>x[0]===s); return f?f[1]:'Open'; }
 
 /* ============================================================
@@ -77,7 +77,8 @@ let leakPending=null;      // {text, matchId, matchText, count, wasClosed, surfa
 function leakCreate(text){
   const now=Date.now();
   const l={ id:b(), text:text, occurrences:[now], createdAt:now, lastSeenAt:now,
-    status:'open', notes:'', closedAt:null, _leakV2:true };
+    status:'open', notes:'', tasks:[], regressions:0, regressionsFromClosed:0,
+    closedAt:null, _leakV2:true };
   if(!Array.isArray(S.leaks)) S.leaks=[];
   S.leaks.push(l);
   save(false);
@@ -91,10 +92,19 @@ function leakIncrement(l){
   if(!Array.isArray(l.occurrences)) l.occurrences=[];
   l.occurrences.push(now);
   l.lastSeenAt=now;
-  const reopened=(l.status==='closed');
-  if(reopened){ l.status='open'; l.closedAt=null; }
+  // THE key signal: it came back after you thought it was handled. Both directions
+  // count as a regression, and Closed→Open is the STRONGER one — Watching only ever
+  // meant "unproven", Closed meant "I declared this solved".
+  const from = l.status;
+  const regressed = (from==='watching' || from==='closed');
+  if(regressed){
+    l.status='open';
+    l.closedAt=null;
+    l.regressions=(l.regressions||0)+1;
+    if(from==='closed') l.regressionsFromClosed=(l.regressionsFromClosed||0)+1;
+  }
   save(false);
-  return {leak:l, reopened};
+  return {leak:l, regressed, from};
 }
 
 /* Entry point for every capture surface. Returns true when it captured outright,
@@ -104,7 +114,7 @@ function leakSubmit(text, surface){
   const m=leakFindMatch(v);
   if(!m){ leakCreate(v); leakPending=null; toast('Captured. Back to work.'); return true; }
   leakPending={ text:v, matchId:m.id, matchText:m.text, count:(m.occurrences||[]).length,
-                wasClosed:(m.status==='closed'), surface:surface };
+                wasClosed:(m.status==='closed'), wasWatching:(m.status==='watching'), surface:surface };
   return false;
 }
 /* Answer the question: 'same' → increment that leak, 'new' → create a separate one. */
@@ -115,8 +125,12 @@ function leakResolvePending(choice){
     const l=(S.leaks||[]).find(x=>x.id===p.matchId);
     if(l){
       const r=leakIncrement(l);
-      toast(r.reopened ? `It's back — ${(l.occurrences||[]).length}×. Back to work.`
-                       : `Captured — ${(l.occurrences||[]).length}×. Back to work.`);
+      if(r.regressed){
+        const n=l.regressions||1;
+        toast(`The fix didn't hold — back to Open (${n}${n===1?'st':(n===2?'nd':(n===3?'rd':'th'))} regression).`);
+      }else{
+        toast(`Captured — ${(l.occurrences||[]).length}×. Back to work.`);
+      }
       return;
     }
   }
@@ -126,11 +140,15 @@ function leakResolvePending(choice){
 
 /* the "same as…?" prompt — identical markup on every surface */
 function leakConfirmHTML(p){
-  return `<div class="leak-confirm">
-    <div class="leak-confirm-q">${p.wasClosed?'You closed this one — is it back?':'Same as:'} <b>${esc(p.matchText)}</b>?</div>
-    <div class="leak-confirm-meta">${p.wasClosed
-      ? `Closed leak, seen ${p.count}×. Saying yes reopens it.`
-      : `Seen ${p.count}× so far.`}</div>
+  const q = p.wasClosed  ? 'You closed this one — is it back?'
+          : p.wasWatching ? 'This one was on watch. Did it come back?'
+          : 'Same as:';
+  const meta = p.wasClosed  ? `You declared this solved after ${p.count}×. Saying yes reopens it and records a regression.`
+             : p.wasWatching ? `Watching after ${p.count}×. Saying yes means the fix didn't hold.`
+             : `Seen ${p.count}× so far.`;
+  return `<div class="leak-confirm ${(p.wasClosed||p.wasWatching)?'is-regression':''}">
+    <div class="leak-confirm-q">${q} <b>${esc(p.matchText)}</b>?</div>
+    <div class="leak-confirm-meta">${meta}</div>
     <div class="leak-confirm-btns">
       <button class="btn sm" data-leakconfirm="same">Yes — same leak (→ ${p.count+1}×)</button>
       <button class="btn ghost sm" data-leakconfirm="new">No — new leak</button>
@@ -238,30 +256,133 @@ function leakDay(ts){
   return d.toLocaleDateString('en-CA',opts);
 }
 
+/* ============================================================
+   LEAK TASKS — a leak is a CONTAINER, like a project.
+   Tasks live on the leak in the SAME shape as project tasks, and every existing
+   task path (All Tasks, the fire picker, Completed Today, the pipeline) gains a
+   leak branch beside its project branch rather than a parallel implementation.
+   Row key: 'L|<leakId>|<taskId>'  (vs 'L|<leakId>' = the leak itself).
+   Leak tasks are QUICK-only: the time-block machinery is keyed on
+   projectId/projTaskId throughout, and a leak fix is a small concrete action.
+   ============================================================ */
+function leakById(id){ return (S.leaks||[]).find(l=>l.id===id) || null; }
+function leakTask(leakId, taskId){ const l=leakById(leakId); return l && (l.tasks||[]).find(t=>t.id===taskId) || null; }
+function leakOpenTasks(l){ return (l&&l.tasks||[]).filter(t=>!t.done); }
+
+function addLeakTask(leakId, txt){
+  const l=leakById(leakId); const v=(txt||'').trim();
+  if(!l || !v) return false;
+  if(!Array.isArray(l.tasks)) l.tasks=[];
+  l.tasks.push({id:b(), txt:v, done:false, doneAt:null, priority:false, kind:'quick'});
+  // work is outstanding again → a watching leak goes back to Open (no regression:
+  // only a real recurrence counts as the fix failing)
+  if(l.status==='watching') l.status='open';
+  save();
+  return true;
+}
+/* Mirrors setProjTaskDone: stamps the completion DAY so the task shows in
+   Completed Today, then re-evaluates the leak's status. */
+function setLeakTaskDone(leakId, taskId, done){
+  const t=leakTask(leakId, taskId); if(!t) return;
+  t.done=!!done;
+  t.doneAt = done ? todayKey() : null;
+  leakSyncWatching(leakId);
+}
+/* THE single choke point for Open→Watching, so the rule is identical whether the
+   task was completed in the leak detail, in All Tasks, or by extinguishing a fire.
+   Promotes ONLY when there is real work that is now all done. Never closes: Closed
+   is a deliberate act and nothing here will ever set it. */
+function leakSyncWatching(leakId){
+  const l=leakById(leakId); if(!l) return;
+  const tasks=l.tasks||[];
+  if(l.status==='open' && tasks.length && tasks.every(t=>t.done)){
+    l.status='watching';
+  }else if(l.status==='watching' && tasks.length && tasks.some(t=>!t.done)){
+    l.status='open';          // work outstanding again — not a regression
+  }
+  save(false);
+}
+
+/* whole days since the last occurrence — the evidence for closing a watching leak */
+function leakDaysSince(l){
+  const ms=Date.now()-(l.lastSeenAt||l.createdAt||Date.now());
+  return Math.max(0, Math.floor(ms/86400000));
+}
+function leakQuietLabel(l){
+  const d=leakDaysSince(l);
+  return d===0 ? 'since today' : (d===1 ? '1 day since last occurrence' : `${d} days since last occurrence`);
+}
+/* every fire fought on this leak — the leak itself AND any of its tasks, all-time */
+function leakFireStats(leakId){
+  const pre='L|'+leakId;
+  let count=0, mins=0;
+  (S.fireSessions||[]).forEach(s=>{
+    if(!s || !s.endedAt || typeof s.taskId!=='string') return;
+    if(s.taskId===pre || s.taskId.indexOf(pre+'|')===0){ count++; mins+=(s.actualMin||0); }
+  });
+  return {count, mins};
+}
+function leakRegressionLabel(l){
+  const n=l.regressions||0; if(!n) return '';
+  const c=l.regressionsFromClosed||0;
+  return `⚠ ${n} regression${n===1?'':'s'}${c?` · ${c} from closed`:''}`;
+}
+
 function openLeakScreen(){ leakScreenOpen=true; leakOpenId=null; paintLeakScreen(); }
 function closeLeakScreen(){ leakScreenOpen=false; paintLeakScreen(); rerender(); }
 
-/* one compact, single-line row */
+/* one compact, single-line row. Task progress rides along like a project's, and a
+   leak that has regressed carries the warning treatment wherever it appears. */
 function leakRowHTML(l){
-  return `<button class="pick-row" data-leakrow="${l.id}">
+  const t=(l.tasks||[]), doneCt=t.filter(x=>x.done).length;
+  return `<button class="pick-row ${l.regressions?'is-regressed':''}" data-leakrow="${l.id}">
     <span class="pick-badge ${leakBadgeClass(l)}">${leakCount(l)}×</span>
     <span class="pick-txt">${esc(l.text)}</span>
+    ${l.regressions?`<span class="leak-regress-mark" title="${esc(leakRegressionLabel(l))}">⚠${l.regressions>1?l.regressions:''}</span>`:''}
+    ${t.length?`<span class="leak-task-ct">${doneCt}/${t.length}</span>`:''}
+    ${l.status==='watching'?`<span class="leak-watch-mark" title="${esc(leakQuietLabel(l))}">👁 ${leakDaysSince(l)}d</span>`:''}
   </button>`;
 }
 
-/* DETAIL — deliberately thin: text + count, ONE notes field, status, delete.
-   It REPLACES the grid rather than expanding inline, because expanding a row
-   inside a multi-column layout reflows every other column under the cursor. */
+/* DETAIL — text + count, notes, its TASK LIST, status, the quiet counter while
+   watching, regressions if any, this leak's fire time, delete. It REPLACES the grid
+   rather than expanding inline, because expanding a row inside a multi-column
+   layout reflows every other column under the cursor. */
 function leakDetailHTML(l){
   const stat=([k,lbl])=>`<button class="leak-stat-opt ${((l.status||'open')===k)?'on':''}" data-leakstatus="${l.id}|${k}">${lbl}</button>`;
+  const tasks=(l.tasks||[]);
+  const fs=leakFireStats(l.id);
+  const taskRow=(t)=>`<div class="leak-t-row ${t.done?'done':''}">
+      <span class="box" data-leaktdone="${l.id}|${t.id}" title="${t.done?'Mark not done':'Mark done'}">✓</span>
+      <span class="leak-t-txt">${t.priority?'<span class="prio-mark">🔥</span> ':''}${esc(t.txt)}</span>
+      <span class="x" data-leaktdel="${l.id}|${t.id}" title="Delete task">×</span>
+    </div>`;
   return `<div class="leak-detail-full">
     <button class="pick-back" id="leakBack">← All leaks</button>
     <div class="leak-d-head">
       <span class="pick-badge ${leakBadgeClass(l)}">${leakCount(l)}×</span>
       <h2>${esc(l.text)}</h2>
     </div>
-    <div class="leak-d-sub">first seen ${leakDay(l.createdAt)} · last seen ${leakDay(l.lastSeenAt)}${l.closedAt?` · closed ${leakDay(l.closedAt)}`:''}</div>
+    <div class="leak-d-sub">first seen ${leakDay(l.createdAt)} · last seen ${leakDay(l.lastSeenAt)}${l.closedAt?` · closed ${leakDay(l.closedAt)}`:''}${fs.count?` · ${fs.count} fire${fs.count===1?'':'s'} · ${fmtFocus(fs.mins)} focused`:''}</div>
+
+    ${l.status==='watching'?`<div class="leak-watching">
+      <span class="leak-watch-big">👁 ${esc(leakQuietLabel(l))}</span>
+      <span class="leak-watch-note">The fix is in. Close it when you're satisfied it stopped reaching you.</span>
+    </div>`:''}
+    ${l.regressions?`<div class="leak-regressed">${esc(leakRegressionLabel(l))} — it came back after you thought it was handled.</div>`:''}
+
+    <div class="leak-d-lbl">Tasks<span class="leak-d-ct">${tasks.filter(t=>t.done).length}/${tasks.length}</span></div>
+    <div class="leak-t-list">
+      ${tasks.length?tasks.map(taskRow).join(''):'<div class="empty sm">No tasks yet — what would actually close this leak?</div>'}
+    </div>
+    <div class="leak-t-add">
+      <input type="text" data-leaktadd="${l.id}" placeholder="Add a task that closes this leak…">
+      <button class="btn sm" data-leaktaddbtn="${l.id}">+</button>
+    </div>
+
+    <div class="leak-d-lbl">Notes</div>
     <textarea class="leak-notes" data-leaknotes="${l.id}" placeholder="Notes — whatever you want to remember about this leak: who should own it, what would kill it, what you already tried.">${esc(l.notes||'')}</textarea>
+
     <div class="leak-d-actions">
       <div class="leak-stat-toggle">${LEAK_STATUSES.map(stat).join('')}</div>
       <button class="btn ghost sm leak-del" data-leakdel="${l.id}">Delete</button>
@@ -317,6 +438,29 @@ function bindLeakScreen(){
   const nt=q('#leakScreen [data-leaknotes]');
   if(nt) nt.oninput=()=>{ const l=byId(nt.dataset.leaknotes); if(l){ l.notes=nt.value; save(false); } };
 
+  // ---- tasks (the same machinery as project tasks, reached by leak id) ----
+  const pair=(v)=>{ const i=String(v).indexOf('|'); return [String(v).slice(0,i), String(v).slice(i+1)]; };
+  q('#leakScreen [data-leaktdone]','all').forEach(el=>el.onclick=()=>{
+    const [lid,tid]=pair(el.dataset.leaktdone);
+    const t=leakTask(lid,tid); if(!t) return;
+    setLeakTaskDone(lid, tid, !t.done);     // may auto-promote Open → Watching
+    paintLeakScreen(); rerender();
+  });
+  q('#leakScreen [data-leaktdel]','all').forEach(el=>el.onclick=()=>{
+    const [lid,tid]=pair(el.dataset.leaktdel);
+    const l=byId(lid); if(!l) return;
+    l.tasks=(l.tasks||[]).filter(x=>x.id!==tid);
+    // dropping the last outstanding task can complete the set — re-evaluate
+    leakSyncWatching(lid);
+    // sweep any pipeline references so nothing dangles
+    Object.keys(S.days||{}).forEach(dk=>{ const d=S.days[dk]; if(d.pipeline) d.pipeline=d.pipeline.filter(it=>!(it.leakId===lid && it.leakTaskId===tid)); });
+    save(); paintLeakScreen(); rerender();
+  });
+  const ti=q('#leakScreen [data-leaktadd]'), tb=q('#leakScreen [data-leaktaddbtn]');
+  const addT=()=>{ if(!ti) return; if(!addLeakTask(ti.dataset.leaktadd, ti.value)) return; paintLeakScreen(); rerender(); };
+  if(tb) tb.onclick=addT;
+  if(ti) ti.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); addT(); } };
+
   // status — closing stamps closedAt, reopening clears it. Never deletes.
   q('#leakScreen [data-leakstatus]','all').forEach(el=>el.onclick=()=>{
     const v=el.dataset.leakstatus, i=v.indexOf('|');
@@ -324,7 +468,7 @@ function bindLeakScreen(){
     l.status=st;
     l.closedAt = (st==='closed') ? Date.now() : null;
     save(false); paintLeakScreen(); rerender();
-    toast(st==='closed'?'Leak closed ✓':'Reopened');
+    toast(st==='closed' ? 'Leak closed ✓' : (st==='watching' ? 'Watching — waiting to see if it stops' : 'Reopened'));
   });
 
   // delete (confirm) — the occurrence count is the evidence, so say what's lost

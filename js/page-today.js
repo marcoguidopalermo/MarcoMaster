@@ -103,12 +103,14 @@ let pipelineAdding=false;   // true while typing into an empty slot
 function pipelineDone(it){
   if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); return t?t.done:!!it.done; }
   if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&p.tasks.find(x=>x.id===it.projTaskId); return t?t.done:!!it.done; }
+  if(it.leakId){ const t=leakTask(it.leakId,it.leakTaskId); return t?t.done:!!it.done; }
   return !!it.done;
 }
 /* 🔥 priority of the task behind a pipeline item (for the marker only) */
 function pipelinePriority(it){
   if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); return !!(t&&t.priority); }
   if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&p.tasks.find(x=>x.id===it.projTaskId); return !!(t&&t.priority); }
+  if(it.leakId){ const t=leakTask(it.leakId,it.leakTaskId); return !!(t&&t.priority); }
   return !!it.priority;
 }
 function renderPipeline(){
@@ -189,6 +191,8 @@ function togglePipeline(idx){
     if(t){ t.done=nd; if(t.projectId&&t.projTaskId) setProjTaskDone(t.projectId,t.projTaskId,nd); if(nd&&t.recurringId) markRecurringDone(t.recurringId); }
   }else if(it.projectId){
     setProjTaskDone(it.projectId, it.projTaskId, nd);
+  }else if(it.leakId){
+    setLeakTaskDone(it.leakId, it.leakTaskId, nd);   // may auto-promote the leak to Watching
   }
   it.done=nd;
   save(false); rerender();
@@ -248,6 +252,16 @@ function buildTaskRows(){
         row.overdue=row.schedDate!=null && row.schedDate<tk && !t.done;
       }
       rows.push(row);
+    });
+  });
+  // leak tasks — a leak is a container like a project. Quick-only, so they never
+  // enter the time-block/backlog machinery; they simply show as leak-labelled quick
+  // rows. Closed leaks' tasks stay out of the active list.
+  (S.leaks||[]).filter(l=>l.status!=='closed').forEach(l=>{
+    (l.tasks||[]).forEach(t=>{
+      rows.push({key:'L|'+l.id+'|'+t.id, source:'leak', leakId:l.id, id:t.id,
+                 txt:t.txt, done:t.done, kind:'quick', recurringId:null, priority:!!t.priority,
+                 leakText:l.text, projName:null, projColor:null});
     });
   });
   // standalone day-tasks — exclude project-linked blocks (surfaced via their
@@ -331,6 +345,8 @@ function renderTaskSection(title, rows, emptyMsg){
    actually has a time block on the calendar. */
 function taskLabelChip(r){
   if(r.source==='project') return `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`;
+  // leak tasks reuse the project chip in water blue — same component, leak identity
+  if(r.source==='leak') return `<span class="proj-chip leak-task-chip" style="--pc:var(--blue)">💧 ${esc(r.leakText)}</span>`;
   return `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
 }
 function renderTaskRow(r){
@@ -387,6 +403,16 @@ function completedRows(scope){
                 fireMin:fm['P|'+p.id+'|'+t.id]||0});
     });
   });
+  // A2) leak tasks (done) — dated by doneAt exactly like project tasks
+  (S.leaks||[]).forEach(l=>{
+    (l.tasks||[]).filter(t=>t.done).forEach(t=>{
+      const when=t.doneAt||null;
+      if(scope==='today' && when!==tk) return;
+      out.push({source:'leak', key:'L|'+l.id+'|'+t.id, txt:t.txt, kind:'quick',
+                leakText:l.text, when, priority:!!t.priority,
+                fireMin:fm['L|'+l.id+'|'+t.id]||0});
+    });
+  });
   // B) standalone done day-tasks + C) swept archive entries — dated by day record
   Object.keys(S.days||{}).forEach(dk=>{
     if(scope==='today' && dk!==tk) return;
@@ -428,6 +454,8 @@ function renderArchiveSection(rows){
 function renderCompletedRow(r, withDate){
   const chip = r.source==='project'
     ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
+    : r.source==='leak'
+    ? `<span class="proj-chip leak-task-chip" style="--pc:var(--blue)">💧 ${esc(r.leakText)}</span>`
     : `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
   const when = withDate ? (r.when?`<span class="done-when">${shortDate(r.when)}</span>`:'')
                         : (r.time?`<span class="done-when">${r.time}</span>`:'');
@@ -466,9 +494,21 @@ function addUnifiedTask(txt, kind, projectId, mins){
 }
 
 /* ---- unified-list actions: dispatch by row key ("P|projId|id" | "S|id") ---- */
-function atKey(key){ const a=key.split('|'); return a[0]==='P'?{src:'project',projId:a[1],id:a[2]}:{src:'standalone',id:a[1]}; }
+/* Row-key parser. 'P|projId|taskId' = project task, 'L|leakId|taskId' = leak task,
+   'L|leakId' (two segments) = the leak ITSELF (fire-picker only), 'S|id' = standalone. */
+function atKey(key){
+  const a=String(key).split('|');
+  if(a[0]==='P') return {src:'project', projId:a[1], id:a[2]};
+  if(a[0]==='L') return a.length>2 ? {src:'leak', leakId:a[1], id:a[2]} : {src:'leakself', leakId:a[1], id:null};
+  return {src:'standalone', id:a[1]};
+}
 function atToggle(key){
   const k=atKey(key);
+  if(k.src==='leak'){
+    const t=leakTask(k.leakId,k.id); if(!t) return;
+    setLeakTaskDone(k.leakId, k.id, !t.done);   // may auto-promote the leak Open → Watching
+    save(false); rerender(); return;
+  }
   if(k.src==='project'){
     const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
     setProjTaskDone(k.projId,k.id,!t.done);    // keeps linked blocks + progress in sync
@@ -487,11 +527,23 @@ function atToggle(key){
 }
 function atPromote(key){
   const k=atKey(key);
-  if(k.src==='project') promoteProjToPipeline(k.projId,k.id); else promoteTaskToPipeline(k.id);
+  if(k.src==='project') promoteProjToPipeline(k.projId,k.id);
+  else if(k.src==='leak') promoteLeakToPipeline(k.leakId,k.id);
+  else promoteTaskToPipeline(k.id);
+}
+/* a leak task in the pipeline keeps a persistent link, like a project task */
+function promoteLeakToPipeline(leakId, ltId){
+  const d=day(); if(!d.pipeline) d.pipeline=[];
+  if(d.pipeline.length>=3){ toast('Pipeline is full (3)'); return; }
+  if(d.pipeline.some(it=>it.leakId===leakId && it.leakTaskId===ltId)){ toast('Already in pipeline'); return; }
+  const t=leakTask(leakId,ltId); if(!t) return;
+  d.pipeline.push({id:b(), txt:t.txt, leakId, leakTaskId:ltId, done:t.done});
+  save(); toast('↑ Pipeline'); rerender();
 }
 /* toggle the 🔥 priority flag on the underlying task (project task or day-task) */
 function atPriority(key){
   const k=atKey(key);
+  if(k.src==='leak'){ const t=leakTask(k.leakId,k.id); if(!t) return; t.priority=!t.priority; save(false); rerender(); return; }
   if(k.src==='project'){
     const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
     t.priority=!t.priority;
@@ -506,6 +558,11 @@ function atPriority(key){
 }
 function atEdit(key){
   const k=atKey(key);
+  if(k.src==='leak'){
+    const t=leakTask(k.leakId,k.id); if(!t) return;
+    const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return;
+    t.txt=nv; save(); rerender(); return;
+  }
   if(k.src==='project'){
     const p=(S.projects||[]).find(x=>x.id===k.projId); const t=p&&p.tasks.find(x=>x.id===k.id); if(!t) return;
     const v=prompt('Edit task', t.txt); if(v==null) return; const nv=v.trim(); if(!nv) return;
@@ -520,6 +577,13 @@ function atEdit(key){
 }
 function atDelete(key){
   const k=atKey(key);
+  if(k.src==='leak'){
+    const l=(S.leaks||[]).find(x=>x.id===k.leakId); if(!l) return;
+    l.tasks=(l.tasks||[]).filter(x=>x.id!==k.id);
+    Object.keys(S.days||{}).forEach(dk=>{ const d=S.days[dk]; if(d.pipeline) d.pipeline=d.pipeline.filter(it=>!(it.leakId===k.leakId && it.leakTaskId===k.id)); });
+    leakSyncWatching(k.leakId);
+    save(); rerender(); return;
+  }
   if(k.src==='project'){
     const p=(S.projects||[]).find(x=>x.id===k.projId); if(!p) return;
     p.tasks=(p.tasks||[]).filter(x=>x.id!==k.id);

@@ -42,58 +42,11 @@ function fireTaskByKey(key){
    format 'S|<id>' and returns id=undefined for a bare one — which silently made
    "Extinguished" fail to complete standalone tasks. Accept both forms. */
 function fireStandaloneId(key, k){ return (k && k.id!=null) ? k.id : key; }
-/* ---------- the picker's content: every selectable thing, grouped ----------
-   Groups are rendered together on one full-screen overlay, so this returns
-   structure (title + colour + items) rather than a flat list. Dedup is global
-   across groups via `seen`, so a pipeline item never appears twice.
-   Within a group, 🔥 priority sorts to the top. */
-function firePickGroups(){
-  const groups=[], seen=new Set();
-  const add=(g,key,txt,opts)=>{ if(!txt||seen.has(key)) return; seen.add(key); g.items.push(Object.assign({key,txt},opts||{})); };
+/* The picker's content. ONE grouping builder is shared with the "see all tasks"
+   overlay (taskGroups in page-today.js) — the fire picker keeps a single "Tasks"
+   group and offers taskless leaks as directly-fightable rows. */
+function firePickGroups(){ return taskGroups({splitKinds:false, bareLeaks:true}); }
 
-  const pipe={title:'Pipeline', cls:'g-pipe', color:'var(--accent)', items:[]};
-  (day().pipeline||[]).forEach(it=>{
-    if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); if(t&&!t.done) add(pipe, t.id, t.txt, {ic:'◈', priority:!!t.priority}); }
-    else if(it.projectId){
-      const p=(S.projects||[]).find(x=>x.id===it.projectId);
-      const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId);
-      if(t&&!t.done) add(pipe, 'P|'+it.projectId+'|'+it.projTaskId, t.txt, {ic:'◈', priority:!!t.priority});
-    }
-  });
-  if(pipe.items.length) groups.push(pipe);
-
-  const tasks={title:'Tasks', cls:'g-task', color:'var(--txt-dim)', items:[]};
-  day().tasks.filter(t=>!t.done && !t.projectId).forEach(t=>
-    add(tasks, t.id, t.txt, {ic:t.kind==='quick'?'⚡':'▣', priority:!!t.priority}));
-  if(tasks.items.length) groups.push(tasks);
-
-  (S.projects||[]).filter(p=>!p.done).forEach(p=>{
-    const g={title:p.name, cls:'g-proj', color:p.color||'var(--accent)', items:[]};
-    (p.tasks||[]).forEach(t=>{ if(!t.done) add(g, 'P|'+p.id+'|'+t.id, t.txt, {priority:!!t.priority}); });
-    if(g.items.length) groups.push(g);
-  });
-
-  // Leaks are containers now, so they follow the PROJECT pattern: a leak with open
-  // tasks contributes its own group of tasks; a leak with none is still fightable
-  // directly. So the picker never offers both a leak and its tasks — exactly one way
-  // to fire on any piece of work.
-  const openLeaks=(S.leaks||[]).filter(l=>l.status!=='closed').slice().sort(leakSort);
-  const bare={title:'💧 Leaks', cls:'g-leak', color:'var(--blue)', items:[]};
-  openLeaks.forEach(l=>{
-    const open=(l.tasks||[]).filter(t=>!t.done);
-    if(open.length){
-      const g={title:'💧 '+l.text, cls:'g-leak', color:'var(--blue)', items:[]};
-      open.forEach(t=> add(g, 'L|'+l.id+'|'+t.id, t.txt, {priority:!!t.priority}));
-      if(g.items.length) groups.push(g);
-    }else{
-      add(bare, 'L|'+l.id, l.text, {badge:leakCount(l)+'×', badgeCls:leakBadgeClass(l)});
-    }
-  });
-  if(bare.items.length) groups.push(bare);
-
-  groups.forEach(g=>g.items.sort((a,b)=>(b.priority?1:0)-(a.priority?1:0)));   // 🔥 to the top of its group
-  return groups;
-}
 /* a leak key is 'L|<id>' — resolved here so a leak key never reaches atKey(),
    which is shared with the task-row handlers in page-today.js */
 function fireLeakByKey(key){

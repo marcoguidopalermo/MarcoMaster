@@ -67,6 +67,7 @@ function startApp(){
     if(e.key!=='Escape') return;
     if(typeof firePickerOpen!=='undefined' && firePickerOpen){ closeFirePicker(); return; }
     if(typeof leakScreenOpen!=='undefined' && leakScreenOpen){ closeLeakScreen(); return; }
+    if(typeof taskScreenOpen!=='undefined' && taskScreenOpen){ closeTaskScreen(); return; }
     closeReset();
   });
   go('dashboard');

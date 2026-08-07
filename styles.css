@@ -1424,3 +1424,25 @@ body.pick-open{overflow:hidden}
 
 /* leak tasks in All Tasks / Completed reuse the project chip in water blue */
 .leak-task-chip{--pc:var(--blue)}
+
+/* ---------- triage rows (the "see all tasks" overlay) ----------
+   Same .pick-row base as the fire picker — these just carry two independent
+   controls instead of being one big select button. */
+.pick-row.has-actions{cursor:default}
+.pick-row.has-actions:hover{border-color:var(--gc)}
+.pick-check{flex:none;width:16px;height:16px;border:1px solid var(--line);border-radius:4px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent;transition:all .12s}
+.pick-check:hover{border-color:var(--green);color:var(--green)}
+.pick-flag{flex:none;cursor:pointer;font-size:12px;opacity:.28;transition:opacity .12s;filter:grayscale(1)}
+.pick-flag:hover{opacity:.75;filter:none}
+.pick-flag.on{opacity:1;filter:none}
+.pick-row.is-flagged{border-color:var(--red)}
+.pick-h-ct{flex:none;align-self:center;font-family:var(--mono);font-size:11px;color:var(--txt-faint);white-space:nowrap}
+.pick-screen.dense .pick-check{width:14px;height:14px}
+.pick-screen.denser .pick-check{width:12px;height:12px}
+.pick-screen.denser .pick-flag{font-size:11px}
+
+/* the calm empty shortlist — a pointer, not a wall */
+.shortlist-empty{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:18px 4px 6px}
+.sl-line{font-size:14px;color:var(--txt)}
+.sl-sub{font-size:12.5px;color:var(--txt-dim);margin-bottom:6px}

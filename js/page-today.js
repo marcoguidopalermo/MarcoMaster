@@ -232,7 +232,6 @@ function bindPipeline(){
 /* Build the two flat, de-duplicated sections. Each row carries a `key`
    ("P|projId|taskId" for a project task, "S|taskId" for a standalone
    day-task) so the bind handlers can dispatch uniformly. */
-let showAllSched=false;   // ▣ Time blocks focus: false = today + overdue only; true = full backlog. In-memory, OFF each load.
 let archiveOpen=false;    // Archive dropdown (default collapsed)
 function buildTaskRows(){
   const tk=todayKey();
@@ -277,48 +276,171 @@ function buildTaskRows(){
   });
   return { quick: rows.filter(r=>r.kind==='quick'), scheduled: rows.filter(r=>r.kind==='project') };
 }
+/* ============================================================
+   TASK GROUPS — ONE builder for every full-screen surface.
+   The fire picker and the "see all tasks" overlay want the same thing (everything
+   open, grouped, colour-coded, deduped, 🔥 first) with two differences, so they are
+   options rather than a second implementation:
+     splitKinds : false → one "Tasks" group (fire picker, unchanged behaviour)
+                  true  → separate ⚡ Quick and ▣ Time blocks groups
+     bareLeaks  : true  → a leak with no tasks is itself selectable (fightable)
+                  false → omitted; a leak is not a task
+   Keys are ROW keys throughout ('S|id', 'P|proj|task', 'L|leak|task', 'L|leak'),
+   so atPriority/atToggle/atKey accept them directly.
+   ============================================================ */
+function taskGroups(opts){
+  opts=opts||{};
+  const splitKinds=!!opts.splitKinds, bareLeaks=!!opts.bareLeaks;
+  const groups=[], seen=new Set();
+  const add=(g,key,txt,o)=>{ if(!txt||seen.has(key)) return; seen.add(key); g.items.push(Object.assign({key,txt},o||{})); };
+
+  const pipe={title:'Pipeline', cls:'g-pipe', color:'var(--accent)', items:[]};
+  (day().pipeline||[]).forEach(it=>{
+    if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); if(t&&!t.done) add(pipe,'S|'+t.id,t.txt,{ic:'◈',priority:!!t.priority}); }
+    else if(it.projectId){
+      const p=(S.projects||[]).find(x=>x.id===it.projectId);
+      const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId);
+      if(t&&!t.done) add(pipe,'P|'+it.projectId+'|'+it.projTaskId,t.txt,{ic:'◈',priority:!!t.priority});
+    }
+    else if(it.leakId){
+      const t=leakTask(it.leakId,it.leakTaskId);
+      if(t&&!t.done) add(pipe,'L|'+it.leakId+'|'+it.leakTaskId,t.txt,{ic:'◈',priority:!!t.priority});
+    }
+  });
+  if(pipe.items.length) groups.push(pipe);
+
+  // standalone day-tasks (project-linked blocks surface via their project; meeting
+  // blocks live on the calendar grid) — same exclusions buildTaskRows() uses
+  const quick={title:'⚡ Quick', cls:'g-task', color:'var(--txt-dim)', items:[]};
+  const blocks={title:'▣ Time blocks', cls:'g-task', color:'var(--txt-dim)', items:[]};
+  const one={title:'Tasks', cls:'g-task', color:'var(--txt-dim)', items:[]};
+  day().tasks.filter(t=>!t.done && !t.projectId && !t.meetingId).forEach(t=>
+    add(splitKinds?(t.kind==='quick'?quick:blocks):one, 'S|'+t.id, t.txt, {ic:t.kind==='quick'?'⚡':'▣', priority:!!t.priority}));
+  if(splitKinds){ if(quick.items.length) groups.push(quick); if(blocks.items.length) groups.push(blocks); }
+  else if(one.items.length) groups.push(one);
+
+  (S.projects||[]).filter(p=>!p.done).forEach(p=>{
+    const g={title:p.name, cls:'g-proj', color:p.color||'var(--accent)', items:[]};
+    (p.tasks||[]).forEach(t=>{ if(!t.done) add(g,'P|'+p.id+'|'+t.id,t.txt,{priority:!!t.priority}); });
+    if(g.items.length) groups.push(g);
+  });
+
+  // a leak with open tasks contributes its own group; a taskless leak is only
+  // offered where the leak ITSELF is actionable (the fire picker)
+  const bare={title:'💧 Leaks', cls:'g-leak', color:'var(--blue)', items:[]};
+  (S.leaks||[]).filter(l=>l.status!=='closed').slice().sort(leakSort).forEach(l=>{
+    const open=(l.tasks||[]).filter(t=>!t.done);
+    if(open.length){
+      const g={title:'💧 '+l.text, cls:'g-leak', color:'var(--blue)', items:[]};
+      open.forEach(t=> add(g,'L|'+l.id+'|'+t.id,t.txt,{priority:!!t.priority}));
+      if(g.items.length) groups.push(g);
+    }else if(bareLeaks){
+      add(bare,'L|'+l.id,l.text,{badge:leakCount(l)+'×',badgeCls:leakBadgeClass(l)});
+    }
+  });
+  if(bare.items.length) groups.push(bare);
+
+  groups.forEach(g=>g.items.sort((a,b)=>(b.priority?1:0)-(a.priority?1:0)));   // 🔥 to the top of its group
+  return groups;
+}
+
 /* stable sort: priority (🔥) rows rise to the TOP of a section; everything else
    keeps its existing relative order below. */
 function prioritySort(rows){ return rows.slice().sort((a,b)=>(a.priority?0:1)-(b.priority?0:1)); }
+/* THE SHORTLIST — only what you flagged 🔥, across quick, time-block, project and
+   leak tasks. The dashboard is what you CHOSE; "See all tasks" is where you compare
+   everything and choose. The overdue count is deliberately computed across ALL open
+   tasks, not just flagged ones: an unflagged overdue item still has to nudge you,
+   and a count (rather than a row) keeps the shortlist from becoming a wall. */
 function renderAllTasks(){
   const {quick,scheduled}=buildTaskRows();
-  const tk=todayKey();
-  const quickActive=quick.filter(r=>!r.done);
-  const schedActive=scheduled.filter(r=>!r.done);
-  // DEFAULT FOCUS: hide the PROJECT backlog (unscheduled / future project tasks).
-  // Keep what's relevant now — anything scheduled today or overdue, plus today's
-  // standalone working set (freshly added, carried-over, recurring time-blocks).
-  const isBacklog=r=>r.source==='project' && !(r.schedDate!=null && r.schedDate<=tk);
-  const schedFocused=schedActive.filter(r=>!isBacklog(r));
-  const hidden=schedActive.length - schedFocused.length;   // = project-backlog count
-  const schedShow=showAllSched?schedActive:schedFocused;
-  const openCt=quickActive.length + schedActive.length;
-  const overdueCt=schedActive.filter(r=>r.overdue).length;
+  const openQuick=quick.filter(r=>!r.done), openSched=scheduled.filter(r=>!r.done);
+  const flagged=[...openQuick.filter(r=>r.priority), ...openSched.filter(r=>r.priority)];
+  const openCt=openQuick.length+openSched.length;
+  const overdueCt=openSched.filter(r=>r.overdue).length;
   const archiveAll=completedRows('all');
   return `
   <div class="card all-tasks" style="border-top:3px solid var(--accent)">
     <div class="card-h">
-      <h3>All Tasks</h3>
-      <span class="sub">${openCt} open${overdueCt?` · <span class="at-overdue-ct">${overdueCt} overdue</span>`:''}</span>
+      <h3>🔥 Priority</h3>
+      <span class="ch-actions">
+        <span class="sub">${flagged.length} flagged${overdueCt?` · <span class="at-overdue-ct">${overdueCt} overdue</span>`:''} · ${openCt} open</span>
+        <button class="btn ghost sm" id="seeAllTasks">See all tasks</button>
+      </span>
     </div>
 
-    ${renderTaskSection('⚡ Quick', prioritySort(quickActive), 'Nothing quick — capture one at the top.')}
-
-    <div class="at-section">
-      <div class="at-sec-h">
-        <span class="at-sec-lab">▣ Time blocks</span>
-        <span class="at-sec-actions">
-          <span class="at-sec-ct">${showAllSched?schedShow.length+' shown':schedShow.length+' today/overdue'}</span>
-          ${(hidden>0||showAllSched)?`<button class="btn ghost sm" id="schedToggle">${showAllSched?'▾ Focus to today':'▸ See all project tasks ('+hidden+')'}</button>`:''}
-        </span>
-      </div>
-      ${schedShow.length?`<div class="at-rows">${prioritySort(schedShow).map(renderTaskRow).join('')}</div>`
-        :`<div class="empty sm">${showAllSched?'No project tasks yet — capture one at the top.':'Nothing scheduled for today.'+(hidden>0?` ${hidden} in backlog — “See all project tasks”.`:'')}</div>`}
-    </div>
+    ${flagged.length
+      ? `<div class="at-rows">${flagged.map(renderTaskRow).join('')}</div>`
+      : `<div class="shortlist-empty">
+          <span class="sl-line">Nothing flagged for today.</span>
+          <span class="sl-sub">Open <b>See all tasks</b> to survey everything and pick what matters.</span>
+          <button class="btn ghost sm" id="seeAllTasksEmpty">See all tasks</button>
+        </div>`}
 
     ${renderArchiveSection(archiveAll)}
   </div>`;
 }
+
+/* ============================================================
+   SEE ALL TASKS — the survey-and-choose overlay.
+   Same .pick-screen component as the fire picker and the leaks overlay (one visual
+   language for all three), same taskGroups() builder, same fitPickScreen() density
+   step-down. Hosted in #taskScreen OUTSIDE .app, so the rerender() that updates the
+   dashboard behind it can never disturb it.
+   ============================================================ */
+let taskScreenOpen=false;
+function openTaskScreen(){ taskScreenOpen=true; paintTaskScreen(); }
+function closeTaskScreen(){ taskScreenOpen=false; paintTaskScreen(); }
+
+function taskScreenHTML(){
+  const groups=taskGroups({splitKinds:true, bareLeaks:false});
+  const total=groups.reduce((n,g)=>n+g.items.length,0);
+  const flagged=groups.reduce((n,g)=>n+g.items.filter(i=>i.priority).length,0);
+  /* the one markup difference from the fire picker: a triage row carries two
+     independent controls, so it is a div with a ✓ and a 🔥 rather than one button.
+     Base class, columns, truncation and all three density tiers are shared. */
+  const row=(it)=>`<div class="pick-row has-actions ${it.priority?'is-flagged':''}">
+      <span class="pick-check" data-tsdone="${esc(it.key)}" title="Mark done">✓</span>
+      ${it.ic?`<span class="pick-ic">${it.ic}</span>`:''}
+      <span class="pick-txt">${esc(it.txt)}</span>
+      <span class="pick-flag ${it.priority?'on':''}" data-tsflag="${esc(it.key)}" title="${it.priority?'Unflag — remove from the shortlist':'Flag 🔥 — promote to the shortlist'}">🔥</span>
+    </div>`;
+  const group=(g)=>`<section class="pick-group ${g.cls}" style="--gc:${g.color}">
+      <h3 class="pick-g-title">${esc(g.title)}<span class="pick-g-ct">${g.items.length}</span></h3>
+      <div class="pick-rows">${g.items.map(row).join('')}</div>
+    </section>`;
+  return `<div class="pick-inner">
+    <header class="pick-head">
+      <div class="pick-h-txt"><h2>All tasks</h2>
+        <p>Everything open, in one place. 🔥 promotes to the dashboard shortlist · ✓ clears what's already done.</p></div>
+      <span class="pick-h-ct">${flagged} flagged · ${total} open</span>
+      <button class="pick-close" id="taskScreenClose" title="Close">×</button>
+    </header>
+    ${total
+      ? `<div class="pick-body">${groups.map(group).join('')}</div>`
+      : `<div class="empty">Nothing open. Capture something at the top of the Dashboard.</div>`}
+  </div>`;
+}
+
+function paintTaskScreen(){
+  const el=q('#taskScreen'); if(!el) return;
+  if(!taskScreenOpen){ el.classList.remove('show'); el.innerHTML=''; document.body.classList.remove('pick-open'); return; }
+  el.innerHTML=taskScreenHTML();
+  el.classList.add('show');
+  document.body.classList.add('pick-open');
+  bindTaskScreen();
+  fitPickScreen(el);            // re-fit: rows disappear as you complete them
+}
+
+function bindTaskScreen(){
+  const cl=q('#taskScreenClose'); if(cl) cl.onclick=closeTaskScreen;
+  // Both handlers reuse the existing row-key actions, which already cover all four
+  // key forms AND already end in rerender() — that rebuilds #main, so the dashboard
+  // shortlist behind the overlay updates instantly. We then repaint the overlay.
+  q('#taskScreen [data-tsflag]','all').forEach(el=>el.onclick=()=>{ atPriority(el.dataset.tsflag); paintTaskScreen(); });
+  q('#taskScreen [data-tsdone]','all').forEach(el=>el.onclick=()=>{ atToggle(el.dataset.tsdone); paintTaskScreen(); });
+}
+
 /* Completed Today renders as its own block high on the Dashboard (below the
    Pipeline, above All Tasks). Same data + row behaviour; '' when empty. Its
    rows reuse the data-atcheck / data-atdel handlers bound by bindAllTasks. */
@@ -330,14 +452,6 @@ function renderCompletedToday(){
   const stats=(typeof fireStatsLine==='function') ? fireStatsLine() : '';
   if(!rows.length && !stats) return '';
   return `<div class="card completed-today-card">${renderCompletedSection('✓ Completed Today', rows, stats)}</div>`;
-}
-function renderTaskSection(title, rows, emptyMsg){
-  const openCt=rows.filter(r=>!r.done).length;
-  return `
-  <div class="at-section">
-    <div class="at-sec-h"><span class="at-sec-lab">${title}</span><span class="at-sec-ct">${openCt} open</span></div>
-    ${rows.length?`<div class="at-rows">${rows.map(renderTaskRow).join('')}</div>`:`<div class="empty sm">${emptyMsg}</div>`}
-  </div>`;
 }
 /* the inline label on each flat row: project dot+name, or a Quick / Time-block TYPE
    chip. It never says "Scheduled" — the real scheduled / to-schedule state is shown
@@ -420,12 +534,12 @@ function completedRows(scope){
     (d.tasks||[]).filter(t=>t.done && !t.projectId && !t.meetingId).forEach(t=>{
       // fire sessions key standalone tasks by the BARE id (not the 'S|' row key)
       out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, priority:!!t.priority,
-                fireMin:fm[t.id]||0});
+                fireMin:fm['S|'+t.id]||fm[t.id]||0});
     });
     (d.archive||[]).forEach(a=>{
       // a swept task keeps its id, so a fire fought on it still resolves here
       out.push({source:'archive', dayKey:dk, id:a.id, txt:a.txt, kind:a.kind, when:dk, time:a.doneAt,
-                fireMin:fm[a.id]||0});
+                fireMin:fm['S|'+a.id]||fm[a.id]||0});
     });
   });
   // newest first
@@ -618,8 +732,9 @@ function bindAllTasks(){
   // Adding lives in unified Capture at the top of the Dashboard (capture.js) —
   // this list is a view + row actions only. addUnifiedTask() is still the writer,
   // now called from there.
-  // ---- focus toggle + archive dropdown ----
-  const st=q('#schedToggle'); if(st) st.onclick=()=>{ showAllSched=!showAllSched; rerender(); };
+  // ---- see-all overlay + archive dropdown ----
+  const sa=q('#seeAllTasks'); if(sa) sa.onclick=openTaskScreen;
+  const sae=q('#seeAllTasksEmpty'); if(sae) sae.onclick=openTaskScreen;
   const arch=q('[data-archtoggle]'); if(arch) arch.onclick=()=>{ archiveOpen=!archiveOpen; rerender(); };
   q('[data-arcdel]','all').forEach(el=>el.onclick=()=>{ const [dk,id]=el.dataset.arcdel.split('|'); const d=S.days[dk]; if(d&&d.archive){ d.archive=d.archive.filter(a=>a.id!==id); save(); rerender(); } });
   // ---- row actions ----

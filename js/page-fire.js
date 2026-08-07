@@ -225,8 +225,13 @@ function paintFirePicker(){
   document.body.classList.add('pick-open');
   const cl=q('#firePickClose'); if(cl) cl.onclick=closeFirePicker;
   q('#firePickScreen [data-firepick]','all').forEach(b=>b.onclick=()=>{
-    const key=b.dataset.firepick;
-    let txt=''; firePickGroups().forEach(g=>g.items.forEach(i=>{ if(i.key===key) txt=i.txt; }));
+    const raw=b.dataset.firepick;
+    let txt=''; firePickGroups().forEach(g=>g.items.forEach(i=>{ if(i.key===raw) txt=i.txt; }));
+    // A free-text pipeline slot has no task behind it — promote it into a real quick
+    // task first, so the fire completes it through the normal path instead of the
+    // Fire Station carrying a special case.
+    const key=resolveRowKey(raw);
+    if(!key) return;
     firePick={key, txt};
     closeFirePicker();
     fireStep='def'; renderFireModal();     // definition + mode stay one-question modals

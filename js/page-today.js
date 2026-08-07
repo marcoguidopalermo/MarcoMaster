@@ -306,6 +306,14 @@ function taskGroups(opts){
       const t=leakTask(it.leakId,it.leakTaskId);
       if(t&&!t.done) add(pipe,'L|'+it.leakId+'|'+it.leakTaskId,t.txt,{ic:'◈',priority:!!t.priority});
     }
+    // A slot typed straight into the pipeline has NO task behind it — just
+    // {id, txt, done}. It used to be dropped here, which made the three things you
+    // most want to fight unselectable in the picker. It gets a provisional
+    // 'PL|<slotId>' key; resolveRowKey() turns that into a real task the moment you
+    // act on it (see materializePipelineItem below).
+    else if((it.txt||'').trim() && !it.done){
+      add(pipe,'PL|'+it.id,it.txt,{ic:'◈',priority:!!it.priority});
+    }
   });
   if(pipe.items.length) groups.push(pipe);
 
@@ -437,8 +445,8 @@ function bindTaskScreen(){
   // Both handlers reuse the existing row-key actions, which already cover all four
   // key forms AND already end in rerender() — that rebuilds #main, so the dashboard
   // shortlist behind the overlay updates instantly. We then repaint the overlay.
-  q('#taskScreen [data-tsflag]','all').forEach(el=>el.onclick=()=>{ atPriority(el.dataset.tsflag); paintTaskScreen(); });
-  q('#taskScreen [data-tsdone]','all').forEach(el=>el.onclick=()=>{ atToggle(el.dataset.tsdone); paintTaskScreen(); });
+  q('#taskScreen [data-tsflag]','all').forEach(el=>el.onclick=()=>{ const k=resolveRowKey(el.dataset.tsflag); if(k) atPriority(k); paintTaskScreen(); });
+  q('#taskScreen [data-tsdone]','all').forEach(el=>el.onclick=()=>{ const k=resolveRowKey(el.dataset.tsdone); if(k) atToggle(k); paintTaskScreen(); });
 }
 
 /* Completed Today renders as its own block high on the Dashboard (below the
@@ -607,11 +615,43 @@ function addUnifiedTask(txt, kind, projectId, mins){
   }
 }
 
+/* ============================================================
+   PROVISIONAL PIPELINE SLOTS
+   A pipeline slot can hold free text with no task behind it. Rather than teach every
+   surface to special-case that, we promote it into a REAL quick task the moment it's
+   acted on — through the normal addTask() path, linked to the slot exactly the way
+   promoteTaskToPipeline() links one. After that it is an ordinary task: it completes
+   through the normal path, lands in Completed Today, and is no longer a special case
+   anywhere.
+   ============================================================ */
+function materializePipelineItem(itemId){
+  const d=day();
+  const it=(d.pipeline||[]).find(x=>x.id===itemId);
+  if(!it) return null;
+  if(it.taskId)   return 'S|'+it.taskId;                              // already real
+  if(it.projectId) return 'P|'+it.projectId+'|'+it.projTaskId;
+  if(it.leakId)    return 'L|'+it.leakId+'|'+it.leakTaskId;
+  const txt=(it.txt||'').trim(); if(!txt) return null;
+  const id=addTask(txt,'quick');                                      // normal path (saves)
+  if(!id) return null;
+  it.taskId=id;                                                       // same link a promoted slot gets
+  if(it.done){ const t=d.tasks.find(x=>x.id===id); if(t) t.done=true; }
+  save(false);
+  return 'S|'+id;
+}
+/* Every interactive surface routes its row key through this, so a provisional slot
+   becomes real on first touch and no at*() handler ever sees a 'PL|' key. */
+function resolveRowKey(key){
+  if(typeof key==='string' && key.slice(0,3)==='PL|') return materializePipelineItem(key.slice(3));
+  return key;
+}
+
 /* ---- unified-list actions: dispatch by row key ("P|projId|id" | "S|id") ---- */
 /* Row-key parser. 'P|projId|taskId' = project task, 'L|leakId|taskId' = leak task,
    'L|leakId' (two segments) = the leak ITSELF (fire-picker only), 'S|id' = standalone. */
 function atKey(key){
   const a=String(key).split('|');
+  if(a[0]==='PL') return {src:'pipeline', id:a[1]};   // provisional — resolveRowKey() should have replaced it
   if(a[0]==='P') return {src:'project', projId:a[1], id:a[2]};
   if(a[0]==='L') return a.length>2 ? {src:'leak', leakId:a[1], id:a[2]} : {src:'leakself', leakId:a[1], id:null};
   return {src:'standalone', id:a[1]};

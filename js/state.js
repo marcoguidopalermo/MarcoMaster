@@ -132,7 +132,29 @@ function seedDefaults(){
     if(l.defOfClosed==null)  l.defOfClosed='';
     if(l.followUpDate==null) l.followUpDate='';
     if(l.closedAt===undefined) l.closedAt=null;
-    if(l.taskId===undefined) l.taskId=null;   // the task this leak's resolution spawned, if any
+    if(l.taskId===undefined) l.taskId=null;   // legacy: the task a leak's resolution spawned
+    // ---- Leaks v2: one free-text notes field instead of six structured ones ----
+    // NON-DESTRUCTIVE, and gated by _leakV2 so it runs exactly once per leak and can
+    // never double-append. Every non-empty retired field is FOLDED into notes as a
+    // labelled line; anything already in notes is preserved below it. The old fields
+    // are then left in place, dead — the app stops reading them, but a bad fold stays
+    // recoverable from the raw record or an export (same approach as the journal's
+    // legacy flat fields).
+    if(l.notes==null) l.notes='';
+    if(!l._leakV2){
+      l._leakV2=true;
+      const folded=[];
+      if(l.resolutionType)               folded.push('Resolution: '+l.resolutionType);
+      if((l.owner||'').trim())           folded.push('Owner: '+l.owner.trim());
+      if((l.nextAction||'').trim())      folded.push('Next action: '+l.nextAction.trim());
+      if((l.dueDate||'').trim())         folded.push('Due: '+l.dueDate.trim());
+      if((l.defOfClosed||'').trim())     folded.push('Definition of closed: '+l.defOfClosed.trim());
+      if((l.followUpDate||'').trim())    folded.push('Follow-up: '+l.followUpDate.trim());
+      if(l.status==='progress')          folded.push('Status was: In progress');
+      if(folded.length) l.notes = folded.join('\n') + (l.notes ? '\n\n'+l.notes : '');
+    }
+    // status simplifies to open | closed — 'progress' folds into notes above, then maps to open
+    if(l.status!=='open' && l.status!=='closed') l.status='open';
   });
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};

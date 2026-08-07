@@ -1222,13 +1222,6 @@ body.fire-active .app{padding-bottom:76px}
 .fire-star{font-size:22px;color:var(--line);cursor:pointer;line-height:1}
 .fire-star.on{color:var(--amber)}
 
-/* dashboard evidence */
-.fire-evidence .fire-eb-list{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
-.fire-eb-row{display:flex;justify-content:space-between;gap:10px;font-size:14px}
-.fire-eb-txt{color:var(--txt);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fire-eb-min{font-family:var(--mono);font-size:12px;color:var(--txt-faint);flex:none}
-.fire-ev-foot{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:10px;
-  font-family:var(--mono);font-size:12px;color:var(--txt-dim)}
 @media(max-width:600px){.fire-title{font-size:24px}.fire-clock-big{font-size:60px}}
 
 /* ---------- LEAK MANAGEMENT ----------
@@ -1254,9 +1247,6 @@ body.fire-active .app{padding-bottom:76px}
 .leak-cap-row .btn{background:var(--blue);border-color:var(--blue)}
 
 /* the Leaks dropdown on the Dashboard */
-.leak-panel{border-left:3px solid var(--blue);margin-bottom:14px}
-.leak-panel > .panel-h .panel-title{color:var(--txt)}
-.leak-panel.open > .panel-h{border-bottom:1px solid var(--line)}
 
 /* the "same as…?" prompt — identical on every capture surface */
 .leak-confirm{border:1px solid var(--blue);background:#58a6ff1c;border-radius:8px;padding:12px 14px}
@@ -1267,41 +1257,6 @@ body.fire-active .app{padding-bottom:76px}
 .leak-confirm-btns .btn:not(.ghost){background:var(--blue);border-color:var(--blue)}
 .leak-confirm-btns .btn.ghost:hover{border-color:var(--blue);color:var(--blue)}
 
-/* list */
-.leak-list{display:flex;flex-direction:column;gap:8px}
-.leak-row{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:10px;
-  background:var(--panel);overflow:hidden}
-.leak-row.expanded{border-color:var(--blue)}
-.leak-row.is-closed{opacity:.72;border-left-color:var(--line)}
-.leak-head{width:100%;display:flex;align-items:center;gap:13px;padding:13px 15px;background:none;border:none;
-  cursor:pointer;text-align:left;font-family:var(--sans);color:var(--txt);transition:background .12s}
-.leak-head:hover{background:var(--panel-2)}
-.leak-n{flex:none;min-width:38px;text-align:center;font-family:var(--mono);font-size:13px;font-weight:700;
-  color:var(--blue);border:1px solid var(--blue);border-radius:6px;padding:4px 6px}
-/* the count IS the evidence — it warms as it repeats (2nd notices, 3rd decides) */
-.leak-n.warm{color:var(--amber);border-color:var(--amber)}
-.leak-n.hot{color:var(--red);border-color:var(--red)}
-.leak-main{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
-.leak-txt{font-size:14.5px;font-weight:600;color:var(--txt);line-height:1.35}
-.leak-row.is-closed .leak-txt{text-decoration:line-through;color:var(--txt-dim)}
-.leak-meta{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
-.leak-caret{flex:none;font-size:11px;color:var(--txt-faint)}
-.leak-row.expanded .leak-caret{color:var(--blue)}
-
-/* detail */
-.leak-detail{border-top:1px solid var(--line);padding:14px 15px 15px;display:flex;flex-direction:column;gap:13px;animation:fade .2s}
-.leak-field{display:flex;flex-direction:column;gap:6px}
-.leak-field label{font-family:var(--mono);font-size:10.5px;letter-spacing:0.09em;text-transform:uppercase;color:var(--txt-faint)}
-.leak-field input,.leak-field textarea{font-size:13.5px;padding:9px 11px}
-.leak-field input:focus,.leak-field textarea:focus{border-color:var(--blue)}
-.leak-field textarea{min-height:58px}
-.leak-dates{display:flex;gap:12px}
-.leak-dates .leak-field{flex:1;min-width:0}
-.leak-chips{display:flex;gap:7px;flex-wrap:wrap}
-.leak-chip{padding:7px 13px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
-  border-radius:999px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
-.leak-chip:hover{border-color:var(--blue);color:var(--blue)}
-.leak-chip.on{border-color:var(--blue);background:var(--blue);color:#fff}
 .leak-stat-toggle{display:flex;gap:7px;flex-wrap:wrap}
 .leak-stat-opt{flex:1;min-width:88px;padding:9px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
   border-radius:8px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
@@ -1318,8 +1273,6 @@ body.fire-active .app{padding-bottom:76px}
 .leak-task-linked.done .leak-task-ic{color:var(--green)}
 .leak-task-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .leak-task-state{flex:none;font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
-.leak-detail-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  border-top:1px solid var(--line);padding-top:12px}
 .leak-hist{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
 .leak-del:hover{border-color:var(--red);color:var(--red)}
 
@@ -1359,4 +1312,81 @@ body.fire-active .app{padding-bottom:76px}
   .cap-row .btn{width:100%}
   .cap-when{flex-direction:column;align-items:stretch}
   .cap-when input[type=date],.cap-when input[type=time],.cap-when .btn{width:100%}
+}
+
+/* ============================================================
+   FULL-SCREEN PICKERS — the fire picker and the leaks overlay.
+   One component, two mounts (#firePickScreen, #leakScreen), both hosted
+   outside .app so a page render can never disturb them.
+
+   The promise is "everything visible, no scrolling", so the layout is CSS
+   multi-column (fills the width, flows groups down and across) with hard
+   single-line rows. fitPickScreen() in ui-core.js steps density down twice
+   before overflow is ever allowed to scroll.
+   ============================================================ */
+.pick-screen{position:fixed;inset:0;z-index:300;display:none;overflow-y:auto;
+  background:radial-gradient(900px 600px at 80% -10%, var(--glow1) 0%, transparent 60%), var(--bg)}
+.pick-screen.show{display:block}
+body.pick-open{overflow:hidden}
+.pick-inner{min-height:100%;padding:18px 20px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column}
+.pick-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px;flex:none}
+.pick-h-txt h2{font-size:22px;font-weight:800;letter-spacing:-0.02em}
+.pick-h-txt p{font-size:12.5px;color:var(--txt-dim);margin-top:3px;max-width:60ch}
+.pick-close{margin-left:auto;flex:none;width:38px;height:38px;border-radius:9px;border:1px solid var(--line);
+  background:var(--panel);color:var(--txt-dim);font-size:20px;line-height:1;cursor:pointer}
+.pick-close:hover{border-color:var(--red);color:var(--red)}
+
+/* multi-column: the browser decides the column count from the width */
+.pick-body{columns:270px;column-gap:16px;flex:1}
+.pick-group{break-inside:avoid-column;margin:0 0 14px;border-left:3px solid var(--gc);padding-left:9px}
+.pick-g-title{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:0.1em;text-transform:uppercase;color:var(--gc);font-weight:700;margin-bottom:5px}
+.pick-g-ct{color:var(--txt-faint);font-weight:500}
+.pick-rows{display:flex;flex-direction:column;gap:2px}
+
+/* one line, always — truncate, never wrap */
+.pick-row{display:flex;align-items:center;gap:7px;width:100%;text-align:left;cursor:pointer;
+  padding:6px 8px;border:1px solid transparent;border-radius:7px;background:var(--panel);
+  color:var(--txt);font-family:var(--sans);font-size:13px;line-height:1.25;transition:all .1s}
+.pick-row:hover{border-color:var(--gc);background:var(--panel-2)}
+.pick-txt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick-ic,.pick-prio{flex:none;font-size:11px;opacity:.85}
+.pick-badge{flex:none;font-family:var(--mono);font-size:10.5px;font-weight:700;color:var(--blue);
+  border:1px solid var(--blue);border-radius:5px;padding:1px 4px}
+.pick-badge.warm{color:var(--amber);border-color:var(--amber)}
+.pick-badge.hot{color:var(--red);border-color:var(--red)}
+.pick-group.is-closed .pick-row{opacity:.6}
+.pick-group.is-closed .pick-txt{text-decoration:line-through}
+
+/* density step-downs, applied by fitPickScreen() before any scrolling is allowed */
+.pick-screen.dense .pick-body{columns:220px;column-gap:12px}
+.pick-screen.dense .pick-row{padding:4px 7px;font-size:12.5px}
+.pick-screen.dense .pick-group{margin-bottom:10px}
+.pick-screen.dense .pick-h-txt p{display:none}
+.pick-screen.denser .pick-body{columns:180px;column-gap:10px}
+.pick-screen.denser .pick-row{padding:2px 6px;font-size:12px;border-radius:5px}
+.pick-screen.denser .pick-rows{gap:1px}
+.pick-screen.denser .pick-group{margin-bottom:8px}
+.pick-screen.denser .pick-head{margin-bottom:8px}
+.pick-screen.denser .pick-h-txt h2{font-size:18px}
+
+/* ---------- leak detail inside the overlay ---------- */
+.pick-back{align-self:flex-start;background:none;border:none;cursor:pointer;padding:0 0 10px;
+  font-family:var(--mono);font-size:11.5px;color:var(--txt-faint)}
+.pick-back:hover{color:var(--blue)}
+.leak-detail-full{display:flex;flex-direction:column;max-width:720px;width:100%;margin:0 auto;flex:1}
+.leak-d-head{display:flex;align-items:center;gap:10px}
+.leak-d-head h2{font-size:20px;font-weight:700;line-height:1.3}
+.leak-d-sub{font-family:var(--mono);font-size:11px;color:var(--txt-faint);margin:6px 0 14px}
+.leak-notes{min-height:220px;flex:1;font-size:14px;line-height:1.6;padding:13px 15px}
+.leak-notes:focus{border-color:var(--blue)}
+.leak-d-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px}
+
+/* the merged Completed Today: 🔥 + focus time on anything fought in a session */
+.done-fire{flex:none;font-family:var(--mono);font-size:11px;color:var(--red);white-space:nowrap}
+.fire-stats{font-family:var(--mono);font-size:11px;color:var(--txt-dim);margin-left:auto;padding-right:10px;white-space:nowrap}
+@media(max-width:600px){
+  .pick-body{columns:1}
+  .pick-screen.dense .pick-body,.pick-screen.denser .pick-body{columns:1}
+  .pick-inner{padding:14px 14px calc(16px + env(safe-area-inset-bottom))}
 }

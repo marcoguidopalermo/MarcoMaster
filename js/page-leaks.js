@@ -8,16 +8,20 @@
    So OCCURRENCE COUNTING is the whole point — the count is the evidence
    that justifies delegating, systemizing, automating or killing it.
 
-   Capture is one line and nothing else — owner / resolution / due date
-   are decided later, in review, never mid-interruption. A capture that
-   looks like an existing leak asks one question ("same as…?") so the
-   count lands on the right row instead of forking a duplicate.
+   Capture is one line and nothing else — what to do about it is decided
+   later, in review, never mid-interruption. A capture that looks like an
+   existing leak asks one question ("same as…?") so the count lands on the
+   right row instead of forking a duplicate.
+
+   The detail is deliberately thin: the text, the count, ONE free-text notes
+   field, status, delete. Structured resolution fields were tried and folded
+   back into notes (see the _leakV2 migration in state.js) — the count is the
+   thing that drives action, not a form.
 
    Store: S.leaks — see seedDefaults() in state.js for the shape.
    ============================================================ */
 
-const LEAK_RES_TYPES=['Delegate','Systemize','Automate','Eliminate','Schedule'];
-const LEAK_STATUSES=[['open','Open'],['progress','In progress'],['closed','Closed']];
+const LEAK_STATUSES=[['open','Open'],['closed','Closed']];
 function leakStatusLabel(s){ const f=LEAK_STATUSES.find(x=>x[0]===s); return f?f[1]:'Open'; }
 
 /* ============================================================
@@ -73,8 +77,7 @@ let leakPending=null;      // {text, matchId, matchText, count, wasClosed, surfa
 function leakCreate(text){
   const now=Date.now();
   const l={ id:b(), text:text, occurrences:[now], createdAt:now, lastSeenAt:now,
-    status:'open', resolutionType:null, owner:'', nextAction:'', dueDate:'',
-    defOfClosed:'', followUpDate:'', closedAt:null, taskId:null };
+    status:'open', notes:'', closedAt:null, _leakV2:true };
   if(!Array.isArray(S.leaks)) S.leaks=[];
   S.leaks.push(l);
   save(false);
@@ -176,21 +179,20 @@ function leakAdoptStrandedPending(surface){
 /* ---------- DASHBOARD surface ----------
    Water to the Fire Station's fire: leaks carry 💧 and the app's blue, fires carry
    🔥 and red, so the two read as opposites at a glance. */
-/* The leak CTA. Rendered beside the fire CTA so the dashboard reads as two parallel
-   moves: Start a fire · Capture a leak. It opens unified Capture pre-set to Leak —
-   the same control that sits at the top of the Dashboard, not a second input.
-   Fixing a leak happens in the dropdown below, which opens from its own header. */
-function renderLeakCta(){
+/* The Leaks CTA. Sits beside the fire CTA as the dashboard's second move.
+   Capture is NOT here — it's a destination in the unified capture line at the top
+   of the Dashboard. This opens the full-screen leaks overlay. */
+function renderLeaksCta(){
+  const n=(S.leaks||[]).filter(l=>l.status!=='closed').length;
   return `
-  <button class="fsn-cta leak-cta" id="leakCaptureCta">
+  <button class="fsn-cta leak-cta" id="leaksCta">
     <span class="fsn-cta-ic">💧</span>
-    <span class="fsn-cta-txt"><b>Capture a leak</b><span>One line. Decide who owns it later.</span></span>
+    <span class="fsn-cta-txt"><b>Leaks</b><span>${n?`${n} open · close ${n===1?'it':'one'} for good`:'Nothing leaking right now'}</span></span>
     <span class="fsn-cta-go">→</span>
   </button>`;
 }
-
-function bindLeakCta(){
-  const cc=q('#leakCaptureCta'); if(cc) cc.onclick=()=>openCaptureModal('leak');
+function bindLeaksCta(){
+  const c=q('#leaksCta'); if(c) c.onclick=openLeakScreen;
 }
 
 /* ---------- FIRE STATION surface ----------
@@ -213,15 +215,20 @@ function bindFireLeakCapture(){
 }
 
 /* ============================================================
-   THE LEAKS SECTION
+   THE LEAKS OVERLAY — full-screen, every leak visible at once.
+   Rendered into #leakScreen, which lives OUTSIDE .app exactly like the Fire
+   Station's #fireScreen: rerender() only ever replaces #main, so a page render
+   can never collapse this overlay, lose its scroll, or drop a focused field.
    ============================================================ */
-let leakOpenId=null;          // which leak's detail is expanded (one at a time)
-let leakClosedOpen=false;     // the collapsed "Closed" group
-let leakSectionOpen=false;    // the dashboard dropdown itself — collapsed by default
+let leakScreenOpen=false;
+let leakOpenId=null;          // which leak's detail is showing (null = the grid)
 
 function leakCount(l){ return (l.occurrences||[]).length; }
 /* most draining first: occurrence count desc, then most recently seen */
 function leakSort(a,b){ return (leakCount(b)-leakCount(a)) || ((b.lastSeenAt||0)-(a.lastSeenAt||0)); }
+/* the count IS the evidence, so it escalates: blue at 1×, amber at 2×, red at 3×+
+   (first occurrence acts, second notices, third decides) */
+function leakBadgeClass(l){ const n=leakCount(l); return n>=3?'hot':(n>=2?'warm':''); }
 
 function leakDay(ts){
   if(!ts) return '—';
@@ -230,237 +237,103 @@ function leakDay(ts){
   if(d.getFullYear()!==new Date().getFullYear()) opts.year='numeric';
   return d.toLocaleDateString('en-CA',opts);
 }
-/* a YYYY-MM-DD field from a date input, shown without a timezone shift */
-function leakDateStr(s){
-  if(!s) return '';
-  const p=String(s).split('-');
-  if(p.length!==3) return s;
-  const d=new Date(+p[0], +p[1]-1, +p[2]);
-  if(isNaN(d)) return s;
-  const opts={month:'short',day:'numeric'};
-  if(d.getFullYear()!==new Date().getFullYear()) opts.year='numeric';
-  return d.toLocaleDateString('en-CA',opts);
+
+function openLeakScreen(){ leakScreenOpen=true; leakOpenId=null; paintLeakScreen(); }
+function closeLeakScreen(){ leakScreenOpen=false; paintLeakScreen(); rerender(); }
+
+/* one compact, single-line row */
+function leakRowHTML(l){
+  return `<button class="pick-row" data-leakrow="${l.id}">
+    <span class="pick-badge ${leakBadgeClass(l)}">${leakCount(l)}×</span>
+    <span class="pick-txt">${esc(l.text)}</span>
+  </button>`;
 }
 
-/* The text a "Create task" would use: the next action if there is one, else the leak
-   itself. Also what the button previews, so there's no surprise. */
-function leakTaskText(l){ return ((l.nextAction||'').trim() || (l.text||'').trim()); }
-
-/* Resolve the task this leak spawned. Tasks move: unfinished ones are carried into
-   the next day's record, and completed ones are swept into that day's archive (same
-   id both times) — so look across every day, then the archives, before concluding
-   it was deleted. Returns null when the leak was never linked. */
-function leakLinkedTask(l){
-  if(!l || !l.taskId) return null;
-  const g=(typeof findTaskGlobal==='function') ? findTaskGlobal(l.taskId) : null;
-  if(g && g.t) return { txt:g.t.txt, done:!!g.t.done, gone:false };
-  const days=S.days||{};
-  for(const dk of Object.keys(days)){
-    const a=((days[dk]||{}).archive||[]).find(x=>x && x.id===l.taskId);
-    if(a) return { txt:a.txt, done:true, gone:false };
-  }
-  return { txt:'', done:false, gone:true };   // linked, but the task no longer exists
-}
-/* Turn the resolution into a real task. It goes through the NORMAL quick-task path,
-   so it lands in today's tasks and behaves like any other — schedulable, completable,
-   and selectable as a fire. The new id is stored on the leak so the detail can show
-   the link. */
-function leakCreateTask(l){
-  const txt=leakTaskText(l);
-  if(!txt) return null;
-  const id=addTask(txt,'quick');   // addTask() saves
-  if(!id) return null;
-  l.taskId=id;
-  save(false);
-  return id;
-}
-
-/* "Create task" — the one place a leak crosses into the normal task system. Once
-   linked the row says so; if that task was deleted, offer to create another rather
-   than silently claiming a link that no longer exists. */
-function leakTaskHTML(l){
-  const link=leakLinkedTask(l);
-  const txt=leakTaskText(l);
-  if(link && !link.gone){
-    return `<div class="leak-field leak-task-field">
-      <label>Task</label>
-      <div class="leak-task-linked ${link.done?'done':''}">
-        <span class="leak-task-ic">${link.done?'✓':'→'}</span>
-        <span class="leak-task-txt">Task created${link.txt?` — ${esc(link.txt)}`:''}</span>
-        <span class="leak-task-state">${link.done?'done':'open'}</span>
-      </div>
-    </div>`;
-  }
-  return `<div class="leak-field leak-task-field">
-    <label>Task</label>
-    <div class="leak-task-make">
-      <button class="btn sm leak-task-btn" data-leaktask="${l.id}" ${txt?'':'disabled'}>+ Create task</button>
-      <span class="leak-task-hint">${txt
-        ? `“${esc(txt)}”${(l.nextAction||'').trim()?'':' — from the leak itself; a next action would be used instead'}`
-        : 'Write a next action first'}${(link&&link.gone)?' · the task you made earlier is gone':''}</span>
-    </div>
-  </div>`;
-}
-
+/* DETAIL — deliberately thin: text + count, ONE notes field, status, delete.
+   It REPLACES the grid rather than expanding inline, because expanding a row
+   inside a multi-column layout reflows every other column under the cursor. */
 function leakDetailHTML(l){
-  const chip=(t)=>`<button class="leak-chip ${l.resolutionType===t?'on':''}" data-leakres="${l.id}|${t}">${t}</button>`;
   const stat=([k,lbl])=>`<button class="leak-stat-opt ${((l.status||'open')===k)?'on':''}" data-leakstatus="${l.id}|${k}">${lbl}</button>`;
-  return `
-  <div class="leak-detail">
-    <div class="leak-field">
-      <label>Resolution type</label>
-      <div class="leak-chips">${LEAK_RES_TYPES.map(chip).join('')}</div>
+  return `<div class="leak-detail-full">
+    <button class="pick-back" id="leakBack">← All leaks</button>
+    <div class="leak-d-head">
+      <span class="pick-badge ${leakBadgeClass(l)}">${leakCount(l)}×</span>
+      <h2>${esc(l.text)}</h2>
     </div>
-    <div class="leak-field">
-      <label>Owner — who should own this</label>
-      <input type="text" data-leakowner="${l.id}" value="${esc(l.owner||'')}" placeholder="Not you, ideally">
-    </div>
-    <div class="leak-field">
-      <label>Next action</label>
-      <input type="text" data-leaknext="${l.id}" value="${esc(l.nextAction||'')}" placeholder="The one move that closes the leak">
-    </div>
-    <div class="leak-dates">
-      <div class="leak-field">
-        <label>Due date</label>
-        <input type="date" data-leakdue="${l.id}" value="${esc(l.dueDate||'')}">
-      </div>
-      <div class="leak-field">
-        <label>Follow-up date</label>
-        <input type="date" data-leakfollow="${l.id}" value="${esc(l.followUpDate||'')}">
-      </div>
-    </div>
-    <div class="leak-field">
-      <label>Definition of closed</label>
-      <textarea data-leakdef="${l.id}" placeholder="What has to be true for this to stop reaching you?">${esc(l.defOfClosed||'')}</textarea>
-    </div>
-    <div class="leak-field">
-      <label>Status</label>
+    <div class="leak-d-sub">first seen ${leakDay(l.createdAt)} · last seen ${leakDay(l.lastSeenAt)}${l.closedAt?` · closed ${leakDay(l.closedAt)}`:''}</div>
+    <textarea class="leak-notes" data-leaknotes="${l.id}" placeholder="Notes — whatever you want to remember about this leak: who should own it, what would kill it, what you already tried.">${esc(l.notes||'')}</textarea>
+    <div class="leak-d-actions">
       <div class="leak-stat-toggle">${LEAK_STATUSES.map(stat).join('')}</div>
-    </div>
-    ${leakTaskHTML(l)}
-    <div class="leak-detail-foot">
-      <span class="leak-hist">Seen ${leakCount(l)}× · first ${leakDay(l.createdAt)} · last ${leakDay(l.lastSeenAt)}${l.closedAt?` · closed ${leakDay(l.closedAt)}`:''}</span>
       <button class="btn ghost sm leak-del" data-leakdel="${l.id}">Delete</button>
     </div>
   </div>`;
 }
 
-function leakRowHTML(l){
-  const open=(leakOpenId===l.id);
-  const n=leakCount(l);
-  const meta=[
-    `first ${leakDay(l.createdAt)}`,
-    `last ${leakDay(l.lastSeenAt)}`,
-    leakStatusLabel(l.status||'open'),
-  ];
-  if(l.resolutionType) meta.push(l.resolutionType);
-  if(l.dueDate) meta.push('due '+leakDateStr(l.dueDate));
-  return `
-  <div class="leak-row ${open?'expanded':''} ${l.status==='closed'?'is-closed':''}">
-    <button class="leak-head" data-leakopen="${l.id}">
-      <span class="leak-n ${n>=3?'hot':(n>=2?'warm':'')}">${n}×</span>
-      <span class="leak-main">
-        <span class="leak-txt">${esc(l.text)}</span>
-        <span class="leak-meta">${meta.map(esc).join(' · ')}</span>
-      </span>
-      <span class="leak-caret">${open?'▾':'▸'}</span>
-    </button>
-    ${open?leakDetailHTML(l):''}
-  </div>`;
-}
-
-/* The Leaks dropdown — lives on the Dashboard, collapsed by default, header
-   carrying the open count. Expanded it holds everything the dedicated page did:
-   the sorted list, inline detail with every resolution field, the collapsed Closed
-   group, and delete. */
-function renderLeakSection(){
-  const all=(S.leaks||[]);
-  const active=all.filter(l=>l.status!=='closed').slice().sort(leakSort);
-  const closed=all.filter(l=>l.status==='closed').slice().sort((a,b)=>(b.closedAt||0)-(a.closedAt||0));
-  return `
-  <div class="panel leak-panel ${leakSectionOpen?'open':''}" id="leakSection">
-    <button class="panel-h" id="leakSectionToggle">
-      <span class="panel-caret">${leakSectionOpen?'▾':'▸'}</span>
-      <span class="panel-title">💧 Leaks (${active.length})</span>
-      <span class="panel-meta">close it, don't complete it</span>
-    </button>
-    ${leakSectionOpen?`<div class="panel-body">
-      <div class="panel-note">Every one of these reached you when it shouldn't have. The goal isn't to handle the interruption — it's to permanently close the leak.</div>
-
-      <div class="leak-list">
-        ${active.length?active.map(leakRowHTML).join('')
-          :'<div class="empty">No open leaks. Capture the next thing that reaches you when it shouldn\'t.</div>'}
-      </div>
-
+function leakScreenHTML(){
+  const open=(S.leaks||[]).filter(l=>l.status!=='closed').slice().sort(leakSort);
+  const closed=(S.leaks||[]).filter(l=>l.status==='closed').slice().sort((a,b)=>(b.closedAt||0)-(a.closedAt||0));
+  const cur=leakOpenId ? (S.leaks||[]).find(l=>l.id===leakOpenId) : null;
+  const body = cur ? leakDetailHTML(cur) : `
+    <div class="pick-body">
+      <section class="pick-group g-leak" style="--gc:var(--blue)">
+        <h3 class="pick-g-title">Open<span class="pick-g-ct">${open.length}</span></h3>
+        <div class="pick-rows">${open.length?open.map(leakRowHTML).join('')
+          :'<div class="empty sm">No open leaks. Capture the next thing that reaches you when it shouldn\'t.</div>'}</div>
+      </section>
       ${closed.length?`
-      <div class="panel ${leakClosedOpen?'open':''}" style="margin-top:14px">
-        <button class="panel-h" id="leakClosedPanel">
-          <span class="panel-caret">${leakClosedOpen?'▾':'▸'}</span>
-          <span class="panel-title">Closed</span>
-          <span class="panel-meta">${closed.length}</span>
-        </button>
-        ${leakClosedOpen?`<div class="panel-body"><div class="leak-list">${closed.map(leakRowHTML).join('')}</div></div>`:''}
-      </div>`:''}
-    </div>`:''}
+      <section class="pick-group g-leak is-closed" style="--gc:var(--line)">
+        <h3 class="pick-g-title">Closed<span class="pick-g-ct">${closed.length}</span></h3>
+        <div class="pick-rows">${closed.map(leakRowHTML).join('')}</div>
+      </section>`:''}
+    </div>`;
+  return `<div class="pick-inner">
+    <header class="pick-head">
+      <div class="pick-h-txt"><h2>💧 Leaks</h2>
+        <p>Close it, don't complete it. First occurrence acts, second notices, third decides.</p></div>
+      <button class="pick-close" id="leakScreenClose" title="Close">×</button>
+    </header>
+    ${body}
   </div>`;
 }
 
-function bindLeakSection(){
-  const st=q('#leakSectionToggle'); if(st) st.onclick=()=>{ leakSectionOpen=!leakSectionOpen; rerender(); };
+function paintLeakScreen(){
+  const el=q('#leakScreen'); if(!el) return;
+  if(!leakScreenOpen){ el.classList.remove('show'); el.innerHTML=''; document.body.classList.remove('pick-open'); return; }
+  el.innerHTML=leakScreenHTML();
+  el.classList.add('show');
+  document.body.classList.add('pick-open');
+  bindLeakScreen();
+  if(!leakOpenId) fitPickScreen(el);   // density step-down applies to the grid, not the detail
+}
 
+function bindLeakScreen(){
   const byId=(id)=>(S.leaks||[]).find(x=>x.id===id);
-  const pair=(v)=>{ const i=String(v).indexOf('|'); return [String(v).slice(0,i), String(v).slice(i+1)]; };
+  const cl=q('#leakScreenClose'); if(cl) cl.onclick=closeLeakScreen;
+  const bk=q('#leakBack'); if(bk) bk.onclick=()=>{ leakOpenId=null; paintLeakScreen(); };
 
-  // expand / collapse a leak's detail (one open at a time)
-  q('[data-leakopen]','all').forEach(el=>el.onclick=()=>{
-    leakOpenId=(leakOpenId===el.dataset.leakopen)?null:el.dataset.leakopen;
-    rerender();
-  });
+  q('#leakScreen [data-leakrow]','all').forEach(el=>el.onclick=()=>{ leakOpenId=el.dataset.leakrow; paintLeakScreen(); });
 
-  // resolution type — tapping the active chip clears it (all fields stay optional)
-  q('[data-leakres]','all').forEach(el=>el.onclick=()=>{
-    const [id,t]=pair(el.dataset.leakres); const l=byId(id); if(!l) return;
-    l.resolutionType=(l.resolutionType===t)?null:t;
-    save(false); rerender();
-  });
+  // notes — save WITHOUT repainting so the caret never jumps mid-sentence
+  const nt=q('#leakScreen [data-leaknotes]');
+  if(nt) nt.oninput=()=>{ const l=byId(nt.dataset.leaknotes); if(l){ l.notes=nt.value; save(false); } };
 
-  // free text — save WITHOUT re-render so the caret never jumps mid-typing
-  q('[data-leakowner]','all').forEach(el=>el.oninput=()=>{ const l=byId(el.dataset.leakowner); if(l){ l.owner=el.value; save(false); } });
-  q('[data-leaknext]','all').forEach(el=>el.oninput=()=>{ const l=byId(el.dataset.leaknext); if(l){ l.nextAction=el.value; save(false); } });
-  q('[data-leakdef]','all').forEach(el=>el.oninput=()=>{ const l=byId(el.dataset.leakdef); if(l){ l.defOfClosed=el.value; save(false); } });
-
-  // dates — discrete changes, so re-render to refresh the row summary
-  q('[data-leakdue]','all').forEach(el=>el.onchange=()=>{ const l=byId(el.dataset.leakdue); if(l){ l.dueDate=el.value; save(false); rerender(); } });
-  q('[data-leakfollow]','all').forEach(el=>el.onchange=()=>{ const l=byId(el.dataset.leakfollow); if(l){ l.followUpDate=el.value; save(false); rerender(); } });
-
-  // status — closing stamps closedAt and moves the row into the Closed group;
-  // reopening clears it. Closed leaks are never deleted by this.
-  q('[data-leakstatus]','all').forEach(el=>el.onclick=()=>{
-    const [id,st]=pair(el.dataset.leakstatus); const l=byId(id); if(!l) return;
+  // status — closing stamps closedAt, reopening clears it. Never deletes.
+  q('#leakScreen [data-leakstatus]','all').forEach(el=>el.onclick=()=>{
+    const v=el.dataset.leakstatus, i=v.indexOf('|');
+    const l=byId(v.slice(0,i)); const st=v.slice(i+1); if(!l) return;
     l.status=st;
-    if(st==='closed'){ l.closedAt=Date.now(); leakOpenId=null; leakClosedOpen=true; }
-    else l.closedAt=null;
-    save(false); rerender();
-    toast(st==='closed'?'Leak closed ✓':'Status updated');
-  });
-
-  // create the resolution as a normal quick task and link it to the leak
-  q('[data-leaktask]','all').forEach(el=>el.onclick=()=>{
-    const l=byId(el.dataset.leaktask); if(!l) return;
-    if(!leakCreateTask(l)){ toast('Write a next action first'); return; }
-    rerender();
-    toast('Task created ✓');
+    l.closedAt = (st==='closed') ? Date.now() : null;
+    save(false); paintLeakScreen(); rerender();
+    toast(st==='closed'?'Leak closed ✓':'Reopened');
   });
 
   // delete (confirm) — the occurrence count is the evidence, so say what's lost
-  q('[data-leakdel]','all').forEach(el=>el.onclick=()=>{
+  q('#leakScreen [data-leakdel]','all').forEach(el=>el.onclick=()=>{
     const l=byId(el.dataset.leakdel); if(!l) return;
     const n=leakCount(l);
     if(!confirm(`Delete "${l.text}"?\n\nThis erases ${n} recorded occurrence${n===1?'':'s'} — the evidence that justifies delegating it. Closing it instead keeps the history.`)) return;
     S.leaks=(S.leaks||[]).filter(x=>x.id!==l.id);
-    if(leakOpenId===l.id) leakOpenId=null;
-    save(); rerender();
+    leakOpenId=null;
+    save(); paintLeakScreen(); rerender();
   });
-
-  const cp=q('#leakClosedPanel'); if(cp) cp.onclick=()=>{ leakClosedOpen=!leakClosedOpen; rerender(); };
 }

@@ -43,18 +43,14 @@ function renderDashboard(){
 
   <div class="dash-actions">
     ${renderFireCTA()}
-    ${renderLeakCta()}
+    ${renderLeaksCta()}
   </div>
-
-  ${renderLeakSection()}
 
   ${renderTodayStrip()}
 
   ${renderPipeline()}
 
   ${renderCompletedToday()}
-
-  ${renderFireEvidence()}
 
   ${renderAllTasks()}
 
@@ -314,8 +310,12 @@ function renderAllTasks(){
    rows reuse the data-atcheck / data-atdel handlers bound by bindAllTasks. */
 function renderCompletedToday(){
   const rows=completedRows('today');
-  if(!rows.length) return '';
-  return `<div class="card completed-today-card">${renderCompletedSection('✓ Completed Today', rows)}</div>`;
+  // ONE list of what got done. The fire stats ride in the header because they're the
+  // only thing the list itself can't say (a returned-to-queue session shows up
+  // nowhere else, so the card renders for stats alone too).
+  const stats=(typeof fireStatsLine==='function') ? fireStatsLine() : '';
+  if(!rows.length && !stats) return '';
+  return `<div class="card completed-today-card">${renderCompletedSection('✓ Completed Today', rows, stats)}</div>`;
 }
 function renderTaskSection(title, rows, emptyMsg){
   const openCt=rows.filter(r=>!r.done).length;
@@ -373,13 +373,18 @@ function renderTaskRow(r){
 function completedRows(scope){
   const tk=todayKey();
   const out=[];
+  // Extinguishing a fire routes through normal task completion, so a fired task is
+  // already in this list — it just needs its 🔥 marker and focus time. One map per
+  // render rather than a lookup per row.
+  const fm=(typeof fireMinutesByKeyToday==='function') ? fireMinutesByKeyToday() : {};
   // A) project tasks (done) — dated by their doneAt stamp
   (S.projects||[]).forEach(p=>{
     (p.tasks||[]).filter(t=>t.done).forEach(t=>{
       const when=t.doneAt||null;
       if(scope==='today' && when!==tk) return;
       out.push({source:'project', key:'P|'+p.id+'|'+t.id, txt:t.txt, kind:t.kind||'project',
-                projName:p.name, projColor:p.color, when, priority:!!t.priority});
+                projName:p.name, projColor:p.color, when, priority:!!t.priority,
+                fireMin:fm['P|'+p.id+'|'+t.id]||0});
     });
   });
   // B) standalone done day-tasks + C) swept archive entries — dated by day record
@@ -387,20 +392,24 @@ function completedRows(scope){
     if(scope==='today' && dk!==tk) return;
     const d=S.days[dk]||{};
     (d.tasks||[]).filter(t=>t.done && !t.projectId && !t.meetingId).forEach(t=>{
-      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, priority:!!t.priority});
+      // fire sessions key standalone tasks by the BARE id (not the 'S|' row key)
+      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, priority:!!t.priority,
+                fireMin:fm[t.id]||0});
     });
     (d.archive||[]).forEach(a=>{
-      out.push({source:'archive', dayKey:dk, id:a.id, txt:a.txt, kind:a.kind, when:dk, time:a.doneAt});
+      // a swept task keeps its id, so a fire fought on it still resolves here
+      out.push({source:'archive', dayKey:dk, id:a.id, txt:a.txt, kind:a.kind, when:dk, time:a.doneAt,
+                fireMin:fm[a.id]||0});
     });
   });
   // newest first
   out.sort((x,y)=>((y.when||'')+(y.time||'')).localeCompare((x.when||'')+(x.time||'')));
   return out;
 }
-function renderCompletedSection(title, rows){
+function renderCompletedSection(title, rows, extra){
   return `
   <div class="at-section completed">
-    <div class="at-sec-h"><span class="at-sec-lab">${title}</span><span class="at-sec-ct">${rows.length}</span></div>
+    <div class="at-sec-h"><span class="at-sec-lab">${title}</span>${extra||''}<span class="at-sec-ct">${rows.length}</span></div>
     <div class="at-rows">${rows.map(r=>renderCompletedRow(r,false)).join('')}</div>
   </div>`;
 }
@@ -423,16 +432,18 @@ function renderCompletedRow(r, withDate){
   const when = withDate ? (r.when?`<span class="done-when">${shortDate(r.when)}</span>`:'')
                         : (r.time?`<span class="done-when">${r.time}</span>`:'');
   const mark = r.priority?'<span class="prio-mark">🔥</span> ':'';
+  // completed inside a focus session → 🔥 + the time actually spent on it
+  const fire = r.fireMin ? `<span class="done-fire" title="Completed in a fire session">🔥 ${fmtFocus(r.fireMin)}</span>` : '';
   if(r.source==='archive'){
     return `<div class="at-row done">
       <div class="box done-static" title="archived">✓</div>
-      <span class="at-txt">${mark}${esc(r.txt)}</span>${chip}${when}
+      <span class="at-txt">${mark}${esc(r.txt)}</span>${chip}${fire}${when}
       <span class="x" data-arcdel="${r.dayKey}|${r.id}" title="Delete from archive">×</span>
     </div>`;
   }
   return `<div class="at-row done">
     <div class="box" data-atcheck="${r.key}" title="Mark not done (reactivate)">✓</div>
-    <span class="at-txt">${mark}${esc(r.txt)}</span>${chip}${when}
+    <span class="at-txt">${mark}${esc(r.txt)}</span>${chip}${fire}${when}
     <span class="x" data-atdel="${r.key}" title="Delete">×</span>
   </div>`;
 }
@@ -780,10 +791,9 @@ function bindDashboard(){
   bindFireDash();
   // Unified capture — the app's single general entry point (top of the Dashboard)
   bindCapture();
-  // Leak Management: the CTA (opens Capture pre-set to Leak) and the collapsible
-  // Leaks dropdown (full list + detail + closed group + delete)
-  bindLeakCta();
-  bindLeakSection();
+  // Leak Management: the CTA opens the full-screen leaks overlay (#leakScreen,
+  // outside #main — see page-leaks.js). Capture lives in the unified line above.
+  bindLeaksCta();
 
   // Things to think about (Parking Lot data)
   const ta=q('#thinkAdd'); const ti=q('#thinkInput');

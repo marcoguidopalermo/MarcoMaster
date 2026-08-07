@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=47">
+<link rel="stylesheet" href="styles.css?v=48">
 </head>
 <body>
 <div class="app">
@@ -38,6 +38,11 @@
      page render disturbs them and the clock survives navigation. -->
 <div class="fire-bar" id="fireBar"></div>
 <div class="fire-screen" id="fireScreen"></div>
+<!-- Full-screen pickers (fire picker + leaks). Outside .app for the same reason as
+     the fire screen: rerender() only ever replaces #main, so a page render can
+     never collapse an open overlay or drop a field you're typing in. -->
+<div class="pick-screen" id="firePickScreen"></div>
+<div class="pick-screen" id="leakScreen"></div>
 
 <!-- Firebase SDK (cloud auth + sync) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -50,10 +55,10 @@
      Load order matters — app.js runs init() last, after every definition. -->
 <script src="js/storage.js?v=18"></script>
 <script src="js/defaults.js?v=7"></script>
-<script src="js/state.js?v=37"></script>
+<script src="js/state.js?v=38"></script>
 <script src="js/tasks.js?v=11"></script>
 <script src="js/recurring.js?v=8"></script>
-<script src="js/page-today.js?v=35"></script>
+<script src="js/page-today.js?v=36"></script>
 <script src="js/page-recurring.js?v=7"></script>
 <script src="js/page-review-scorecard.js?v=7"></script>
 <script src="js/page-board.js?v=8"></script>
@@ -67,11 +72,11 @@
 <script src="js/page-appointments.js?v=21"></script>
 <script src="js/page-journal.js?v=10"></script>
 <script src="js/page-fsn.js?v=1"></script>
-<script src="js/page-fire.js?v=2"></script>
-<script src="js/page-leaks.js?v=4"></script>
+<script src="js/page-fire.js?v=3"></script>
+<script src="js/page-leaks.js?v=5"></script>
 <script src="js/capture.js?v=1"></script>
 <script src="js/push.js?v=4"></script>
-<script src="js/ui-core.js?v=20"></script>
-<script src="js/app.js?v=22"></script>
+<script src="js/ui-core.js?v=21"></script>
+<script src="js/app.js?v=23"></script>
 </body>
 </html>

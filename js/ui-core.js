@@ -79,6 +79,25 @@ function makeReorderable(container, itemSel, idKey, handleSel, onCommit){
   });
 }
 
+/* ---------- full-screen picker density ----------
+   The fire picker and the leaks overlay both promise "everything visible, no
+   scrolling". CSS multi-column does the layout; this does the last mile: if the
+   content still overflows the viewport, step the density down (smaller type,
+   tighter rows, narrower columns) and re-measure. Only after both steps fail do
+   we allow scrolling — which on a phone with 150 items is simply physics.
+   Two steps max, so this is a couple of cheap reflows, never a loop. */
+function fitPickScreen(el){
+  if(!el) return;
+  el.classList.remove('dense','denser');
+  const inner=el.querySelector('.pick-inner'); if(!inner) return;
+  const fits=()=>inner.scrollHeight <= el.clientHeight + 1;
+  if(fits()) return;
+  el.classList.add('dense');
+  if(fits()) return;
+  el.classList.add('denser');
+  // still overflowing → the overlay scrolls (CSS overflow-y:auto), which is correct
+}
+
 /* ============================================================
    ROUTER
    ============================================================ */

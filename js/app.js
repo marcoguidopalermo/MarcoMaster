@@ -61,7 +61,14 @@ function startApp(){
   q('#resetBtn').onclick=openReset;
   const tb=q('#themeBtn'); if(tb) tb.onclick=toggleTheme;
   q('#resetModal').onclick=(e)=>{ if(e.target.id==='resetModal') closeReset(); };
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeReset(); });
+  // Escape closes the topmost surface: a full-screen picker first (they sit above
+  // the modal layer), otherwise the modal.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape') return;
+    if(typeof firePickerOpen!=='undefined' && firePickerOpen){ closeFirePicker(); return; }
+    if(typeof leakScreenOpen!=='undefined' && leakScreenOpen){ closeLeakScreen(); return; }
+    closeReset();
+  });
   go('dashboard');
   bindFlushHandlers();
   registerServiceWorker();

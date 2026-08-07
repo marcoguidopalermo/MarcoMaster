@@ -31,27 +31,73 @@ function fireDayKey(ms){ const d=new Date(ms); return d.getFullYear()+'-'+String
 
 /* ---------- task resolution (keys are atToggle-format) ---------- */
 function fireTaskByKey(key){
+  if(fireLeakByKey(key)) return null;      // a leak is not a task: nothing to stamp defOfDone on
   const k=atKey(key);
   if(k.src==='project'){ const p=(S.projects||[]).find(x=>x.id===k.projId); return p&&(p.tasks||[]).find(x=>x.id===k.id); }
-  let t=day().tasks.find(x=>x.id===k.id); if(!t){ const g=findTaskGlobal(k.id); t=g&&g.t; } return t;
+  const id=fireStandaloneId(key, k);
+  let t=day().tasks.find(x=>x.id===id); if(!t){ const g=findTaskGlobal(id); t=g&&g.t; } return t;
 }
-/* the ordered picker list — Pipeline FIRST, then all other open tasks. */
-function firePickList(){
-  const out=[], seen=new Set();
-  const push=(key,txt,sub)=>{ if(seen.has(key)||!txt) return; seen.add(key); out.push({key,txt,sub}); };
+/* The picker keys a standalone task by its BARE id, but atKey() expects the row
+   format 'S|<id>' and returns id=undefined for a bare one — which silently made
+   "Extinguished" fail to complete standalone tasks. Accept both forms. */
+function fireStandaloneId(key, k){ return (k && k.id!=null) ? k.id : key; }
+/* ---------- the picker's content: every selectable thing, grouped ----------
+   Groups are rendered together on one full-screen overlay, so this returns
+   structure (title + colour + items) rather than a flat list. Dedup is global
+   across groups via `seen`, so a pipeline item never appears twice.
+   Within a group, 🔥 priority sorts to the top. */
+function firePickGroups(){
+  const groups=[], seen=new Set();
+  const add=(g,key,txt,opts)=>{ if(!txt||seen.has(key)) return; seen.add(key); g.items.push(Object.assign({key,txt},opts||{})); };
+
+  const pipe={title:'Pipeline', cls:'g-pipe', color:'var(--accent)', items:[]};
   (day().pipeline||[]).forEach(it=>{
-    if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); if(t&&!t.done) push(t.id, t.txt, 'Pipeline'); }
-    else if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId); if(t&&!t.done) push('P|'+it.projectId+'|'+it.projTaskId, t.txt, 'Pipeline · '+(p?p.name:'')); }
+    if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); if(t&&!t.done) add(pipe, t.id, t.txt, {ic:'◈', priority:!!t.priority}); }
+    else if(it.projectId){
+      const p=(S.projects||[]).find(x=>x.id===it.projectId);
+      const t=p&&(p.tasks||[]).find(x=>x.id===it.projTaskId);
+      if(t&&!t.done) add(pipe, 'P|'+it.projectId+'|'+it.projTaskId, t.txt, {ic:'◈', priority:!!t.priority});
+    }
   });
-  day().tasks.filter(t=>!t.done && !t.projectId).forEach(t=> push(t.id, t.txt, t.kind==='quick'?'Quick':'Time block'));
-  (S.projects||[]).forEach(p=> (p.tasks||[]).forEach(t=>{ if(!t.done) push('P|'+p.id+'|'+t.id, t.txt, p.name); }));
-  return out;
+  if(pipe.items.length) groups.push(pipe);
+
+  const tasks={title:'Tasks', cls:'g-task', color:'var(--txt-dim)', items:[]};
+  day().tasks.filter(t=>!t.done && !t.projectId).forEach(t=>
+    add(tasks, t.id, t.txt, {ic:t.kind==='quick'?'⚡':'▣', priority:!!t.priority}));
+  if(tasks.items.length) groups.push(tasks);
+
+  (S.projects||[]).filter(p=>!p.done).forEach(p=>{
+    const g={title:p.name, cls:'g-proj', color:p.color||'var(--accent)', items:[]};
+    (p.tasks||[]).forEach(t=>{ if(!t.done) add(g, 'P|'+p.id+'|'+t.id, t.txt, {priority:!!t.priority}); });
+    if(g.items.length) groups.push(g);
+  });
+
+  // Leaks are fightable directly — fixing one IS the work, and it needs no task first.
+  const leaks={title:'💧 Leaks', cls:'g-leak', color:'var(--blue)', items:[]};
+  (S.leaks||[]).filter(l=>l.status!=='closed').slice().sort(leakSort).forEach(l=>
+    add(leaks, 'L|'+l.id, l.text, {badge:leakCount(l)+'×', badgeCls:leakBadgeClass(l)}));
+  if(leaks.items.length) groups.push(leaks);
+
+  groups.forEach(g=>g.items.sort((a,b)=>(b.priority?1:0)-(a.priority?1:0)));   // 🔥 to the top of its group
+  return groups;
 }
+/* a leak key is 'L|<id>' — resolved here so a leak key never reaches atKey(),
+   which is shared with the task-row handlers in page-today.js */
+function fireLeakByKey(key){
+  if(typeof key!=='string' || key.slice(0,2)!=='L|') return null;
+  return (S.leaks||[]).find(l=>l.id===key.slice(2)) || null;
+}
+
 /* complete the task through the NORMAL completion path, forced done=true. */
 function fireCompleteTask(key){
+  // A leak-fire ending does NOT close the leak. A leak is closed when it stops
+  // REACHING you, which only time can show — so closing stays a deliberate act in
+  // the leak's detail. The session is still recorded in fireSessions either way.
+  if(fireLeakByKey(key)) return;
   const k=atKey(key);
   if(k.src==='project'){ setProjTaskDone(k.projId, k.id, true); return; }
-  let t=day().tasks.find(x=>x.id===k.id); if(!t){ const g=findTaskGlobal(k.id); t=g&&g.t; }
+  const id=fireStandaloneId(key, k);
+  let t=day().tasks.find(x=>x.id===id); if(!t){ const g=findTaskGlobal(id); t=g&&g.t; }
   if(!t) return;
   t.done=true;
   if(t.recurringId) markRecurringDone(t.recurringId);
@@ -171,19 +217,57 @@ let fireEstText='';
 function openFirePicker(){
   if(fireIsActive()){ openFireScreen(); return; }   // one fire at a time
   fireStep='pick'; firePick=null; fireDefText=''; fireModeSel='timer'; fireDurSel=25; fireEstText='';
-  renderFireModal();
+  firePickerOpen=true; paintFirePicker();
 }
+function closeFirePicker(){ firePickerOpen=false; paintFirePicker(); }
+
+/* ---------- the full-screen picker (lives in #firePickScreen, OUTSIDE .app) ----------
+   Everything selectable, visible at once. Same host pattern as #fireScreen: a page
+   rerender replaces #main only, so it can never disturb this overlay. */
+let firePickerOpen=false;
+function firePickScreenHTML(){
+  const groups=firePickGroups();
+  const row=(it)=>`<button class="pick-row" data-firepick="${esc(it.key)}">
+      ${it.priority?'<span class="pick-prio">🔥</span>':(it.ic?`<span class="pick-ic">${it.ic}</span>`:'')}
+      ${it.badge?`<span class="pick-badge ${it.badgeCls||''}">${esc(it.badge)}</span>`:''}
+      <span class="pick-txt">${esc(it.txt)}</span>
+    </button>`;
+  const group=(g)=>`<section class="pick-group ${g.cls}" style="--gc:${g.color}">
+      <h3 class="pick-g-title">${esc(g.title)}<span class="pick-g-ct">${g.items.length}</span></h3>
+      <div class="pick-rows">${g.items.map(row).join('')}</div>
+    </section>`;
+  const total=groups.reduce((n,g)=>n+g.items.length,0);
+  return `<div class="pick-inner">
+    <header class="pick-head">
+      <div class="pick-h-txt"><h2>🔥 Start a fire</h2>
+        <p>You notice every fire. You fight one at a time. Pick the one to fight now.</p></div>
+      <button class="pick-close" id="firePickClose" title="Close">×</button>
+    </header>
+    ${total
+      ? `<div class="pick-body">${groups.map(group).join('')}</div>`
+      : `<div class="empty">Nothing open to fight yet — capture something first.</div>`}
+  </div>`;
+}
+function paintFirePicker(){
+  const el=q('#firePickScreen'); if(!el) return;
+  if(!firePickerOpen){ el.classList.remove('show'); el.innerHTML=''; document.body.classList.remove('pick-open'); return; }
+  el.innerHTML=firePickScreenHTML();
+  el.classList.add('show');
+  document.body.classList.add('pick-open');
+  const cl=q('#firePickClose'); if(cl) cl.onclick=closeFirePicker;
+  q('#firePickScreen [data-firepick]','all').forEach(b=>b.onclick=()=>{
+    const key=b.dataset.firepick;
+    let txt=''; firePickGroups().forEach(g=>g.items.forEach(i=>{ if(i.key===key) txt=i.txt; }));
+    firePick={key, txt};
+    closeFirePicker();
+    fireStep='def'; renderFireModal();     // definition + mode stay one-question modals
+  });
+  fitPickScreen(el);                        // step density down before ever scrolling
+}
+
 function renderFireModal(){
   const m=q('#resetModal'); let inner;
-  if(fireStep==='pick'){
-    const list=firePickList();
-    inner=`<h3>🔥 Start a fire</h3>
-      <p class="intro">You notice every fire. You fight one at a time. Pick the one to fight now.</p>
-      ${list.length
-        ? `<div class="fire-pick-list">${list.map(c=>`<button class="fire-pick" data-firepick="${esc(c.key)}"><span class="fire-pick-txt">${esc(c.txt)}</span><span class="fire-pick-sub">${esc(c.sub)}</span></button>`).join('')}</div>`
-        : `<div class="empty">No open tasks to fight yet — add one first.</div>`}
-      <div class="btn-row" style="margin-top:14px"><button class="btn ghost" id="fireCancel">Cancel</button></div>`;
-  } else if(fireStep==='def'){
+  if(fireStep==='def'){
     inner=`<h3>Definition of extinguished</h3>
       <p class="intro">For "<b>${esc(firePick.txt)}</b>" — what has to be true for this fire to be out?</p>
       <div class="qf"><input type="text" id="fireDefInput" value="${esc(fireDefText)}" placeholder="Extinguished when…"></div>
@@ -205,8 +289,11 @@ function renderFireModal(){
 }
 function bindFireModal(){
   const cc=q('#fireCancel'); if(cc) cc.onclick=closeReset;
-  q('[data-firepick]','all').forEach(el=>el.onclick=()=>{ const key=el.dataset.firepick; const c=firePickList().find(x=>x.key===key); firePick={key, txt:c?c.txt:''}; fireStep='def'; renderFireModal(); });
-  const bk=q('#fireBack'); if(bk) bk.onclick=()=>{ fireStep = (fireStep==='mode'?'def':'pick'); renderFireModal(); };
+  // Back from the definition step returns to the full-screen picker, not to a modal step
+  const bk=q('#fireBack'); if(bk) bk.onclick=()=>{
+    if(fireStep==='mode'){ fireStep='def'; renderFireModal(); return; }
+    closeReset(); openFirePicker();
+  };
   const di=q('#fireDefInput'); if(di){ di.oninput=()=>{ fireDefText=di.value; }; di.focus(); }
   const dn=q('#fireDefNext'); if(dn) dn.onclick=()=>{ if(!(fireDefText||'').trim()){ toast('Say what "out" looks like'); return; } fireStep='mode'; renderFireModal(); };
   q('[data-firemode]','all').forEach(el=>el.onclick=()=>{ fireModeSel=el.dataset.firemode; renderFireModal(); });
@@ -368,20 +455,41 @@ function renderFireCTA(){
     <span class="fsn-cta-txt"><b>Start a fire</b><span>Notice every fire. Fight one at a time.</span></span>
     <span class="fsn-cta-go">→</span></button>`;
 }
-function renderFireEvidence(){
+/* ---------- session stats: the ONE thing the Completed list cannot convey ----------
+   Extinguishing routes through normal task completion, so a fire's outcome already
+   appears in Completed Today. What that list cannot show is how many fires were
+   fought and how long was spent in focus — so that, and only that, survives here as
+   a single line in the Completed Today header. */
+function fireStatsToday(){
   const tk=todayKey();
   const sess=(S.fireSessions||[]).filter(s=>s.endedAt && fireDayKey(s.endedAt)===tk);
-  if(!sess.length) return '';
-  const exting=sess.filter(s=>s.outcome==='extinguished');
-  const totalMin=sess.reduce((a,s)=>a+(s.actualMin||0),0);
-  return `<div class="card fire-evidence">
-    <div class="card-h"><h3>🔥 Fires extinguished today</h3><span class="sub">${exting.length}</span></div>
-    ${exting.length
-      ? `<div class="fire-eb-list">${exting.map(s=>`<div class="fire-eb-row"><span class="fire-eb-txt">${esc(s.taskTxt)}</span><span class="fire-eb-min">${fmtDuration(s.actualMin||0)}</span></div>`).join('')}</div>`
-      : `<div class="empty sm">No fires out yet today — that's fine. Start one when you're ready.</div>`}
-    <div class="fire-ev-foot"><span>${fmtDuration(totalMin)} focused</span><span>${sess.length} session${sess.length>1?'s':''}</span></div>
-  </div>`;
+  return { count:sess.length, mins:sess.reduce((a,s)=>a+(s.actualMin||0),0) };
 }
+function fireStatsLine(){
+  const st=fireStatsToday();
+  if(!st.count) return '';
+  return `<span class="fire-stats">🔥 ${st.count} fire${st.count===1?'':'s'} · ${fmtFocus(st.mins)} focused</span>`;
+}
+/* minutes → "2h 15m" / "45m". Used by the stats line AND the per-row focus marker,
+   so both read the same way. (fmtDuration gives "2.3h", which is wrong for this.) */
+function fmtFocus(m){
+  m=Math.max(0, Math.round(m||0));
+  const h=Math.floor(m/60), r=m%60;
+  return h ? (r?`${h}h ${r}m`:`${h}h`) : `${r}m`;
+}
+/* task-key → focused minutes for anything EXTINGUISHED in a session today, so the
+   completed row can carry its 🔥 marker. Keys match the completed-row keys:
+   'P|proj|id' for project tasks, the bare task id for standalone/archive rows. */
+function fireMinutesByKeyToday(){
+  const tk=todayKey(), map={};
+  (S.fireSessions||[]).forEach(s=>{
+    if(!s.endedAt || fireDayKey(s.endedAt)!==tk) return;
+    if(s.outcome!=='extinguished' || !s.taskId) return;
+    map[s.taskId]=(map[s.taskId]||0)+(s.actualMin||0);
+  });
+  return map;
+}
+
 function bindFireDash(){
   const sc=q('#fireStartCta'); if(sc) sc.onclick=openFirePicker;
   const rc=q('#fireReturnCta'); if(rc) rc.onclick=openFireScreen;

@@ -1446,3 +1446,70 @@ body.pick-open{overflow:hidden}
 .shortlist-empty{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:18px 4px 6px}
 .sl-line{font-size:14px;color:var(--txt)}
 .sl-sub{font-size:12.5px;color:var(--txt-dim);margin-bottom:6px}
+
+/* ---------- appointments overlay: view tabs, rows, calendar ---------- */
+.appt-open-h{background:none;border:none;padding:0;cursor:pointer;font-family:var(--sans);
+  font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--txt)}
+.appt-open-h:hover{color:var(--accent)}
+.appt-open-go{color:var(--txt-faint);font-size:14px}
+.appt-open-h:hover .appt-open-go{color:var(--accent)}
+
+.pick-tabs{display:flex;gap:6px;align-self:center;flex-wrap:wrap}
+.pick-tab{padding:6px 13px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
+  border-radius:999px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
+.pick-tab:hover{border-color:var(--accent);color:var(--accent)}
+.pick-tab.on{border-color:var(--accent);background:var(--accent);color:#fff}
+
+.appt-r-time{flex:none;font-family:var(--mono);font-size:11px;color:var(--txt-dim);min-width:52px}
+.pick-row.is-done{opacity:.62}
+.pick-row.is-done .pick-txt{text-decoration:line-through;color:var(--txt-dim)}
+.pick-row.is-od{border-color:var(--red)}
+.pick-row.is-od .appt-r-time{color:var(--red)}
+.pick-row .pick-txt[data-asopen]{cursor:pointer}
+.pick-row .pick-txt[data-asopen]:hover{color:var(--accent)}
+
+/* month grid — fills the viewport exactly, so the GRID never scrolls; overflow is
+   handled per cell by fitApptCalendar() */
+.cal-wrap{display:flex;flex-direction:column;flex:1;min-height:0}
+.cal-nav{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex:none}
+.cal-month{font-size:15px;font-weight:700;min-width:150px}
+.cal-dows{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;flex:none;margin-bottom:4px}
+.cal-dows span{font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
+  color:var(--txt-faint);text-align:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(var(--rows,6),minmax(0,1fr));
+  gap:4px;flex:1;min-height:0}
+.cal-cell{display:flex;flex-direction:column;gap:2px;min-height:0;overflow:hidden;padding:4px 5px;
+  border:1px solid var(--line);border-radius:7px;background:var(--panel)}
+.cal-cell.outside{opacity:.4}
+.cal-cell.is-today{border-color:var(--accent);background:var(--accent-soft)}
+.cal-d{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
+.cal-cell.is-today .cal-d{color:var(--accent);font-weight:700}
+.cal-chips{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:2px}
+.cal-chip{display:flex;gap:4px;align-items:baseline;width:100%;text-align:left;cursor:pointer;
+  border:none;border-left:2px solid var(--accent);border-radius:3px;background:var(--panel-2);
+  padding:1px 4px;font-family:var(--sans);font-size:10.5px;color:var(--txt);line-height:1.35}
+.cal-chip:hover{background:var(--accent-soft)}
+.cal-chip.od{border-left-color:var(--red)}
+.cal-chip.done{opacity:.5;border-left-color:var(--line)}
+.cal-chip.done .cal-cx{text-decoration:line-through}
+.cal-ct{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--txt-faint)}
+.cal-cx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-more{flex:none;font-family:var(--mono);font-size:9.5px;color:var(--txt-faint);padding-left:4px}
+.pick-screen.dense .cal-chip{font-size:10px;padding:0 3px}
+.pick-screen.denser .cal-chip{font-size:9.5px}
+
+/* detail */
+.appt-detail{display:flex;flex-direction:column;max-width:560px;width:100%;margin:0 auto;flex:1}
+.appt-d-when{display:flex;gap:12px}
+.appt-d-when .qf{flex:1;min-width:0}
+.appt-d-meta{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.appt-d-tag{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--txt-dim)}
+.appt-d-tag.done{border-color:var(--green);color:var(--green)}
+.appt-d-tag.od{border-color:var(--red);color:var(--red)}
+.appt-d-tag.link{border-color:var(--accent);color:var(--accent)}
+.appt-d-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}
+@media(max-width:600px){
+  .cal-chip .cal-ct{display:none}
+  .cal-month{min-width:110px;font-size:13px}
+  .appt-d-when{flex-direction:column;gap:0}
+}

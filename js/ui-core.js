@@ -107,6 +107,7 @@ function fitPickScreen(el){
    their own routes/nav. */
 const PAGES={
   dashboard:{render:renderDashboard,bind:bindDashboard},
+  training:{render:renderTraining,bind:bindTraining},
   fsn:{render:renderFSN,bind:bindFSN},
   journal:{render:renderJournal,bind:bindJournal},
   meetings:{render:renderMeetings,bind:bindMeetings},
@@ -139,6 +140,7 @@ function rerender(){
 /* two tabs: Dashboard (execution) + Journal (reflection) */
 const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
+  ['training','⌁','Training'],
   ['fsn','☼','Future Self'],
   ['journal','✦','Journal'],
   ['settings','⚙','Settings'],

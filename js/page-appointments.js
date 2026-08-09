@@ -171,6 +171,11 @@ function createAppointment(title, date, time){
 function deleteAppointment(id){
   S.appointments=(S.appointments||[]).filter(x=>x.id!==id);
   (S.meetings||[]).forEach(m=>{ if(m && m.apptId===id){ m.apptId=null; m.nextMeeting=null; } });
+  // same for a training session's linked appointment: deleting it from the calendar
+  // clears the session's time rather than leaving a link to a record that's gone.
+  // The session itself — and its task — are untouched; it's just no longer timed.
+  const ts=(S.training&&S.training.sessions)||{};
+  Object.keys(ts).forEach(dk=>{ const s=ts[dk]; if(s && s.apptId===id){ s.apptId=null; s.time=null; } });
   save();
 }
 /* Complete ⇄ reopen. Completing ARCHIVES (the record stays; the main list filters
@@ -179,6 +184,7 @@ function toggleApptDone(id){
   const a=(S.appointments||[]).find(x=>x.id===id);
   if(!a) return null;
   a.done=!a.done;
+  syncWorkoutFromAppt(a);   // a training session completes with its appointment too
   save();
   return a;
 }

@@ -71,6 +71,10 @@ function fireCompleteTask(key){
   t.done=true;
   if(t.recurringId) markRecurringDone(t.recurringId);
   if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=true; }
+  // a training session completes with its task. log:false — the fire takeover sits
+  // ABOVE the modal layer, so the optional log prompt would open invisibly behind it.
+  // It stays available on the dashboard card afterwards.
+  if(t.workoutId) syncWorkoutFromTask(t, {log:false});
 }
 
 /* ============================================================

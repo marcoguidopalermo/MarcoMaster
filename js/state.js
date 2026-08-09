@@ -174,6 +174,53 @@ function seedDefaults(){
     // the retired 'progress' already folded into notes above.
     if(l.status!=='open' && l.status!=='watching' && l.status!=='closed') l.status='open';
   });
+  // ---- TRAINING: the exercise library + the weekly plan ----
+  // Additive, idempotent and non-destructive, like every migration above: create
+  // the container if absent, then backfill EVERY field on every record so a
+  // partially-shaped session (old backup, hand edit, aborted write) can never break
+  // a render. The library seeds exactly once (_libSeeded), so deleting every
+  // exercise on purpose is respected instead of being re-seeded on the next load.
+  if(!S.training || typeof S.training!=='object' || Array.isArray(S.training)) S.training={};
+  {
+    const tr=S.training;
+    if(!tr.library || typeof tr.library!=='object' || Array.isArray(tr.library)) tr.library={};
+    TRAIN_CATS.forEach(([k])=>{
+      if(!Array.isArray(tr.library[k])) tr.library[k]=[];
+      tr.library[k]=tr.library[k].filter(e=>e && typeof e==='object');
+      tr.library[k].forEach(e=>{ if(e.id==null) e.id=b(); if(e.name==null) e.name=''; });
+    });
+    if(!tr._libSeeded){
+      tr._libSeeded=true;
+      TRAIN_CATS.forEach(([k])=>{
+        if(!tr.library[k].length && (TRAIN_SEED[k]||[]).length){
+          tr.library[k]=TRAIN_SEED[k].map(n=>({id:b(), name:n}));
+        }
+      });
+    }
+    if(!(tr.floor>=1)) tr.floor=3;                    // the weekly FLOOR, never a target
+    if(!tr.sessions || typeof tr.sessions!=='object' || Array.isArray(tr.sessions)) tr.sessions={};
+    Object.keys(tr.sessions).forEach(dk=>{
+      const s=tr.sessions[dk];
+      if(!s || typeof s!=='object'){ delete tr.sessions[dk]; return; }
+      if(s.id==null) s.id=b();
+      if(s.date==null) s.date=dk;
+      if(s.kind!=='rest' && s.kind!=='session') s.kind='session';
+      if(s.title==null) s.title='';
+      // exercises are stored BY VALUE (name + category), not as library references,
+      // so renaming or deleting a library entry can never rewrite a past session
+      if(!Array.isArray(s.exercises)) s.exercises=[];
+      s.exercises=s.exercises.filter(e=>e && typeof e==='object');
+      s.exercises.forEach(e=>{ if(e.id==null) e.id=b(); if(e.name==null) e.name=''; if(e.cat==null) e.cat=''; });
+      if(s.time===undefined) s.time=null;             // 'HH:MM' → linked appointment
+      if(s.taskId===undefined) s.taskId=null;         // the day-task it completes through
+      if(s.apptId===undefined) s.apptId=null;         // the linked appointment, when timed
+      if(s.done==null) s.done=false;
+      if(s.doneAt===undefined) s.doneAt=null;
+      if(s.mins===undefined) s.mins=null;             // optional, logged at completion
+      if(s.note==null) s.note='';                     // optional, logged at completion
+      if(s.createdAt==null) s.createdAt=Date.now();
+    });
+  }
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
   S.recurring.forEach(r=>{
@@ -441,14 +488,19 @@ function day(){
       // carrying it would double-add). MOVE (not copy) the task objects out of the
       // previous day so each appears exactly once — no duplication in the global
       // time-block pool, and (with the _seeded guard below) no re-carry on reload.
-      const carryTasks=(prev.tasks||[]).filter(t=>!t.done && !t.recurringId);
+      // WORKOUT tasks are excluded (t.workoutId): a planned session belongs to its
+      // day. Dragging a missed one forward would detach it from the weekly plan it
+      // was built in, and would quietly turn "the floor is 3" into a debt you carry.
+      // It simply stays on its own day and doesn't count — no shaming, and the
+      // weekly grid keeps telling the truth about what was planned when.
+      const carryTasks=(prev.tasks||[]).filter(t=>!t.done && !t.recurringId && !t.workoutId);
       if(carryTasks.length){
         carryTasks.forEach(t=>{
           t.fromYesterday=true;
           if(t.kind==='project'){ t.schedDate=null; t.start=null; }  // back to today's block pool
           d.tasks.push(t);
         });
-        prev.tasks=(prev.tasks||[]).filter(t=>t.done || t.recurringId);  // remove the moved ones
+        prev.tasks=(prev.tasks||[]).filter(t=>t.done || t.recurringId || t.workoutId);  // remove the moved ones
       }
       // carry UNFINISHED pipeline items into the new day; completed ones drop.
       // The pipeline lives on the day record, so a new day would otherwise start

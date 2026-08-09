@@ -69,6 +69,7 @@ function startApp(){
     if(typeof leakScreenOpen!=='undefined' && leakScreenOpen){ closeLeakScreen(); return; }
     if(typeof taskScreenOpen!=='undefined' && taskScreenOpen){ closeTaskScreen(); return; }
     if(typeof apptScreenOpen!=='undefined' && apptScreenOpen){ closeApptScreen(); return; }
+    if(typeof trainScreenOpen!=='undefined' && trainScreenOpen){ closeTrainScreen(); return; }
     closeReset();
   });
   go('dashboard');

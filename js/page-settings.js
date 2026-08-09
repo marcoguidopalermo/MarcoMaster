@@ -19,6 +19,8 @@ function renderSettings(){
     ${renderRecurring()}
   </div>
 
+  ${renderTrainingLibrary()}
+
   <div class="card">
     <div class="card-h"><h3>Future Self Narrative</h3><span class="sub">read it every morning</span></div>
     <p class="list-note" style="margin-top:0">Plain text. Line breaks and paragraphs are preserved in the reader (Future Self tab). Saves automatically.</p>
@@ -228,7 +230,7 @@ function renderAutoBackups(){
       return `<div class="autobackup-row">
         <div class="ab-main">
           <span class="ab-when">${when}</span>
-          <span class="ab-counts">${s.projects||0} proj · ${s.tasks||0} tasks · ${s.appointments||0} appt · ${s.followups||0} f/u · ${s.meetings||0} mtg · ${s.days||0} days</span>
+          <span class="ab-counts">${s.projects||0} proj · ${s.tasks||0} tasks · ${s.appointments||0} appt · ${s.followups||0} f/u · ${s.meetings||0} mtg · ${s.training||0} train · ${s.days||0} days</span>
         </div>
         <button class="btn ghost sm" data-abrestore="${e.slot}">Restore</button>
       </div>`;
@@ -241,7 +243,7 @@ function renderAutoBackups(){
 function restoreState(newState, label){
   if(!newState || typeof newState!=='object' || Array.isArray(newState)){ alert('That backup is unreadable.'); return; }
   const cur=backupSummary(S), nw=backupSummary(newState);
-  const line=(s)=>`${s.projects} proj · ${s.tasks} tasks · ${s.appointments} appt · ${s.followups} f/u · ${s.meetings} mtg · ${s.days} days`;
+  const line=(s)=>`${s.projects} proj · ${s.tasks} tasks · ${s.appointments} appt · ${s.followups} f/u · ${s.meetings} mtg · ${s.training||0} train · ${s.days} days`;
   if(!confirm(`Restore ${label}?\n\nReplaces current data:\n  now:  ${line(cur)}\n  new:  ${line(nw)}\n\nA backup of your current data is taken first.`)) return;
   try{ recordAutoBackup(S); }catch(e){}
   S=newState;
@@ -256,6 +258,7 @@ function restoreState(newState, label){
 function bindSettings(){
   bindProjects();      // add/edit/delete projects + names/colors + tasks within projects
   bindRecurring();     // recurring cadence manager
+  bindTrainingLibrary();   // exercise library by category + the weekly floor
 
   // Future Self Narrative editors — autosave through the normal save() path, no
   // re-render (keep the caret where it is while typing).

@@ -48,6 +48,8 @@ function renderDashboard(){
 
   ${renderTodayStrip()}
 
+  ${renderTodayWorkout()}
+
   ${renderPipeline()}
 
   ${renderCompletedToday()}
@@ -188,7 +190,7 @@ function togglePipeline(idx){
   const nd=!pipelineDone(it);
   if(it.taskId){
     const t=d.tasks.find(x=>x.id===it.taskId);
-    if(t){ t.done=nd; if(t.projectId&&t.projTaskId) setProjTaskDone(t.projectId,t.projTaskId,nd); if(nd&&t.recurringId) markRecurringDone(t.recurringId); }
+    if(t){ t.done=nd; if(t.projectId&&t.projTaskId) setProjTaskDone(t.projectId,t.projTaskId,nd); if(nd&&t.recurringId) markRecurringDone(t.recurringId); if(t.workoutId) syncWorkoutFromTask(t); }
   }else if(it.projectId){
     setProjTaskDone(it.projectId, it.projTaskId, nd);
   }else if(it.leakId){
@@ -267,7 +269,8 @@ function buildTaskRows(){
   // project) and meeting blocks (live on the calendar grid)
   day().tasks.filter(t=>!t.projectId && !t.meetingId).forEach(t=>{
     const row={key:'S|'+t.id, source:'standalone', id:t.id, txt:t.txt, done:t.done,
-               kind:t.kind, recurringId:t.recurringId, priority:!!t.priority, projName:null, projColor:null};
+               kind:t.kind, recurringId:t.recurringId, priority:!!t.priority,
+               workoutId:t.workoutId||null, projName:null, projColor:null};
     if(t.kind==='project'){
       row.scheduled=t.schedDate!=null; row.schedDate=t.schedDate; row.start=t.start;
       row.mins=t.mins; row.overdue=t.schedDate!=null && t.schedDate<tk && !t.done;
@@ -323,7 +326,8 @@ function taskGroups(opts){
   const blocks={title:'▣ Time blocks', cls:'g-task', color:'var(--txt-dim)', items:[]};
   const one={title:'Tasks', cls:'g-task', color:'var(--txt-dim)', items:[]};
   day().tasks.filter(t=>!t.done && !t.projectId && !t.meetingId).forEach(t=>
-    add(splitKinds?(t.kind==='quick'?quick:blocks):one, 'S|'+t.id, t.txt, {ic:t.kind==='quick'?'⚡':'▣', priority:!!t.priority}));
+    add(splitKinds?(t.kind==='quick'?quick:blocks):one, 'S|'+t.id, t.txt,
+        {ic:t.workoutId?'⌁':(t.kind==='quick'?'⚡':'▣'), priority:!!t.priority}));
   if(splitKinds){ if(quick.items.length) groups.push(quick); if(blocks.items.length) groups.push(blocks); }
   else if(one.items.length) groups.push(one);
 
@@ -469,6 +473,8 @@ function taskLabelChip(r){
   if(r.source==='project') return `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`;
   // leak tasks reuse the project chip in water blue — same component, leak identity
   if(r.source==='leak') return `<span class="proj-chip leak-task-chip" style="--pc:var(--blue)">💧 ${esc(r.leakText)}</span>`;
+  // a planned training session is an ordinary task — it just says so
+  if(r.workoutId) return `<span class="type-chip w">⌁ Training</span>`;
   return `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
 }
 function renderTaskRow(r){
@@ -542,7 +548,7 @@ function completedRows(scope){
     (d.tasks||[]).filter(t=>t.done && !t.projectId && !t.meetingId).forEach(t=>{
       // fire sessions key standalone tasks by the BARE id (not the 'S|' row key)
       out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, priority:!!t.priority,
-                fireMin:fm['S|'+t.id]||fm[t.id]||0});
+                workoutId:t.workoutId||null, fireMin:fm['S|'+t.id]||fm[t.id]||0});
     });
     (d.archive||[]).forEach(a=>{
       // a swept task keeps its id, so a fire fought on it still resolves here
@@ -578,6 +584,8 @@ function renderCompletedRow(r, withDate){
     ? `<span class="proj-chip" style="--pc:${r.projColor}">${esc(r.projName)}</span>`
     : r.source==='leak'
     ? `<span class="proj-chip leak-task-chip" style="--pc:var(--blue)">💧 ${esc(r.leakText)}</span>`
+    : r.workoutId
+    ? `<span class="type-chip w">⌁ Training</span>`
     : `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
   const when = withDate ? (r.when?`<span class="done-when">${shortDate(r.when)}</span>`:'')
                         : (r.time?`<span class="done-when">${r.time}</span>`:'');
@@ -676,6 +684,7 @@ function atToggle(key){
     t.done=!t.done;
     if(t.done && t.recurringId) markRecurringDone(t.recurringId);
     if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=t.done; }
+    if(t.workoutId) syncWorkoutFromTask(t);   // planned training session follows its task
   }
   save(false); rerender();
 }
@@ -1041,6 +1050,7 @@ function bindDashboard(){
   // Time Blocker expand/collapse (day view ↔ full plan)
   const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
 
+  bindTodayWorkout();      // today's planned training session
   bindPipeline();          // the top-3 pipeline hero
   bindAllTasks();          // the single flat "All Tasks" list — add + every source
   bindWeeklyGoals();       // the "This Week" free-text goals note

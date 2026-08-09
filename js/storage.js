@@ -158,6 +158,10 @@ function stateCount(s){
   Object.keys(days).forEach(k=>{ const d=days[k]||{};
     n+=(d.tasks||[]).length + (d.pipeline||[]).length + (d.archive||[]).length + (d.checkins||[]).length + (d.spotlogs||[]).length; });
   if(s.board){ ['mustwin','scheduled','parking'].forEach(k=>{ n+=((s.board[k]||[]).length); }); }
+  // Training SESSIONS only — deliberately not the exercise library. The library is
+  // seeded on first run, so counting it would push a brand-new state well above
+  // NEAR_EMPTY and blind the "cloud looks emptied" protection to a real wipe.
+  n+=Object.keys((s.training||{}).sessions||{}).length;
   return n;
 }
 /* TRUE only for a catastrophic collapse — substantial data dropping to near-zero
@@ -176,6 +180,7 @@ function backupSummary(s){
     followups:(s.followups||[]).length,
     meetings:(s.meetings||[]).length,
     appointments:(s.appointments||[]).length,
+    training:Object.keys((s.training||{}).sessions||{}).length,
     days:Object.keys(s.days||{}).length,
   };
 }

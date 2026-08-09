@@ -25,6 +25,31 @@ const DEFAULT_RECURRING = [
   {id:'r24', t:'Decide what does NOT get attention', every:90, kind:'project', auto:true, last:null},
 ];
 
+/* ---------- TRAINING ----------
+   The six exercise categories, in display order, and the one-time library seed.
+   Constants live here (not in page-training.js) because seedDefaults() in state.js
+   reads them during the training migration, and defaults.js loads first. */
+const TRAIN_CATS = [
+  ['strength','Strength'],
+  ['accessory','Accessory'],
+  ['circuit','Circuit'],
+  ['calisthenics','Calisthenics'],
+  ['cardio','Cardio / Run'],
+  ['mobility','Mobility / Recovery'],
+];
+/* Seeded ONCE (behind S.training._libSeeded) so the library is usable immediately.
+   The three empty categories are deliberate — they're yours to fill. */
+const TRAIN_SEED = {
+  strength:['Chin ups','Pull ups','Chest press','Shoulder press','Dips','Lunges'],
+  accessory:['Halos','Windmills','Snatches','Clean and press'],
+  circuit:['Kettlebell swings','Overhead lunges'],
+  calisthenics:[],
+  cardio:[],
+  mobility:[],
+};
+/* Session types that need no exercises — tap one and you've planned the day. */
+const TRAIN_PRESETS = ['Run','Walk','Bike','Swim','Class'];
+
 const DEFAULT_RULES = [
   "I do not trust memory. I trust systems.",
   "I do not start reacting until I run MarcoMaster.",

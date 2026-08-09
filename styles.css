@@ -1513,3 +1513,112 @@ body.pick-open{overflow:hidden}
   .cal-month{min-width:110px;font-size:13px}
   .appt-d-when{flex-direction:column;gap:0}
 }
+
+/* ============================================================
+   TRAINING — the weekly builder, today's workout card, the exercise
+   library in Settings, and the history overlay. Reuses the existing
+   card / .pick-screen / chip vocabulary; nothing here is a new component
+   language, just a training-shaped arrangement of the old one.
+   ============================================================ */
+.type-chip.w{color:var(--green);background:color-mix(in srgb, var(--green) 16%, transparent)}
+
+/* ---- weekly evidence: a floor met, never a target missed ---- */
+.train-ev{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--txt-dim);letter-spacing:0.01em}
+.train-ev.met{color:var(--green)}
+.train-ev-card .list-note{color:var(--txt-faint)}
+.train-week-lbl{font-family:var(--mono);font-size:11px;color:var(--txt-faint);margin:-8px 0 12px}
+
+/* ---- the Mon–Sun grid ---- */
+.train-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.train-day{display:flex;flex-direction:column;gap:4px;align-items:stretch;text-align:left;cursor:pointer;
+  min-height:104px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;
+  background:var(--panel-2);color:var(--txt);font-family:var(--sans);transition:all .14s}
+.train-day:hover{border-color:var(--accent)}
+.train-day.is-today{border-color:var(--accent);background:var(--accent-soft)}
+.train-day.is-done{border-color:var(--green)}
+.train-day.is-rest{opacity:.72}
+.train-day.is-empty{border-style:dashed;background:none}
+.td-head{display:flex;align-items:baseline;gap:6px}
+.td-dow{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--txt-dim)}
+.train-day.is-today .td-dow{color:var(--accent)}
+.td-date{font-family:var(--mono);font-size:9.5px;color:var(--txt-faint)}
+.td-done{margin-left:auto;color:var(--green);font-size:12px;font-weight:700}
+.td-title{font-size:13px;font-weight:700;line-height:1.25;word-break:break-word}
+.td-title.rest{color:var(--txt-dim);font-weight:600}
+.td-meta{font-family:var(--mono);font-size:10px;color:var(--txt-dim)}
+.td-ex{font-size:10.5px;color:var(--txt-faint);line-height:1.35}
+.td-empty{font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
+
+/* ---- the builder modal ---- */
+.wb-kind{display:flex;gap:6px}
+.wb-kind-opt{padding:7px 16px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
+  border-radius:999px;cursor:pointer;font-family:var(--sans);font-size:13px;transition:all .12s}
+.wb-kind-opt:hover{border-color:var(--accent);color:var(--accent)}
+.wb-kind-opt.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.train-chip{padding:5px 11px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
+  border-radius:999px;cursor:pointer;font-family:var(--sans);font-size:12.5px;transition:all .12s}
+.train-chip:hover{border-color:var(--accent);color:var(--accent)}
+.train-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.wb-presets,.wb-chosen,.wb-chips{display:flex;flex-wrap:wrap;gap:6px}
+.wb-presets{margin-top:8px}
+.wb-ct{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
+.wb-lib{max-height:34vh;overflow-y:auto;padding-right:4px;border-top:1px solid var(--line-soft);padding-top:12px}
+.wb-cat{margin-bottom:12px}
+.wb-cat-lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+  color:var(--txt-faint);margin-bottom:6px}
+.wb-opt{font-family:var(--mono);font-size:10px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--txt-faint)}
+.wb-time{display:flex;align-items:center;gap:10px}
+.wb-time input[type="time"]{width:auto}
+
+/* ---- dashboard: today's workout ---- */
+.wo-card.is-done{border-top:2px solid var(--green)}
+.wo-ev{font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.wo-ev.met{color:var(--green)}
+.wo-main{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.wo-l{flex:1;min-width:0}
+.wo-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wo-title{font-size:17px;font-weight:700;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.wo-card.is-done .wo-title{color:var(--txt-dim)}
+.wo-meta{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--txt-dim)}
+.wo-ex{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.wo-ex-chip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--txt-dim)}
+.wo-logged{font-family:var(--mono);font-size:11px;color:var(--green);margin-top:10px}
+.wo-rest{font-family:var(--serif);font-size:16px;color:var(--txt-dim);padding:4px 0}
+.wo-none{font-size:13px;color:var(--txt-dim)}
+.wo-link{background:none;border:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline}
+
+/* ---- Settings: the exercise library ---- */
+.train-lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.train-lib-cat{border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:var(--panel-2)}
+.tl-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
+.tl-lbl{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--txt)}
+.tl-ct{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
+.tl-list{display:flex;flex-direction:column;gap:4px}
+.tl-row{display:flex;align-items:center;gap:6px}
+.tl-name{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;
+  padding:5px 8px;font-family:var(--sans);font-size:13px;color:var(--txt)}
+.tl-name:focus{border-color:var(--accent);outline:none}
+.tl-add{display:flex;gap:6px;margin-top:9px}
+.tl-add input{flex:1;min-width:0;font-size:12.5px;padding:6px 8px}
+.tl-floor-note{font-family:var(--mono);font-size:10.5px;color:var(--txt-faint);flex:1;min-width:160px}
+
+/* ---- history overlay ---- */
+.trh-ev{font-family:var(--mono);font-size:10.5px;color:var(--txt-faint);margin:-4px 0 6px}
+.trh-ev.met{color:var(--green)}
+.pick-row.is-hist{cursor:default}
+.trh-day{flex:none;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--txt-faint);min-width:30px}
+.trh-log{flex:none;font-family:var(--mono);font-size:10px;color:var(--txt-dim);
+  max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media(max-width:820px){
+  .train-grid{grid-template-columns:repeat(4,1fr)}
+}
+@media(max-width:600px){
+  .train-grid{grid-template-columns:repeat(2,1fr)}
+  .train-day{min-height:92px}
+  .wo-main{flex-direction:column;gap:12px}
+  .wo-r{width:100%}
+  .train-lib{grid-template-columns:1fr}
+}

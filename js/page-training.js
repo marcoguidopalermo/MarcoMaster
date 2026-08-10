@@ -25,7 +25,7 @@
 function trainDayKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function trainDateFrom(dk){ const [y,m,d]=String(dk).split('-').map(Number); return new Date(y,m-1,d); }
 /* Monday of the week containing dk */
-function trainWeekStart(dk){ const d=trainDateFrom(dk); d.setDate(d.getDate()-((d.getDay()+6)%7)); return trainDayKey(d); }
+function trainWeekStart(dk){ return weekStartKey(dk); }   // one shared definition (storage.js)
 function trainWeekDates(mondayKey){
   const d=trainDateFrom(mondayKey), out=[];
   for(let i=0;i<7;i++){ const x=new Date(d); x.setDate(d.getDate()+i); out.push(trainDayKey(x)); }
@@ -249,13 +249,9 @@ function trainWeekStats(mondayKey){
   const done=planned.filter(dk=>ss[dk].done);
   return { floor:trainFloor(), planned:planned.length, done:done.length, doneKeys:done, dates };
 }
-function trainEvidenceLine(st){
-  const f=st.floor, n=st.done;
-  if(n>=f){ const bonus=n-f; return `${f} of ${f} floor met${bonus?` · ${bonus} bonus`:''}`; }
-  if(n===0) return `Floor is ${f} this week — the first one starts it`;
-  return `${n} of ${f} toward your floor`;
-}
-function trainEvidenceClass(st){ return st.done>=st.floor?'met':''; }
+/* the phrasing itself is shared with content — see floorEvidenceLine in ui-core.js */
+function trainEvidenceLine(st){ return floorEvidenceLine(st.done, st.floor); }
+function trainEvidenceClass(st){ return floorEvidenceClass(st.done, st.floor); }
 
 /* ============================================================
    THE TRAINING TAB — the weekly builder.
@@ -600,7 +596,6 @@ let trainLibDraft={};   // {category: in-progress new exercise name}
 
 function renderTrainingLibrary(){
   const lib=trainLib();
-  const floor=trainFloor();
   const cat=([k,lbl])=>{
     const items=lib[k]||[];
     return `
@@ -622,18 +617,12 @@ function renderTrainingLibrary(){
   return `
   <div class="card" id="trainingLibrary">
     <div class="card-h"><h3>⌁ Training library</h3><span class="sub">names only</span></div>
-    <p class="list-note" style="margin-top:0">Your exercises, by category. These are what the weekly builder offers you in the <b>Training</b> tab. Renaming or deleting one here never changes a session you already did.</p>
-    <div class="set-row" style="margin:14px 0 18px">
-      <label>Weekly floor</label>
-      <select id="trainFloorSel">${[1,2,3,4,5,6,7].map(n=>`<option value="${n}" ${n===floor?'selected':''}>${n} session${n===1?'':'s'}</option>`).join('')}</select>
-      <span class="tl-floor-note">the minimum you're holding yourself to — anything past it is a bonus</span>
-    </div>
-    <div class="train-lib">${TRAIN_CATS.map(cat).join('')}</div>
+    <p class="list-note" style="margin-top:0">Your exercises, by category. These are what the weekly builder offers you in the <b>Training</b> tab. Renaming or deleting one here never changes a session you already did. Your weekly floor is set in <b>Weekly floors</b> above.</p>
+    <div class="train-lib" style="margin-top:14px">${TRAIN_CATS.map(cat).join('')}</div>
   </div>`;
 }
 function bindTrainingLibrary(){
   const pair=(v)=>{ const i=String(v).indexOf('|'); return [String(v).slice(0,i), String(v).slice(i+1)]; };
-  const fl=q('#trainFloorSel'); if(fl) fl.onchange=()=>{ S.training.floor=+fl.value; save(); rerender(); };
   // rename — save WITHOUT re-rendering so the caret never jumps mid-word
   q('[data-tlname]','all').forEach(el=>el.oninput=()=>{
     const [k,id]=pair(el.dataset.tlname);

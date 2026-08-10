@@ -1622,3 +1622,73 @@ body.pick-open{overflow:hidden}
   .wo-r{width:100%}
   .train-lib{grid-template-columns:1fr}
 }
+
+/* ============================================================
+   CONTENT — pillars, the three-stage idea list, and the footage lists
+   (per idea + the derived master list, which also appears as a dashboard
+   card). Reuses .card / .train-chip / .train-ev / .mini-add rather than
+   introducing a second visual language.
+   ============================================================ */
+.cp-list{display:flex;flex-direction:column;gap:5px}
+.cp-row{display:flex;align-items:center;gap:7px}
+.cp-name{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;
+  padding:6px 9px;font-family:var(--sans);font-size:13.5px;color:var(--txt)}
+.cp-name:focus{border-color:var(--accent);outline:none}
+.cp-chip{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;
+  border-radius:20px;background:color-mix(in srgb, var(--accent) 16%, transparent);color:var(--accent);flex-shrink:0}
+.cp-chips{display:flex;flex-wrap:wrap;gap:6px}
+
+/* ---- footage rows: shared by the per-idea checklist, the master list and the
+        dashboard card, so a clip looks and behaves identically everywhere ---- */
+.cf-list{display:flex;flex-direction:column;gap:3px}
+.cf-row{display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:7px;
+  border:1px solid var(--line-soft);background:var(--panel-2)}
+.cf-row:hover{border-color:var(--line)}
+.cf-row.done{opacity:.55}
+.cf-row.done .cf-txt{text-decoration:line-through;color:var(--txt-dim)}
+.cf-txt{flex:1;min-width:0;font-size:13.5px;word-break:break-word}
+.cf-ct{flex:none;font-family:var(--mono);font-size:10px;color:var(--txt-faint);
+  padding:1px 7px;border-radius:20px;border:1px solid var(--line)}
+.cf-ct.partial{color:var(--amber);border-color:color-mix(in srgb, var(--amber) 45%, transparent)}
+.dash-footage{border-top:2px solid var(--amber)}
+
+/* ---- ideas ---- */
+.ci-add{display:flex;gap:8px;margin-bottom:16px}
+.ci-add input{flex:1;min-width:0}
+.ci-section{margin-top:14px}
+.ci-sec-h{display:flex;align-items:center;gap:9px;padding:5px 0;border-bottom:1px solid var(--line-soft);margin-bottom:7px}
+.ci-sec-h.arch-h{cursor:pointer}
+.ci-sec-h.arch-h:hover .ci-sec-lab{color:var(--accent)}
+.ci-sec-lab{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:0.08em;
+  text-transform:uppercase;color:var(--txt-dim)}
+.ci-sec-ct{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
+.ci-rows{display:flex;flex-direction:column;gap:4px}
+.ci-row-wrap{border:1px solid var(--line-soft);border-radius:8px;background:var(--panel-2);overflow:hidden}
+.ci-row{display:flex;align-items:center;gap:9px;padding:8px 10px;flex-wrap:wrap}
+.ci-row.posted .ci-txt{color:var(--txt-dim)}
+.ci-exp{flex:none;width:14px;color:var(--txt-faint);cursor:pointer;font-size:11px;user-select:none}
+.ci-exp:hover{color:var(--accent)}
+.ci-txt{flex:1;min-width:120px;font-size:14px;word-break:break-word}
+.ci-clipct{flex:none;font-family:var(--mono);font-size:10px;color:var(--txt-dim);
+  padding:1px 7px;border-radius:20px;border:1px solid var(--line)}
+.ci-clipct.all{color:var(--green);border-color:color-mix(in srgb, var(--green) 45%, transparent)}
+.ci-when{flex:none;font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
+.ci-acts{display:flex;gap:5px;flex:none}
+.ci-move{padding:3px 10px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);
+  border-radius:999px;cursor:pointer;font-family:var(--mono);font-size:10.5px;transition:all .12s}
+.ci-move:hover{border-color:var(--accent);color:var(--accent)}
+.ci-move.ghost{padding:3px 8px;color:var(--txt-faint)}
+.ci-act{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--txt-faint);cursor:pointer;
+  padding:2px 5px;border-radius:5px;white-space:nowrap}
+.ci-act:hover{color:var(--accent);background:var(--accent-soft)}
+.ci-panel{border-top:1px solid var(--line-soft);background:var(--panel);padding:11px 12px 13px}
+.ci-panel-lbl{display:flex;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:0.08em;text-transform:uppercase;color:var(--txt-faint);margin:0 0 7px}
+.ci-panel-lbl:not(:first-child){margin-top:14px}
+.ci-panel-ct{font-weight:400;letter-spacing:0;text-transform:none;color:var(--txt-faint)}
+
+@media(max-width:600px){
+  .ci-row{gap:7px}
+  .ci-txt{min-width:100%;order:-1}
+  .ci-exp{order:-2}
+}

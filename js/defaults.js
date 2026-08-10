@@ -50,6 +50,17 @@ const TRAIN_SEED = {
 /* Session types that need no exercises — tap one and you've planned the day. */
 const TRAIN_PRESETS = ['Run','Walk','Bike','Swim','Class'];
 
+/* ---------- CONTENT ----------
+   The starting pillars, seeded ONCE (behind S.content._pillarsSeeded) so you're
+   never staring at an empty list. Names only — rename or delete freely. */
+const CONTENT_PILLAR_SEED = [
+  'Fitness',
+  'Business / Entrepreneurship',
+  'Leadership / Systems',
+  'ADHD / Self-Mastery',
+  'Documenting the Build',
+];
+
 const DEFAULT_RULES = [
   "I do not trust memory. I trust systems.",
   "I do not start reacting until I run MarcoMaster.",

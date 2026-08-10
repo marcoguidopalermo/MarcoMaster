@@ -36,6 +36,7 @@ const CAP_DESTS=[
   ['meeting','◇','Meeting item'],
   ['appt','📅','Appointment'],
   ['leak','💧','Leak'],
+  ['content','✎','Content idea'],
 ];
 
 /* The modal is only really open if it's on screen — Escape and backdrop clicks go
@@ -54,6 +55,7 @@ function captureHint(){
     case 'meeting': return 'Pick a meeting';
     case 'appt':    return 'Pick a date and time';
     case 'leak':    return 'Enter captures it as a leak';
+    case 'content': return 'Enter captures it as a content idea';
     case 'quick':   return 'Enter adds it to Quick';
     default:        return 'Enter adds a quick task · or pick a destination';
   }
@@ -225,6 +227,14 @@ function captureCommit(inModal, extra){
     createAppointment(txt, date, time);
     save();
     captureDone(inModal,'Appointment added');
+    return;
+  }
+  if(d==='content'){
+    // no second field: the pillar is optional by design, so asking for one here
+    // would put a toll on capture. It lands at stage "Idea"; pillar and footage
+    // are added later in the Content tab, if at all.
+    createContentIdea(txt);
+    captureDone(inModal,'Content idea captured');
     return;
   }
   if(d==='leak'){

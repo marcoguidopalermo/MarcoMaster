@@ -162,6 +162,8 @@ function stateCount(s){
   // seeded on first run, so counting it would push a brand-new state well above
   // NEAR_EMPTY and blind the "cloud looks emptied" protection to a real wipe.
   n+=Object.keys((s.training||{}).sessions||{}).length;
+  // content IDEAS only, not pillars — seeded data must never inflate the count (see above)
+  n+=((s.content||{}).ideas||[]).length;
   return n;
 }
 /* TRUE only for a catastrophic collapse — substantial data dropping to near-zero
@@ -181,6 +183,7 @@ function backupSummary(s){
     meetings:(s.meetings||[]).length,
     appointments:(s.appointments||[]).length,
     training:Object.keys((s.training||{}).sessions||{}).length,
+    content:((s.content||{}).ideas||[]).length,
     days:Object.keys(s.days||{}).length,
   };
 }
@@ -220,6 +223,15 @@ function getAutoBackupState(slot){ const e=_parse(_lsRaw('marcomaster-autobackup
 /* ---------- date helpers ---------- */
 const todayKey = ()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const weekKey = ()=>{ const d=new Date(); const o=new Date(d); o.setDate(d.getDate()-((d.getDay()+6)%7)); return 'wk-'+o.getFullYear()+'-'+String(o.getMonth()+1).padStart(2,'0')+'-'+String(o.getDate()).padStart(2,'0'); };
+/* Monday of the week containing a 'YYYY-MM-DD' key, as a day key. ONE definition of
+   "which week is this in", shared by training and content so their weekly evidence
+   can never disagree about where a week starts. */
+const weekStartKey = (dk)=>{
+  const [y,m,d]=String(dk).split('-').map(Number);
+  const o=new Date(y,m-1,d);
+  o.setDate(o.getDate()-((o.getDay()+6)%7));
+  return o.getFullYear()+'-'+String(o.getMonth()+1).padStart(2,'0')+'-'+String(o.getDate()).padStart(2,'0');
+};
 const prettyDate = ()=> new Date().toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
 
 /* ---------- default recurring tasks ----------

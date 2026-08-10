@@ -50,6 +50,8 @@ function renderDashboard(){
 
   ${renderTodayWorkout()}
 
+  ${renderContentFootage()}
+
   ${renderPipeline()}
 
   ${renderCompletedToday()}
@@ -1051,6 +1053,7 @@ function bindDashboard(){
   const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
 
   bindTodayWorkout();      // today's planned training session
+  bindContentFootage();    // the master footage list (only when something's outstanding)
   bindPipeline();          // the top-3 pipeline hero
   bindAllTasks();          // the single flat "All Tasks" list — add + every source
   bindWeeklyGoals();       // the "This Week" free-text goals note

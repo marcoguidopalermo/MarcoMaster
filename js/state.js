@@ -221,6 +221,35 @@ function seedDefaults(){
       if(s.createdAt==null) s.createdAt=Date.now();
     });
   }
+  // ---- CONTENT: pillars + three-stage ideas, each with its footage checklist ----
+  // Same additive, idempotent, backfill-everything approach as training above. The
+  // MASTER footage list is derived on render (see masterFootage in page-content.js),
+  // never stored, so there is no aggregate here to migrate or keep in step.
+  if(!S.content || typeof S.content!=='object' || Array.isArray(S.content)) S.content={};
+  {
+    const c=S.content;
+    if(!Array.isArray(c.pillars)) c.pillars=[];
+    c.pillars=c.pillars.filter(p=>p && typeof p==='object');
+    c.pillars.forEach(p=>{ if(p.id==null) p.id=b(); if(p.name==null) p.name=''; });
+    if(!c._pillarsSeeded){
+      c._pillarsSeeded=true;
+      if(!c.pillars.length) c.pillars=CONTENT_PILLAR_SEED.map(n=>({id:b(), name:n}));
+    }
+    if(!(c.floor>=1)) c.floor=3;                     // weekly posting FLOOR, never a target
+    if(!Array.isArray(c.ideas)) c.ideas=[];
+    c.ideas=c.ideas.filter(i=>i && typeof i==='object');
+    c.ideas.forEach(i=>{
+      if(i.id==null) i.id=b();
+      if(i.txt==null) i.txt='';
+      if(i.pillarId===undefined) i.pillarId=null;    // a dangling id just renders no chip
+      if(i.stage!=='idea' && i.stage!=='week' && i.stage!=='posted') i.stage='idea';
+      if(!Array.isArray(i.clips)) i.clips=[];
+      i.clips=i.clips.filter(x=>x && typeof x==='object');
+      i.clips.forEach(x=>{ if(x.id==null) x.id=b(); if(x.txt==null) x.txt=''; if(x.done==null) x.done=false; });
+      if(i.createdAt==null) i.createdAt=Date.now();
+      if(i.postedAt===undefined) i.postedAt=null;    // 'YYYY-MM-DD' once posted
+    });
+  }
   // migrate old recurring shape ({f:'daily'}) → cadence model
   const FREQ_DAYS={daily:1,weekly:7,monthly:30,quarterly:90};
   S.recurring.forEach(r=>{

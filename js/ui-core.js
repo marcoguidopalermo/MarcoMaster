@@ -6,6 +6,19 @@ function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 function scoreClass(v){ return v<=4?'low':v<=7?'mid':'high'; }
 function applyTheme(){ document.documentElement.setAttribute('data-theme', S.theme||'dark'); }
+
+/* ---------- weekly evidence phrasing (shared) ----------
+   A FLOOR met, never a target missed. Lives here, not in either module, so
+   training and content can never drift apart in tone: extra is bonus, short of
+   the floor is "toward", an empty week is an invitation. No streaks, no
+   broken-streak state, no counting of what's missing. */
+function floorEvidenceLine(done, floor){
+  const f=floor>=1?floor:1, n=done||0;
+  if(n>=f){ const bonus=n-f; return `${f} of ${f} floor met${bonus?` · ${bonus} bonus`:''}`; }
+  if(n===0) return `Floor is ${f} this week — the first one starts it`;
+  return `${n} of ${f} toward your floor`;
+}
+function floorEvidenceClass(done, floor){ return (done||0)>=(floor>=1?floor:1)?'met':''; }
 function toggleTheme(){ S.theme=(S.theme==='light')?'dark':'light'; applyTheme(); save(false); }
 
 /* ---------- generic drag-reorder (mouse + touch long-press), no library ----------
@@ -108,6 +121,7 @@ function fitPickScreen(el){
 const PAGES={
   dashboard:{render:renderDashboard,bind:bindDashboard},
   training:{render:renderTraining,bind:bindTraining},
+  content:{render:renderContent,bind:bindContent},
   fsn:{render:renderFSN,bind:bindFSN},
   journal:{render:renderJournal,bind:bindJournal},
   meetings:{render:renderMeetings,bind:bindMeetings},
@@ -141,6 +155,7 @@ function rerender(){
 const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
   ['training','⌁','Training'],
+  ['content','✎','Content'],
   ['fsn','☼','Future Self'],
   ['journal','✦','Journal'],
   ['settings','⚙','Settings'],

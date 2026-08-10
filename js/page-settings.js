@@ -19,6 +19,8 @@ function renderSettings(){
     ${renderRecurring()}
   </div>
 
+  ${renderFloorsCard()}
+
   ${renderTrainingLibrary()}
 
   <div class="card">
@@ -84,6 +86,31 @@ function renderSettings(){
     </div>
   </div>`:''}
   `;
+}
+/* ---------- WEEKLY FLOORS ----------
+   ONE place for every floor. A floor is the minimum you're holding yourself to,
+   never a target and never a streak — everything past it is a bonus. The modules
+   render the evidence (Training tab, Content tab); this is where the numbers live,
+   so "where do I set my floors" has a single answer. */
+function renderFloorsCard(){
+  const opts=(sel,unit)=>[1,2,3,4,5,6,7].map(n=>`<option value="${n}" ${n===sel?'selected':''}>${n} ${unit}${n===1?'':'s'}</option>`).join('');
+  return `
+  <div class="card" id="weeklyFloors">
+    <div class="card-h"><h3>Weekly floors</h3><span class="sub">minimums, not targets</span></div>
+    <p class="list-note" style="margin-top:0">The least you're holding yourself to in a normal week. Anything past a floor is a bonus — nothing here counts what you missed.</p>
+    <div class="set-row" style="margin-top:14px">
+      <label>⌁ Training</label>
+      <select id="trainFloorSel">${opts(trainFloor(),'session')}</select>
+    </div>
+    <div class="set-row" style="margin-top:12px">
+      <label>✎ Content</label>
+      <select id="contentFloorSel">${opts(contentFloor(),'post')}</select>
+    </div>
+  </div>`;
+}
+function bindFloorsCard(){
+  const tf=q('#trainFloorSel'); if(tf) tf.onchange=()=>{ S.training.floor=+tf.value; save(); rerender(); };
+  const cf=q('#contentFloorSel'); if(cf) cf.onchange=()=>{ S.content.floor=+cf.value; save(); rerender(); };
 }
 function settingsHourOpts(sel,from,to){
   let o=''; for(let h=from;h<=to;h++) o+=`<option value="${h}" ${h===sel?'selected':''}>${fmtHour(h)}</option>`; return o;
@@ -230,7 +257,7 @@ function renderAutoBackups(){
       return `<div class="autobackup-row">
         <div class="ab-main">
           <span class="ab-when">${when}</span>
-          <span class="ab-counts">${s.projects||0} proj · ${s.tasks||0} tasks · ${s.appointments||0} appt · ${s.followups||0} f/u · ${s.meetings||0} mtg · ${s.training||0} train · ${s.days||0} days</span>
+          <span class="ab-counts">${s.projects||0} proj · ${s.tasks||0} tasks · ${s.appointments||0} appt · ${s.followups||0} f/u · ${s.meetings||0} mtg · ${s.training||0} train · ${s.content||0} content · ${s.days||0} days</span>
         </div>
         <button class="btn ghost sm" data-abrestore="${e.slot}">Restore</button>
       </div>`;
@@ -243,7 +270,7 @@ function renderAutoBackups(){
 function restoreState(newState, label){
   if(!newState || typeof newState!=='object' || Array.isArray(newState)){ alert('That backup is unreadable.'); return; }
   const cur=backupSummary(S), nw=backupSummary(newState);
-  const line=(s)=>`${s.projects} proj · ${s.tasks} tasks · ${s.appointments} appt · ${s.followups} f/u · ${s.meetings} mtg · ${s.training||0} train · ${s.days} days`;
+  const line=(s)=>`${s.projects} proj · ${s.tasks} tasks · ${s.appointments} appt · ${s.followups} f/u · ${s.meetings} mtg · ${s.training||0} train · ${s.content||0} content · ${s.days} days`;
   if(!confirm(`Restore ${label}?\n\nReplaces current data:\n  now:  ${line(cur)}\n  new:  ${line(nw)}\n\nA backup of your current data is taken first.`)) return;
   try{ recordAutoBackup(S); }catch(e){}
   S=newState;
@@ -258,7 +285,8 @@ function restoreState(newState, label){
 function bindSettings(){
   bindProjects();      // add/edit/delete projects + names/colors + tasks within projects
   bindRecurring();     // recurring cadence manager
-  bindTrainingLibrary();   // exercise library by category + the weekly floor
+  bindFloorsCard();        // the one place every weekly floor is set
+  bindTrainingLibrary();   // exercise library by category
 
   // Future Self Narrative editors — autosave through the normal save() path, no
   // re-render (keep the caret where it is while typing).

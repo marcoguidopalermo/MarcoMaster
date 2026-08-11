@@ -7,7 +7,8 @@
    a week of sessions (this tab), and complete them through the normal task path.
 
    Store: S.training — see seedDefaults() in state.js for the shape.
-     library : {category: [{id,name}]}          — names only, always
+     cats    : [{id,name,type}]                 — YOUR categories; type drives tags
+     library : {categoryId: [{id,name}]}        — names only, always
      floor   : the weekly FLOOR, never a target (Settings → Weekly floors)
      days    : {'YYYY-MM-DD': {rest, sessions:[session]}}
 
@@ -76,7 +77,15 @@ function trainSessionsIn(dateKeys){
   dateKeys.forEach(dk=>trainDaySessions(dk).forEach(s=>out.push(s)));
   return out;
 }
-function trainCatLabel(k){ const f=TRAIN_CATS.find(c=>c[0]===k); return f?f[1]:k; }
+/* ---------- categories (user data, keyed by a stable id) ----------
+   The library is keyed by category ID, and a session's stored exercise copy holds
+   that id too — which is why renaming a category can never detach its exercises or
+   orphan what an old session displays. A copy also carries its own name, so even
+   deleting the category leaves the session readable; only its tag falls back. */
+function trainCats(){ return (S.training&&S.training.cats)||[]; }
+function trainCat(id){ return trainCats().find(c=>c.id===id)||null; }
+function trainCatLabel(id){ const c=trainCat(id); return c?c.name:String(id==null?'':id); }
+function trainCatType(id){ const c=trainCat(id); return (c&&c.type)||'workout'; }
 /* the one line a session shows everywhere — the task text, the appointment title */
 function workoutTaskText(s){ return ((s&&s.title)||'').trim() || 'Training'; }
 function workoutExLabel(s){
@@ -97,39 +106,53 @@ function parseTarget(v){
 }
 
 /* ============================================================
-   SESSION TYPE — so the week can be read at a glance.
-   Inferred, never stored: a session is CARDIO when its exercises are mostly from
-   the Cardio/Run category OR its title names a cardio preset (a bare "Run", or
-   "Morning run" — matched on a word boundary so "Runway" doesn't count). A rest
-   DAY is its own type. Everything else is a workout.
+   SESSION TAGS — so the week can be read at a glance.
 
-   Colours come from the existing tokens and stay clear of the other systems:
-   fire owns red and leaks own blue, so training uses green for a workout, amber
-   for cardio, and a muted grey for rest.
+   A session carries EVERY type it genuinely is, not one winner: kettlebell swings
+   and a run in the same session show both Workout and Cardio. The set is inferred,
+   never stored, from two sources:
+     • each exercise's CATEGORY TYPE (workout / cardio / recovery) — which is why
+       inference isn't hardcoded to any category name and a category you invent
+       still tags correctly;
+     • the title naming a cardio preset ("Run", or "Morning run" — matched on a
+       word boundary so "Runway" doesn't count).
+   A session with nothing to go on reads as a workout. REST is exclusive: it is a
+   property of the DAY and never mixes with the others.
+
+   Colours are existing tokens and stay clear of the other systems — fire owns red
+   and leaks own blue: green for a workout, amber for cardio, the app accent for
+   recovery, muted grey for rest.
    ============================================================ */
 const TRAIN_CARDIO_PRESETS=['Run','Walk','Bike','Swim'];
 const TRAIN_TYPES={
-  workout:{label:'Workout', cls:'t-workout'},
-  cardio: {label:'Cardio',  cls:'t-cardio'},
-  rest:   {label:'Rest',    cls:'t-rest'},
+  workout: {label:'Workout',  short:'W', cls:'t-workout'},
+  cardio:  {label:'Cardio',   short:'C', cls:'t-cardio'},
+  recovery:{label:'Recovery', short:'M', cls:'t-recovery'},
+  rest:    {label:'Rest',     short:'R', cls:'t-rest'},
 };
-function trainSessionType(s){
-  if(!s) return 'workout';
-  const ex=(s.exercises||[]);
-  if(ex.length){
-    const cardio=ex.filter(e=>e && e.cat==='cardio').length;
-    if(cardio*2>ex.length) return 'cardio';        // MOSTLY cardio
-  }
-  const t=String(s.title||'').toLowerCase();
-  if(t && TRAIN_CARDIO_PRESETS.some(p=>new RegExp('\\b'+p.toLowerCase()+'\\b').test(t))) return 'cardio';
-  return 'workout';
+const TRAIN_TYPE_ORDER=['workout','cardio','recovery'];   // stable display order
+
+function trainSessionTags(s){
+  const set={};
+  ((s&&s.exercises)||[]).forEach(e=>{ if(e) set[trainCatType(e.cat)]=true; });
+  const t=String((s&&s.title)||'').toLowerCase();
+  if(t && TRAIN_CARDIO_PRESETS.some(p=>new RegExp('\\b'+p.toLowerCase()+'\\b').test(t))) set.cardio=true;
+  const out=TRAIN_TYPE_ORDER.filter(k=>set[k]);
+  return out.length?out:['workout'];
 }
+function trainPrimaryType(s){ return trainSessionTags(s)[0]; }
 function trainTypeClass(type){ return (TRAIN_TYPES[type]||TRAIN_TYPES.workout).cls; }
-/* the tag itself — one markup, used by the grid, the day builder, the dashboard
-   card and the history overlay, so the colour can never mean two things */
-function trainTypeTag(type){
+/* One tag markup for every surface, so a colour can never mean two things.
+   compact=true renders the initial only (with the full name as a tooltip) — that's
+   what keeps a two-tag day from blowing up a column of the weekly grid. */
+function trainTypeTag(type, compact){
   const m=TRAIN_TYPES[type]||TRAIN_TYPES.workout;
-  return `<span class="ttag ${m.cls}">${m.label}</span>`;
+  return compact
+    ? `<span class="ttag compact ${m.cls}" title="${esc(m.label)}">${m.short}</span>`
+    : `<span class="ttag ${m.cls}">${m.label}</span>`;
+}
+function trainTypeTags(s, compact){
+  return `<span class="ttags">${trainSessionTags(s).map(t=>trainTypeTag(t,compact)).join('')}</span>`;
 }
 
 /* ============================================================
@@ -375,11 +398,11 @@ function renderTraining(){
     }else{
       // each session stacked compactly: type tag, title, exercise count, time, done
       body=`<span class="td-ses">${list.map(s=>{
-        const type=trainSessionType(s);
+        const type=trainPrimaryType(s);
         const bits=[workoutExLabel(s), s.time?fmtClock(s.time):''].filter(Boolean).join(' · ');
         return `<span class="td-s ${trainTypeClass(type)} ${s.done?'done':''}">
           <span class="td-s-top"><span class="td-s-tick">${s.done?'✓':'○'}</span><span class="td-s-title">${esc(workoutTaskText(s))}</span></span>
-          <span class="td-s-meta">${trainTypeTag(type)}${bits?`<span class="td-s-bits">${esc(bits)}</span>`:''}</span>
+          <span class="td-s-meta">${trainTypeTags(s,true)}${bits?`<span class="td-s-bits">${esc(bits)}</span>`:''}</span>
         </span>`;
       }).join('')}</span>`;
     }
@@ -459,7 +482,7 @@ function renderDayBuilder(){
     <div class="wd-row ${s.done?'done':''}">
       <span class="wd-tick">${s.done?'✓':'○'}</span>
       <span class="wd-main">
-        <span class="wd-title">${esc(workoutTaskText(s))}${trainTypeTag(trainSessionType(s))}</span>
+        <span class="wd-title">${esc(workoutTaskText(s))}${trainTypeTags(s)}</span>
         ${bits?`<span class="wd-meta">${esc(bits)}</span>`:''}
         ${(s.exercises||[]).length?`<span class="wd-ex">${s.exercises.map(e=>esc(exDisplay(e))).join(' · ')}</span>`:''}
       </span>
@@ -583,15 +606,16 @@ function renderWorkoutBuilder(){
   const dt=trainDateFrom(d.date);
   const heading=dt.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
   const lib=trainLib();
-  const libGroups=TRAIN_CATS.map(([k,lbl])=>{
-    const items=(lib[k]||[]);
+  const cats=trainCats();
+  const libGroups=cats.map(c=>{
+    const items=(lib[c.id]||[]);
     if(!items.length) return '';
     return `<div class="wb-cat">
-      <div class="wb-cat-lbl">${esc(lbl)}</div>
-      <div class="wb-chips">${items.map(e=>`<button class="train-chip ${wbHasEx(e.name,k)?'on':''}" data-wbex="${esc(k)}|${esc(e.name)}">${esc(e.name)}</button>`).join('')}</div>
+      <div class="wb-cat-lbl">${esc(c.name)}</div>
+      <div class="wb-chips">${items.map(e=>`<button class="train-chip ${wbHasEx(e.name,c.id)?'on':''}" data-wbex="${esc(c.id)}|${esc(e.name)}">${esc(e.name)}</button>`).join('')}</div>
     </div>`;
   }).join('');
-  const anyLib=TRAIN_CATS.some(([k])=>(lib[k]||[]).length);
+  const anyLib=cats.some(c=>(lib[c.id]||[]).length);
 
   const m=q('#resetModal');
   m.innerHTML=`
@@ -624,7 +648,7 @@ function renderWorkoutBuilder(){
       <div class="wb-newex">
         <input type="text" id="wbNewName" value="${esc(wbNewEx.name||'')}" placeholder="New exercise name…">
         <div class="wb-newex-cats">
-          ${TRAIN_CATS.map(([k,lbl])=>`<button class="train-chip ${wbNewEx.cat===k?'on':''}" data-wbnewcat="${esc(k)}">${esc(lbl)}</button>`).join('')}
+          ${cats.map(c=>`<button class="train-chip ${wbNewEx.cat===c.id?'on':''}" data-wbnewcat="${esc(c.id)}">${esc(c.name)}</button>`).join('')}
         </div>
         <div class="wb-newex-acts">
           <button class="btn sm" id="wbNewAdd">Add</button>
@@ -684,7 +708,9 @@ function bindWorkoutBuilder(){
   const nt=q('#wbNewToggle'); if(nt) nt.onclick=()=>{
     wbSyncFields();
     // opens on the first category so Add is genuinely one action
-    wbNewEx = wbNewEx ? null : {name:'', cat:TRAIN_CATS[0][0]};
+    const first=trainCats()[0];
+    if(!wbNewEx && !first){ toast('Add a category in Settings first'); return; }
+    wbNewEx = wbNewEx ? null : {name:'', cat:first.id};
     renderWorkoutBuilder();
     if(wbNewEx) setTimeout(()=>{ const i=q('#wbNewName'); if(i) i.focus(); },0);
   };
@@ -763,7 +789,7 @@ function renderTodayWorkout(){
     return `
     <div class="wo-item ${s.done?'is-done':''}">
       <div class="wo-l">
-        <div class="wo-title">${esc(workoutTaskText(s))}${trainTypeTag(trainSessionType(s))}${bits?`<span class="wo-meta">${esc(bits)}</span>`:''}</div>
+        <div class="wo-title">${esc(workoutTaskText(s))}${trainTypeTags(s)}${bits?`<span class="wo-meta">${esc(bits)}</span>`:''}</div>
         ${(s.exercises||[]).length?`<div class="wo-ex">${s.exercises.map(e=>`<span class="wo-ex-chip">${esc(exDisplay(e))}</span>`).join('')}</div>`:''}
         ${s.done&&logged?`<div class="wo-logged">✓ ${esc(logged)}</div>`:''}
       </div>
@@ -823,7 +849,7 @@ function trainScreenHTML(){
     const bits=[s.mins!=null?fmtDuration(s.mins):'', (s.note||'').trim()].filter(Boolean).join(' · ');
     return `<div class="pick-row is-hist">
       <span class="trh-day">${TRAIN_DOW[(trainDateFrom(s.date).getDay()+6)%7]}</span>
-      ${trainTypeTag(trainSessionType(s))}
+      ${trainTypeTags(s)}
       <span class="pick-txt">${esc(workoutTaskText(s))}</span>
       ${bits?`<span class="trh-log">${esc(bits)}</span>`:''}
     </div>`;
@@ -860,41 +886,177 @@ function paintTrainScreen(){
 }
 
 /* ============================================================
-   SETTINGS — the exercise library (names only).
+   SETTINGS — the categories and the exercises in them (names only).
    Rendered from renderSettings()/bindSettings(), the same way Projects and
    Recurring are, so Settings stays the one place things are maintained.
    ============================================================ */
-let trainLibDraft={};   // {category: in-progress new exercise name}
+let trainLibDraft={};                          // {catId: in-progress new exercise name}
+let newCatDraft={name:'', type:'workout'};     // the add-category row
 
 function renderTrainingLibrary(){
   const lib=trainLib();
-  const cat=([k,lbl])=>{
-    const items=lib[k]||[];
+  const cats=trainCats();
+  const catCard=(c,i)=>{
+    const items=lib[c.id]||[];
     return `
     <div class="train-lib-cat">
-      <div class="tl-head"><span class="tl-lbl">${esc(lbl)}</span><span class="tl-ct">${items.length}</span></div>
+      <div class="tl-head">
+        <input type="text" class="tl-cat-name" data-tlcatname="${esc(c.id)}" value="${esc(c.name)}" placeholder="Category name">
+        <span class="x" data-tlcatdel="${esc(c.id)}" title="Delete category">×</span>
+      </div>
+      <div class="tl-cat-meta">
+        <select class="tl-cat-type" data-tlcattype="${esc(c.id)}" title="What this category counts as on a session tag">
+          ${TRAIN_CAT_TYPES.map(([k,l])=>`<option value="${k}" ${c.type===k?'selected':''}>${l}</option>`).join('')}
+        </select>
+        <span class="tl-move">
+          <button class="tl-mv" data-tlcatmove="${esc(c.id)}|-1" ${i===0?'disabled':''} title="Move earlier">‹</button>
+          <button class="tl-mv" data-tlcatmove="${esc(c.id)}|1" ${i===cats.length-1?'disabled':''} title="Move later">›</button>
+        </span>
+        <span class="tl-ct">${items.length}</span>
+      </div>
       <div class="tl-list">
         ${items.length?items.map(e=>`
           <div class="tl-row">
-            <input type="text" class="tl-name" data-tlname="${esc(k)}|${esc(e.id)}" value="${esc(e.name)}">
-            <span class="x" data-tldel="${esc(k)}|${esc(e.id)}" title="Delete">×</span>
+            <input type="text" class="tl-name" data-tlname="${esc(c.id)}|${esc(e.id)}" value="${esc(e.name)}">
+            <span class="x" data-tldel="${esc(c.id)}|${esc(e.id)}" title="Delete">×</span>
           </div>`).join(''):'<div class="empty sm">Empty — add what you actually do.</div>'}
       </div>
       <div class="tl-add">
-        <input type="text" data-tladd="${esc(k)}" value="${esc(trainLibDraft[k]||'')}" placeholder="Add to ${esc(lbl)}…">
-        <button class="btn sm" data-tladdbtn="${esc(k)}">+</button>
+        <input type="text" data-tladd="${esc(c.id)}" value="${esc(trainLibDraft[c.id]||'')}" placeholder="Add to ${esc(c.name)}…">
+        <button class="btn sm" data-tladdbtn="${esc(c.id)}">+</button>
       </div>
     </div>`;
   };
   return `
   <div class="card" id="trainingLibrary">
     <div class="card-h"><h3>⌁ Training library</h3><span class="sub">names only</span></div>
-    <p class="list-note" style="margin-top:0">Your exercises, by category — names only. Any target number you type belongs to that one session, so it never follows the exercise around. Renaming or deleting one here never changes a session you already did. Your weekly floor is set in <b>Weekly floors</b> above.</p>
-    <div class="train-lib" style="margin-top:14px">${TRAIN_CATS.map(cat).join('')}</div>
+    <p class="list-note" style="margin-top:0">Your categories and the exercises in them — names only. A category's <b>type</b> decides which tag a session gets when it includes one of its exercises, so a category you invent still tags correctly. Any target number you type belongs to that one session and never follows the exercise around. Your weekly floor is set in <b>Weekly floors</b> above.</p>
+    ${cats.length
+      ? `<div class="train-lib" style="margin-top:14px">${cats.map(catCard).join('')}</div>`
+      : `<div class="empty sm" style="margin-top:14px">No categories yet — add your first one below.</div>`}
+    <div class="tl-newcat">
+      <input type="text" id="newCatName" value="${esc(newCatDraft.name)}" placeholder="New category — e.g. Grip, Sled, Rehab…">
+      <select id="newCatType">${TRAIN_CAT_TYPES.map(([k,l])=>`<option value="${k}" ${newCatDraft.type===k?'selected':''}>${l}</option>`).join('')}</select>
+      <button class="btn sm" id="addCat">+ Add category</button>
+    </div>
   </div>`;
+}
+
+/* Delete a category. moveToId!=null moves its exercises there first — the only two
+   outcomes are "moved" and "deleted with it", never a silent loss. Moving also
+   REPOINTS the stored copies on sessions that already used them, so a past or
+   planned session keeps tagging as what it actually is. */
+function deleteTrainCat(catId, moveToId){
+  const lib=trainLib();
+  const items=(lib[catId]||[]).slice();
+  if(moveToId && trainCat(moveToId)){
+    if(!Array.isArray(lib[moveToId])) lib[moveToId]=[];
+    items.forEach(e=>{
+      const dup=lib[moveToId].some(x=>String(x.name||'').trim().toLowerCase()===String(e.name||'').trim().toLowerCase());
+      if(!dup) lib[moveToId].push({id:e.id, name:e.name});
+    });
+    Object.keys(trainDays()).forEach(dk=>{
+      trainDaySessions(dk).forEach(s=>{
+        (s.exercises||[]).forEach(e=>{ if(e && e.cat===catId) e.cat=moveToId; });
+      });
+    });
+  }
+  delete S.training.library[catId];
+  S.training.cats=trainCats().filter(c=>c.id!==catId);
+  save();
+}
+
+/* the "what happens to its exercises?" question — a real choice, so a real modal */
+let catDelDraft=null;   // {catId, moveTo}
+function openCatDelete(catId){
+  const c=trainCat(catId); if(!c) return;
+  const items=(trainLib()[catId]||[]);
+  const others=trainCats().filter(x=>x.id!==catId);
+  if(!items.length){
+    if(!confirm(`Delete the category "${c.name}"? It has no exercises in it.`)) return;
+    deleteTrainCat(catId, null); rerender(); toast('Category deleted');
+    return;
+  }
+  catDelDraft={catId, moveTo:(others[0]?others[0].id:null)};
+  renderCatDelete();
+}
+function renderCatDelete(){
+  const d=catDelDraft; if(!d) return;
+  const c=trainCat(d.catId); if(!c){ closeReset(); return; }
+  const items=(trainLib()[d.catId]||[]);
+  const others=trainCats().filter(x=>x.id!==d.catId);
+  const m=q('#resetModal');
+  m.innerHTML=`
+    <div class="modal">
+      <span class="modal-close" id="cdClose">×</span>
+      <h3>Delete “${esc(c.name)}”</h3>
+      <p class="intro">It holds ${items.length} exercise${items.length===1?'':'s'}. What should happen to ${items.length===1?'it':'them'}?</p>
+      <div class="cd-names">${items.map(e=>esc(e.name)).join(' · ')}</div>
+      ${others.length?`
+        <div class="qf" style="margin-top:16px"><label>Move them to</label>
+          <select id="cdMove">${others.map(o=>`<option value="${esc(o.id)}" ${d.moveTo===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}</select>
+        </div>
+        <div class="btn-row" style="margin-top:16px">
+          <button class="btn" id="cdMoveGo">Move &amp; delete category</button>
+        </div>
+        <p class="list-note" style="margin-top:10px">Sessions that already use these exercises follow them across, so their tags stay right. A name already in the destination isn't duplicated.</p>
+      `:`<p class="list-note" style="margin-top:14px">This is your only category, so there is nowhere to move them.</p>`}
+      <div class="btn-row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+        <button class="btn ghost sm danger" id="cdDelAll">Delete the category and its ${items.length} exercise${items.length===1?'':'s'}</button>
+        <button class="btn ghost" id="cdCancel">Cancel</button>
+      </div>
+    </div>`;
+  m.classList.add('show');
+  const close=()=>{ catDelDraft=null; closeReset(); };
+  q('#cdClose').onclick=close;
+  q('#cdCancel').onclick=close;
+  const sel=q('#cdMove'); if(sel) sel.onchange=()=>{ d.moveTo=sel.value; };
+  const go=q('#cdMoveGo'); if(go) go.onclick=()=>{
+    deleteTrainCat(d.catId, d.moveTo);
+    catDelDraft=null; closeReset(); rerender();
+    toast(`Moved to ${trainCatLabel(d.moveTo)} ✓`);
+  };
+  const da=q('#cdDelAll'); if(da) da.onclick=()=>{
+    if(!confirm(`Delete “${c.name}” and its ${items.length} exercise${items.length===1?'':'s'}? Sessions you already built keep the exercises they copied.`)) return;
+    deleteTrainCat(d.catId, null);
+    catDelDraft=null; closeReset(); rerender();
+    toast('Category and exercises deleted');
+  };
 }
 function bindTrainingLibrary(){
   const pair=(v)=>{ const i=String(v).indexOf('|'); return [String(v).slice(0,i), String(v).slice(i+1)]; };
+  // ---- categories: rename in place, retype, reorder, delete ----
+  q('[data-tlcatname]','all').forEach(el=>el.oninput=()=>{
+    const c=trainCat(el.dataset.tlcatname);
+    if(c){ c.name=el.value; save(); }        // id-keyed, so the exercises stay attached
+  });
+  q('[data-tlcattype]','all').forEach(el=>el.onchange=()=>{
+    const c=trainCat(el.dataset.tlcattype);
+    if(c){ c.type=el.value; save(); rerender(); }   // re-render: session tags change with it
+  });
+  q('[data-tlcatmove]','all').forEach(el=>el.onclick=()=>{
+    const [id,dir]=pair(el.dataset.tlcatmove);
+    const list=trainCats(); const i=list.findIndex(c=>c.id===id); const j=i+(+dir);
+    if(i<0 || j<0 || j>=list.length) return;
+    const tmp=list[i]; list[i]=list[j]; list[j]=tmp;
+    save(); rerender();
+  });
+  q('[data-tlcatdel]','all').forEach(el=>el.onclick=()=>openCatDelete(el.dataset.tlcatdel));
+  const nc=q('#newCatName'); if(nc) nc.oninput=()=>{ newCatDraft.name=nc.value; };
+  const nt=q('#newCatType'); if(nt) nt.onchange=()=>{ newCatDraft.type=nt.value; };
+  const addC=()=>{
+    const v=(newCatDraft.name||'').trim(); if(!v) return;
+    if(trainCats().some(c=>String(c.name||'').trim().toLowerCase()===v.toLowerCase())){
+      toast('You already have that category'); return;
+    }
+    const id=b();
+    S.training.cats.push({id, name:v, type:newCatDraft.type||'workout'});
+    S.training.library[id]=[];
+    newCatDraft={name:'', type:newCatDraft.type||'workout'};
+    save(); rerender();
+  };
+  const ac=q('#addCat'); if(ac) ac.onclick=addC;
+  if(nc) nc.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); addC(); } };
   // rename — save WITHOUT re-rendering so the caret never jumps mid-word
   q('[data-tlname]','all').forEach(el=>el.oninput=()=>{
     const [k,id]=pair(el.dataset.tlname);
@@ -922,7 +1084,7 @@ function bindTrainingLibrary(){
    Returns {entry, created}. Never writes a target: the library is names only. */
 function libFindOrAdd(cat, name){
   const v=String(name||'').trim();
-  if(!v || !TRAIN_CATS.some(c=>c[0]===cat)) return null;
+  if(!v || !trainCats().some(c=>c.id===cat)) return null;
   if(!S.training.library[cat]) S.training.library[cat]=[];
   const list=S.training.library[cat];
   const hit=list.find(e=>String(e.name||'').trim().toLowerCase()===v.toLowerCase());

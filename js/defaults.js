@@ -26,16 +26,31 @@ const DEFAULT_RECURRING = [
 ];
 
 /* ---------- TRAINING ----------
-   The six exercise categories, in display order, and the one-time library seed.
+   Categories are USER DATA (S.training.cats) — these six are only the seed, laid
+   down once. Their ids are deliberately the same strings the categories used to be
+   keyed by, so an existing library needs no data movement at all: S.training.library
+   stays keyed by category id, and every session's stored exercise copy (which holds
+   a `cat`) keeps resolving. That is also what makes renaming safe — the id never
+   changes, only the name.
+
+   `type` drives the session tags (workout / cardio / recovery), so a category you
+   invent tags correctly as long as it says what kind of thing it is.
+
    Constants live here (not in page-training.js) because seedDefaults() in state.js
    reads them during the training migration, and defaults.js loads first. */
-const TRAIN_CATS = [
-  ['strength','Strength'],
-  ['accessory','Accessory'],
-  ['circuit','Circuit'],
-  ['calisthenics','Calisthenics'],
-  ['cardio','Cardio / Run'],
-  ['mobility','Mobility / Recovery'],
+const TRAIN_CAT_SEED = [
+  {id:'strength',     name:'Strength',            type:'workout'},
+  {id:'accessory',    name:'Accessory',           type:'workout'},
+  {id:'circuit',      name:'Circuit',             type:'workout'},
+  {id:'calisthenics', name:'Calisthenics',        type:'workout'},
+  {id:'cardio',       name:'Cardio / Run',        type:'cardio'},
+  {id:'mobility',     name:'Mobility / Recovery', type:'recovery'},
+];
+/* the three kinds a category can be, and so the tags a session can carry */
+const TRAIN_CAT_TYPES = [
+  ['workout','Workout'],
+  ['cardio','Cardio'],
+  ['recovery','Recovery'],
 ];
 /* Seeded ONCE (behind S.training._libSeeded) so the library is usable immediately.
    The three empty categories are deliberate — they're yours to fill. */

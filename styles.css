@@ -1577,10 +1577,10 @@ body.pick-open{overflow:hidden}
 .t-workout{--tc:var(--green)}
 .t-cardio{--tc:var(--amber)}
 .t-rest{--tc:var(--txt-faint)}
-/* .wd-title is a block span, so the tag needs its own spacing; .wo-title and the
-   history row are flex containers whose gap already spaces it */
-.wd-title .ttag{vertical-align:middle;margin-left:8px}
-.wo-title .ttag{align-self:center}
+/* .wd-title is a block span, so the tags need their own spacing; .wo-title and the
+   history row are flex containers whose gap already spaces them */
+.wd-title .ttags{vertical-align:middle;margin-left:8px}
+.wo-title .ttags{align-self:center}
 .wo-rest .ttag{margin-right:8px;vertical-align:middle}
 
 /* ---- the builder modal ---- */
@@ -1781,3 +1781,29 @@ body.pick-open{overflow:hidden}
 .cap-done input{width:14px;height:14px;margin:0;accent-color:var(--green);cursor:pointer}
 .cap-done.on{border-color:var(--green);color:var(--green);background:color-mix(in srgb, var(--green) 12%, transparent)}
 @media(max-width:600px){ .cap-done span{display:none} .cap-done{padding:0 8px} }
+
+/* ---- editable library categories (Settings) ---- */
+.tl-head{gap:6px;align-items:center}
+.tl-cat-name{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;
+  padding:5px 8px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.05em;
+  text-transform:uppercase;color:var(--txt)}
+.tl-cat-name:focus{border-color:var(--accent);outline:none}
+.tl-cat-meta{display:flex;align-items:center;gap:6px;margin:0 0 9px}
+select.tl-cat-type{flex:1;min-width:0;width:auto;background:var(--bg);border:1px solid var(--line-soft);
+  border-radius:6px;padding:3px 6px;font-family:var(--mono);font-size:10.5px;color:var(--txt-dim)}
+.tl-move{display:flex;gap:3px;flex:none}
+.tl-mv{width:20px;height:20px;padding:0;line-height:1;border:1px solid var(--line);border-radius:5px;
+  background:var(--bg);color:var(--txt-dim);cursor:pointer;font-size:11px}
+.tl-mv:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.tl-mv:disabled{opacity:.3;cursor:default}
+.tl-newcat{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;
+  border-top:1px solid var(--line-soft);padding-top:14px}
+.tl-newcat input{flex:1;min-width:180px}
+.tl-newcat select{width:auto;flex:none}
+.cd-names{font-family:var(--mono);font-size:11.5px;color:var(--txt-dim);line-height:1.6;
+  background:var(--panel-2);border:1px solid var(--line-soft);border-radius:8px;padding:9px 11px;margin-top:12px}
+
+/* ---- a session can carry more than one tag ---- */
+.ttags{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap;vertical-align:middle}
+.ttag.compact{padding:1px 5px;min-width:16px;text-align:center;letter-spacing:0.02em}
+.t-recovery{--tc:var(--accent)}

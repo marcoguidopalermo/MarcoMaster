@@ -183,17 +183,41 @@ function seedDefaults(){
   if(!S.training || typeof S.training!=='object' || Array.isArray(S.training)) S.training={};
   {
     const tr=S.training;
+    // ---- categories are USER DATA (v2) ----
+    // Seeded once behind _catsV2 — including for existing accounts, whose library
+    // is already keyed by exactly these ids, so nothing moves. Deleting a category
+    // afterwards is respected: the guard stops it coming back.
+    if(!Array.isArray(tr.cats)) tr.cats=[];
+    tr.cats=tr.cats.filter(c=>c && typeof c==='object');
+    tr.cats.forEach(c=>{
+      if(c.id==null) c.id=b();
+      if(c.name==null) c.name='';
+      if(c.type!=='cardio' && c.type!=='recovery') c.type='workout';   // sensible default
+    });
+    if(!tr._catsV2){
+      tr._catsV2=true;
+      if(!tr.cats.length) tr.cats=TRAIN_CAT_SEED.map(c=>({id:c.id, name:c.name, type:c.type}));
+    }
+    // ---- the library, keyed by CATEGORY ID ----
     if(!tr.library || typeof tr.library!=='object' || Array.isArray(tr.library)) tr.library={};
-    TRAIN_CATS.forEach(([k])=>{
-      if(!Array.isArray(tr.library[k])) tr.library[k]=[];
+    // repair every list first, then ADOPT any key that holds exercises but has no
+    // category behind it (a hand edit, an old backup, a half-applied delete). The
+    // rule is absolute: exercises are never silently dropped — an orphaned list
+    // gets a category back, named after its key, ready to be renamed.
+    Object.keys(tr.library).forEach(k=>{
+      if(!Array.isArray(tr.library[k])){ tr.library[k]=[]; return; }
       tr.library[k]=tr.library[k].filter(e=>e && typeof e==='object');
       tr.library[k].forEach(e=>{ if(e.id==null) e.id=b(); if(e.name==null) e.name=''; });
+      if(tr.library[k].length && !tr.cats.some(c=>c.id===k)){
+        tr.cats.push({id:k, name:String(k), type:'workout'});
+      }
     });
+    tr.cats.forEach(c=>{ if(!Array.isArray(tr.library[c.id])) tr.library[c.id]=[]; });
     if(!tr._libSeeded){
       tr._libSeeded=true;
-      TRAIN_CATS.forEach(([k])=>{
-        if(!tr.library[k].length && (TRAIN_SEED[k]||[]).length){
-          tr.library[k]=TRAIN_SEED[k].map(n=>({id:b(), name:n}));
+      tr.cats.forEach(c=>{
+        if(!tr.library[c.id].length && (TRAIN_SEED[c.id]||[]).length){
+          tr.library[c.id]=TRAIN_SEED[c.id].map(n=>({id:b(), name:n}));
         }
       });
     }

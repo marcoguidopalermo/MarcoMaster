@@ -446,7 +446,7 @@ function bindTraining(){
 let wbDay=null;    // the day key open in the day builder (null = closed)
 
 function openWorkoutBuilder(dk){ wbDay=dk; wbDraft=null; renderDayBuilder(); }
-function closeDayBuilder(){ wbDay=null; wbDraft=null; closeReset(); rerender(); }
+function closeDayBuilder(){ wbDay=null; wbDraft=null; wbNewEx=null; closeReset(); rerender(); }
 
 function renderDayBuilder(){
   const dk=wbDay; if(!dk) return;
@@ -524,8 +524,10 @@ function bindDayBuilder(){
    so adding a second session to a day is one more tap.
    ============================================================ */
 let wbDraft=null;   // {date, sid, title, exercises:[{id,name,cat,target}], time}
+let wbNewEx=null;   // {name, cat} while the inline "+ New exercise" row is open
 
 function openSessionEditor(dk, sid){
+  wbNewEx=null;     // never carries over between sessions
   const s = sid ? trainSessionAt(dk, sid) : null;
   wbDraft = s
     ? { date:dk, sid:s.id, title:s.title||'',
@@ -549,6 +551,31 @@ function wbSyncFields(){
     const e=d.exercises.find(x=>x.id===el.dataset.wbtarget);
     if(e) e.target=parseTarget(el.value);
   });
+  const nn=q('#wbNewName'); if(nn && wbNewEx) wbNewEx.name=nn.value;
+}
+/* Create a library exercise WITHOUT leaving the builder, and put it straight into
+   the session being built. The library write is immediate and deliberately not
+   part of the session draft: you asked for the exercise to exist, so it exists
+   for every future session even if you then cancel this one. */
+function wbCommitNewExercise(){
+  wbSyncFields();
+  if(!wbDraft || !wbNewEx) return;
+  const name=String(wbNewEx.name||'').trim();
+  if(!name){ toast('Name it first'); const i=q('#wbNewName'); if(i) i.focus(); return; }
+  const cat=wbNewEx.cat;
+  const r=libFindOrAdd(cat, name);
+  if(!r) return;
+  const canonical=r.entry.name;            // reuse the library's spelling, not the typed casing
+  if(wbHasEx(canonical, cat)){
+    toast('Already in this session');
+  }else{
+    wbDraft.exercises.push({id:b(), name:canonical, cat, target:null});
+  }
+  save();                                   // the library entry is a real, immediate change
+  wbNewEx={name:'', cat};                   // stay open on the same category — adding a few in a row is one field each
+  renderWorkoutBuilder();
+  setTimeout(()=>{ const i=q('#wbNewName'); if(i) i.focus(); },0);
+  toast(r.created?`Added to ${trainCatLabel(cat)} ✓`:'Already in your library — added here');
 }
 function renderWorkoutBuilder(){
   const d=wbDraft; if(!d) return;
@@ -589,8 +616,23 @@ function renderWorkoutBuilder(){
           :`<div class="empty sm">No exercises — that's fine. A session type on its own (a Run) is a plan.</div>`}
       </div>
 
+      <div class="wb-lib-head">
+        <span class="wb-cat-lbl">Your library</span>
+        <button class="btn ghost sm" id="wbNewToggle">${wbNewEx?'× Close':'+ New exercise'}</button>
+      </div>
+      ${wbNewEx?`
+      <div class="wb-newex">
+        <input type="text" id="wbNewName" value="${esc(wbNewEx.name||'')}" placeholder="New exercise name…">
+        <div class="wb-newex-cats">
+          ${TRAIN_CATS.map(([k,lbl])=>`<button class="train-chip ${wbNewEx.cat===k?'on':''}" data-wbnewcat="${esc(k)}">${esc(lbl)}</button>`).join('')}
+        </div>
+        <div class="wb-newex-acts">
+          <button class="btn sm" id="wbNewAdd">Add</button>
+          <span class="wb-opt">saved to your library and added to this session</span>
+        </div>
+      </div>`:''}
       <div class="wb-lib">
-        ${anyLib?libGroups:'<div class="empty sm">Your library is empty — add exercises in Settings → Training library.</div>'}
+        ${anyLib?libGroups:'<div class="empty sm">Your library is empty — use <b>+ New exercise</b> above to add your first one.</div>'}
       </div>
 
       <div class="qf" style="margin-top:16px"><label>Time <span class="wb-opt">optional — adds it to your calendar with reminders</span></label>
@@ -611,8 +653,8 @@ function renderWorkoutBuilder(){
 }
 function bindWorkoutBuilder(){
   const d=wbDraft; if(!d) return;
-  const back=()=>{ wbDraft=null; if(wbDay) renderDayBuilder(); else { closeReset(); rerender(); } };
-  q('#wbClose').onclick=()=>{ wbDraft=null; closeDayBuilder(); };
+  const back=()=>{ wbDraft=null; wbNewEx=null; if(wbDay) renderDayBuilder(); else { closeReset(); rerender(); } };
+  q('#wbClose').onclick=()=>{ wbDraft=null; wbNewEx=null; closeDayBuilder(); };
   q('#wbCancel').onclick=back;
   const bk=q('#wbBack'); if(bk) bk.onclick=back;
   const ti=q('#wbTitle'); if(ti) ti.oninput=()=>{ d.title=ti.value; };   // no repaint — keep the caret
@@ -638,13 +680,34 @@ function bindWorkoutBuilder(){
     d.exercises=d.exercises.filter(e=>e.id!==el.dataset.wbdrop);
     renderWorkoutBuilder();
   });
+  // ---- inline "+ New exercise": name, category, one Add ----
+  const nt=q('#wbNewToggle'); if(nt) nt.onclick=()=>{
+    wbSyncFields();
+    // opens on the first category so Add is genuinely one action
+    wbNewEx = wbNewEx ? null : {name:'', cat:TRAIN_CATS[0][0]};
+    renderWorkoutBuilder();
+    if(wbNewEx) setTimeout(()=>{ const i=q('#wbNewName'); if(i) i.focus(); },0);
+  };
+  const nn=q('#wbNewName');
+  if(nn){
+    nn.oninput=()=>{ if(wbNewEx) wbNewEx.name=nn.value; };        // no repaint — keep the caret
+    nn.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); wbCommitNewExercise(); } };
+  }
+  q('#resetModal [data-wbnewcat]','all').forEach(el=>el.onclick=()=>{
+    wbSyncFields();
+    if(wbNewEx) wbNewEx.cat=el.dataset.wbnewcat;
+    renderWorkoutBuilder();
+    setTimeout(()=>{ const i=q('#wbNewName'); if(i) i.focus(); },0);
+  });
+  const na=q('#wbNewAdd'); if(na) na.onclick=wbCommitNewExercise;
+
   const tm=q('#wbTime'); if(tm) tm.onchange=()=>{ wbSyncFields(); d.time=tm.value||''; renderWorkoutBuilder(); };
   const tc=q('#wbTimeClear'); if(tc) tc.onclick=()=>{ wbSyncFields(); d.time=''; renderWorkoutBuilder(); };
   const dl=q('#wbDel'); if(dl) dl.onclick=()=>{
     const s=trainSessionAt(d.date, d.sid); if(!s) return;
     if(!confirm(`Delete "${workoutTaskText(s)}"? Its task${s.apptId?' and calendar appointment':''} go with it.`)) return;
     deleteSession(d.date, d.sid);
-    wbDraft=null; renderDayBuilder(); rerender(); toast('Removed');
+    wbDraft=null; wbNewEx=null; renderDayBuilder(); rerender(); toast('Removed');
   };
   q('#wbSave').onclick=saveWorkoutBuilder;
 }
@@ -664,7 +727,7 @@ function saveWorkoutBuilder(){
   s.time=(d.time||'')||null;
   syncWorkoutLinks(s);                // task always; appointment only while a time is set
   save();
-  wbDraft=null;
+  wbDraft=null; wbNewEx=null;
   renderDayBuilder();                 // back to the day, so a second session is one tap
   rerender();
   toast(s.time?'Planned ✓ · in your calendar':'Planned ✓');
@@ -850,10 +913,28 @@ function bindTrainingLibrary(){
   q('[data-tladd]','all').forEach(el=>el.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); addLibExercise(el.dataset.tladd); } });
   q('[data-tladdbtn]','all').forEach(el=>el.onclick=()=>addLibExercise(el.dataset.tladdbtn));
 }
+/* THE single writer for the library, shared by the Settings card and the session
+   editor's inline "+ New exercise". Never creates a duplicate within a category:
+   an existing entry (matched case-insensitively) is returned as-is, so adding
+   "pushups" when "Pushups" is already there reuses the one you have. The same
+   name in a DIFFERENT category is a different exercise and is allowed —
+   "Lunges" legitimately lives in both Strength and Circuit.
+   Returns {entry, created}. Never writes a target: the library is names only. */
+function libFindOrAdd(cat, name){
+  const v=String(name||'').trim();
+  if(!v || !TRAIN_CATS.some(c=>c[0]===cat)) return null;
+  if(!S.training.library[cat]) S.training.library[cat]=[];
+  const list=S.training.library[cat];
+  const hit=list.find(e=>String(e.name||'').trim().toLowerCase()===v.toLowerCase());
+  if(hit) return {entry:hit, created:false};
+  const entry={id:b(), name:v};
+  list.push(entry);
+  return {entry, created:true};
+}
 function addLibExercise(k){
-  const v=(trainLibDraft[k]||'').trim(); if(!v) return;
-  if(!S.training.library[k]) S.training.library[k]=[];
-  S.training.library[k].push({id:b(), name:v});
+  const r=libFindOrAdd(k, trainLibDraft[k]);
+  if(!r) return;
   trainLibDraft[k]='';
   save(); rerender();
+  if(!r.created) toast(`Already in ${trainCatLabel(k)}`);
 }

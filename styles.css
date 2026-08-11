@@ -1625,7 +1625,17 @@ body.pick-open{overflow:hidden}
 .wd-add{margin-top:10px}
 .wb-presets{margin-top:8px}
 .wb-ct{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
-.wb-lib{max-height:34vh;overflow-y:auto;padding-right:4px;border-top:1px solid var(--line-soft);padding-top:12px}
+/* the library head + inline add sit OUTSIDE .wb-lib, which scrolls — so
+   "+ New exercise" is always reachable however long the library gets */
+.wb-lib-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  border-top:1px solid var(--line-soft);padding-top:12px;margin-bottom:8px}
+.wb-lib-head .wb-cat-lbl{margin-bottom:0}
+.wb-newex{display:flex;flex-direction:column;gap:8px;padding:11px 12px;margin-bottom:10px;
+  border:1px solid var(--accent);border-radius:9px;background:var(--accent-soft)}
+.wb-newex-cats{display:flex;flex-wrap:wrap;gap:5px}
+.wb-newex-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.wb-newex-acts .wb-opt{flex:1;min-width:0}
+.wb-lib{max-height:34vh;overflow-y:auto;padding-right:4px;padding-top:2px}
 .wb-cat{margin-bottom:12px}
 .wb-cat-lbl{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
   color:var(--txt-faint);margin-bottom:6px}

@@ -97,6 +97,42 @@ function parseTarget(v){
 }
 
 /* ============================================================
+   SESSION TYPE — so the week can be read at a glance.
+   Inferred, never stored: a session is CARDIO when its exercises are mostly from
+   the Cardio/Run category OR its title names a cardio preset (a bare "Run", or
+   "Morning run" — matched on a word boundary so "Runway" doesn't count). A rest
+   DAY is its own type. Everything else is a workout.
+
+   Colours come from the existing tokens and stay clear of the other systems:
+   fire owns red and leaks own blue, so training uses green for a workout, amber
+   for cardio, and a muted grey for rest.
+   ============================================================ */
+const TRAIN_CARDIO_PRESETS=['Run','Walk','Bike','Swim'];
+const TRAIN_TYPES={
+  workout:{label:'Workout', cls:'t-workout'},
+  cardio: {label:'Cardio',  cls:'t-cardio'},
+  rest:   {label:'Rest',    cls:'t-rest'},
+};
+function trainSessionType(s){
+  if(!s) return 'workout';
+  const ex=(s.exercises||[]);
+  if(ex.length){
+    const cardio=ex.filter(e=>e && e.cat==='cardio').length;
+    if(cardio*2>ex.length) return 'cardio';        // MOSTLY cardio
+  }
+  const t=String(s.title||'').toLowerCase();
+  if(t && TRAIN_CARDIO_PRESETS.some(p=>new RegExp('\\b'+p.toLowerCase()+'\\b').test(t))) return 'cardio';
+  return 'workout';
+}
+function trainTypeClass(type){ return (TRAIN_TYPES[type]||TRAIN_TYPES.workout).cls; }
+/* the tag itself — one markup, used by the grid, the day builder, the dashboard
+   card and the history overlay, so the colour can never mean two things */
+function trainTypeTag(type){
+  const m=TRAIN_TYPES[type]||TRAIN_TYPES.workout;
+  return `<span class="ttag ${m.cls}">${m.label}</span>`;
+}
+
+/* ============================================================
    LINKS — per SESSION: a task always, an appointment only when timed.
    Modeled directly on scheduleMeeting / removeMeetingLinks: the linked records
    are UPDATED IN PLACE by their stored ids and never duplicated; if one was
@@ -333,16 +369,17 @@ function renderTraining(){
     const dd=trainDateFrom(dk).toLocaleDateString('en-CA',{month:'short',day:'numeric'});
     let body;
     if(rest){
-      body=`<span class="td-title rest">Rest</span>`;
+      body=`<span class="td-rest">${trainTypeTag('rest')}</span>`;
     }else if(!list.length){
       body=`<span class="td-empty">+ plan a session</span>`;
     }else{
-      // each session stacked compactly: title, exercise count, time, done state
+      // each session stacked compactly: type tag, title, exercise count, time, done
       body=`<span class="td-ses">${list.map(s=>{
+        const type=trainSessionType(s);
         const bits=[workoutExLabel(s), s.time?fmtClock(s.time):''].filter(Boolean).join(' · ');
-        return `<span class="td-s ${s.done?'done':''}">
+        return `<span class="td-s ${trainTypeClass(type)} ${s.done?'done':''}">
           <span class="td-s-top"><span class="td-s-tick">${s.done?'✓':'○'}</span><span class="td-s-title">${esc(workoutTaskText(s))}</span></span>
-          ${bits?`<span class="td-s-meta">${esc(bits)}</span>`:''}
+          <span class="td-s-meta">${trainTypeTag(type)}${bits?`<span class="td-s-bits">${esc(bits)}</span>`:''}</span>
         </span>`;
       }).join('')}</span>`;
     }
@@ -422,7 +459,7 @@ function renderDayBuilder(){
     <div class="wd-row ${s.done?'done':''}">
       <span class="wd-tick">${s.done?'✓':'○'}</span>
       <span class="wd-main">
-        <span class="wd-title">${esc(workoutTaskText(s))}</span>
+        <span class="wd-title">${esc(workoutTaskText(s))}${trainTypeTag(trainSessionType(s))}</span>
         ${bits?`<span class="wd-meta">${esc(bits)}</span>`:''}
         ${(s.exercises||[]).length?`<span class="wd-ex">${s.exercises.map(e=>esc(exDisplay(e))).join(' · ')}</span>`:''}
       </span>
@@ -646,7 +683,7 @@ function renderTodayWorkout(){
     return `
     <div class="card wo-card is-rest">
       <div class="card-h"><h3>⌁ Today's workout</h3><span class="ch-actions">${ev}</span></div>
-      <div class="wo-rest">Rest day. Nothing to do, nothing owed.</div>
+      <div class="wo-rest">${trainTypeTag('rest')} Rest day. Nothing to do, nothing owed.</div>
     </div>`;
   }
   if(!list.length){
@@ -663,7 +700,7 @@ function renderTodayWorkout(){
     return `
     <div class="wo-item ${s.done?'is-done':''}">
       <div class="wo-l">
-        <div class="wo-title">${esc(workoutTaskText(s))}${bits?`<span class="wo-meta">${esc(bits)}</span>`:''}</div>
+        <div class="wo-title">${esc(workoutTaskText(s))}${trainTypeTag(trainSessionType(s))}${bits?`<span class="wo-meta">${esc(bits)}</span>`:''}</div>
         ${(s.exercises||[]).length?`<div class="wo-ex">${s.exercises.map(e=>`<span class="wo-ex-chip">${esc(exDisplay(e))}</span>`).join('')}</div>`:''}
         ${s.done&&logged?`<div class="wo-logged">✓ ${esc(logged)}</div>`:''}
       </div>
@@ -723,6 +760,7 @@ function trainScreenHTML(){
     const bits=[s.mins!=null?fmtDuration(s.mins):'', (s.note||'').trim()].filter(Boolean).join(' · ');
     return `<div class="pick-row is-hist">
       <span class="trh-day">${TRAIN_DOW[(trainDateFrom(s.date).getDay()+6)%7]}</span>
+      ${trainTypeTag(trainSessionType(s))}
       <span class="pick-txt">${esc(workoutTaskText(s))}</span>
       ${bits?`<span class="trh-log">${esc(bits)}</span>`:''}
     </div>`;

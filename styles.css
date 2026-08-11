@@ -1548,16 +1548,40 @@ body.pick-open{overflow:hidden}
 .td-meta{font-family:var(--mono);font-size:10px;color:var(--txt-dim)}
 .td-ex{font-size:10.5px;color:var(--txt-faint);line-height:1.35}
 .td-empty{font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
-/* a day can hold several sessions — stack them compactly inside the card */
-.td-ses{display:flex;flex-direction:column;gap:5px}
-.td-s{display:flex;flex-direction:column;gap:1px;padding-left:7px;border-left:2px solid var(--line)}
-.td-s.done{border-left-color:var(--green);opacity:.62}
+/* a day can hold several sessions — stack them compactly inside the card.
+   The left edge carries the session TYPE colour (--tc, set by .t-workout /
+   .t-cardio / .t-rest below), so the week reads at a glance; done is shown by the
+   tick, the strikethrough and the fade, never by the type colour. */
+.td-ses{display:flex;flex-direction:column;gap:6px}
+.td-s{display:flex;flex-direction:column;gap:2px;padding-left:7px;
+  border-left:2px solid var(--tc, var(--line))}
+.td-s.done{opacity:.6}
 .td-s.done .td-s-title{text-decoration:line-through}
 .td-s-top{display:flex;align-items:baseline;gap:5px}
 .td-s-tick{flex:none;font-size:9px;color:var(--txt-faint)}
 .td-s.done .td-s-tick{color:var(--green)}
 .td-s-title{font-size:12.5px;font-weight:700;line-height:1.25;word-break:break-word}
-.td-s-meta{font-family:var(--mono);font-size:9.5px;color:var(--txt-dim);padding-left:14px}
+.td-s-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.td-s-bits{font-family:var(--mono);font-size:9.5px;color:var(--txt-dim)}
+.td-rest{display:flex}
+
+/* ---- session type tags ----
+   One markup for every surface (grid, day builder, dashboard, history) so a
+   colour can never mean two things. Green = workout, amber = cardio, muted grey
+   = rest — deliberately clear of the fire's red and the leaks' blue. */
+.ttag{flex:none;display:inline-block;font-family:var(--mono);font-size:9px;font-weight:700;
+  letter-spacing:0.07em;text-transform:uppercase;padding:1px 6px;border-radius:999px;
+  line-height:1.5;white-space:nowrap;color:var(--tc);
+  background:color-mix(in srgb, var(--tc) 14%, transparent);
+  border:1px solid color-mix(in srgb, var(--tc) 32%, transparent)}
+.t-workout{--tc:var(--green)}
+.t-cardio{--tc:var(--amber)}
+.t-rest{--tc:var(--txt-faint)}
+/* .wd-title is a block span, so the tag needs its own spacing; .wo-title and the
+   history row are flex containers whose gap already spaces it */
+.wd-title .ttag{vertical-align:middle;margin-left:8px}
+.wo-title .ttag{align-self:center}
+.wo-rest .ttag{margin-right:8px;vertical-align:middle}
 
 /* ---- the builder modal ---- */
 .wb-kind{display:flex;gap:6px}
@@ -1574,12 +1598,18 @@ body.pick-open{overflow:hidden}
 .wb-chosen-list{display:flex;flex-direction:column;gap:4px}
 .wb-cx{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:7px;
   border:1px solid var(--line);background:var(--bg)}
-.wb-cx-name{flex:1;min-width:0;font-size:13.5px;word-break:break-word}
-.wb-cx-target{flex:none;width:74px;text-align:center;background:var(--panel-2);
+/* the name takes the slack and TRUNCATES — min-width:0 is what lets a flex child
+   shrink below its content, and nowrap keeps the row exactly one line tall */
+.wb-cx-name{flex:1;min-width:0;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The global input[type=number] rule sets width:100% and outranks a bare class
+   selector, which is what stretched this field and forced the name to wrap.
+   Qualifying it keeps the target a narrow box — it holds at most three digits. */
+.wb-cx input.wb-cx-target{flex:none;width:56px;text-align:center;background:var(--panel-2);
   border:1px solid var(--line-soft);border-radius:6px;padding:4px 6px;
   font-family:var(--mono);font-size:12.5px;color:var(--txt)}
-.wb-cx-target:focus{border-color:var(--accent);outline:none}
-.wb-cx-target::placeholder{color:var(--txt-faint)}
+.wb-cx input.wb-cx-target:focus{border-color:var(--accent);outline:none}
+.wb-cx input.wb-cx-target::placeholder{color:var(--txt-faint)}
+.wb-cx .x{flex:none}
 /* the day builder: the sessions on one day */
 .wd-list{display:flex;flex-direction:column;gap:6px;margin-top:14px}
 .wd-row{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:8px;

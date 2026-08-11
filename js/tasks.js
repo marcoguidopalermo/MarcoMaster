@@ -80,6 +80,20 @@ function addTask(txt,kind,mins){
   save();
   return t.id;   // callers (e.g. Fire Station "Queue a fire") record the new id
 }
+/* Mark a standalone day-task complete on the spot, stamping the time it happened.
+   Used by capture's "already done" tick, so logging something you've just finished
+   never has to appear in the open list first. The task is ordinary afterwards:
+   un-ticking returns it to the open list, and it sweeps into the archive normally.
+   doneAt here is a TIME (HH:MM), matching the archive's convention for standalone
+   tasks — project tasks stamp a day key instead (see setProjTaskDone). */
+function markTaskDoneNow(id){
+  const t=day().tasks.find(x=>x.id===id);
+  if(!t) return false;
+  t.done=true;
+  t.doneAt=nowHM();
+  save(false);
+  return true;
+}
 function archiveCompleted(){
   const d=day();
   const done=d.tasks.filter(t=>t.done);

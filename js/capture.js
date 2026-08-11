@@ -27,7 +27,7 @@
 
 /* transient draft only — never persisted, never part of S.
    projectId/meetingId: undefined = not chosen yet, null = "no project". */
-let capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'' };
+let capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'', done:false };
 let capModalOpen=false;   // the Leak CTA popup (a second mount of this same control)
 
 const CAP_DESTS=[
@@ -48,6 +48,10 @@ function capModalIsOpen(){
 }
 function captureRoot(inModal){ return inModal ? q('#capModalBody') : q('#capCard'); }
 function capDestNeedsMore(d){ return d==='project'||d==='meeting'||d==='appt'; }
+/* "already done" only means something for the two destinations that ARE tasks.
+   An appointment, a talking point and a leak are not things you complete this way,
+   so the tick isn't offered for them (and is ignored if one is chosen after ticking). */
+function capDoneApplies(d){ return !d || d==='quick' || d==='project'; }
 
 function captureHint(){
   switch(capDraft.dest){
@@ -56,8 +60,8 @@ function captureHint(){
     case 'appt':    return 'Pick a date and time';
     case 'leak':    return 'Enter captures it as a leak';
     case 'content': return 'Enter captures it as a content idea';
-    case 'quick':   return 'Enter adds it to Quick';
-    default:        return 'Enter adds a quick task · or pick a destination';
+    case 'quick':   return capDraft.done?'Enter logs it as already done':'Enter adds it to Quick';
+    default:        return capDraft.done?'Enter logs a quick task as already done':'Enter adds a quick task · or pick a destination';
   }
 }
 
@@ -109,6 +113,10 @@ function captureInnerHTML(inModal){
     ${prompt}
     <div class="cap-row">
       <input type="text" data-capinput value="${esc(capDraft.text)}" placeholder="Capture anything — Enter for a quick task">
+      ${capDoneApplies(capDraft.dest)?`
+      <label class="cap-done ${capDraft.done?'on':''}" title="Already done — log it straight into Completed Today">
+        <input type="checkbox" data-capdone ${capDraft.done?'checked':''}><span>done</span>
+      </label>`:''}
       <button class="btn" data-capgo>Add</button>
     </div>
     <div class="cap-chips cap-dests">${CAP_DESTS.map(chip).join('')}</div>
@@ -158,6 +166,15 @@ function bindCaptureIn(root, inModal){
   }
   root.querySelectorAll('[data-capgo]').forEach(el=>el.onclick=()=>captureCommit(inModal));
 
+  // "already done" — deliberately does NOT re-render: the whole point is one line,
+  // one tick, Enter, so ticking must never steal the caret out of the input. The
+  // label's own state and the hint are updated in place instead.
+  root.querySelectorAll('[data-capdone]').forEach(el=>el.onchange=()=>{
+    capDraft.done=!!el.checked;
+    const lab=el.closest('.cap-done'); if(lab) lab.classList.toggle('on', capDraft.done);
+    const hint=root.querySelector('.cap-hint'); if(hint) hint.textContent=captureHint();
+  });
+
   // destination chips: quick / leak commit straight away, the rest open one field
   root.querySelectorAll('[data-capdest]').forEach(el=>el.onclick=()=>{
     const d=el.dataset.capdest;
@@ -185,7 +202,8 @@ function bindCaptureIn(root, inModal){
   bindLeakCaptureIn(root, 'dash', after);
 }
 
-function captureReset(){ capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'' }; }
+/* Always clears `done` — the tick can never silently survive a submit. */
+function captureReset(){ capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'', done:false }; }
 
 /* Commit to the chosen destination — or to a quick task when none is chosen.
    Returns without writing anything when a destination still needs its field. */
@@ -197,17 +215,33 @@ function captureCommit(inModal, extra){
   if(!txt){ capDraft.text=''; if(input) input.focus(); return; }
   capDraft.text=txt;
   const d=capDraft.dest||'quick';           // ← Enter with nothing chosen = quick task
+  // read the tick live, like the text: it writes into the draft without a repaint,
+  // so this also catches a tick made immediately before pressing Enter
+  const de=root && root.querySelector('[data-capdone]');
+  const markDone = (de ? !!de.checked : !!capDraft.done) && capDoneApplies(d);
 
   if(d==='quick'){
-    addTask(txt,'quick',2);
-    captureDone(inModal,'Quick task added');
+    const id=addTask(txt,'quick',2);
+    // already done → complete it on the spot, so it lands in Completed Today with
+    // the time it happened and never passes through the open list
+    if(markDone && id) markTaskDoneNow(id);
+    captureDone(inModal, markDone?'Logged as done ✓':'Quick task added');
     return;
   }
   if(d==='project'){
     if(capDraft.projectId===undefined){ toast('Pick a project'); return; }
     // 60 min is the default; adjust it on the row with the existing duration picker
-    addUnifiedTask(txt,'project',capDraft.projectId,60);
-    captureDone(inModal, capDraft.projectId?'Added to project':'Time block added');
+    const id=addUnifiedTask(txt,'project',capDraft.projectId,60);
+    if(markDone && id){
+      // a project task stamps its completion DAY via the shared writer (which also
+      // keeps any linked time block in step); a standalone block stamps the time
+      if(capDraft.projectId) setProjTaskDone(capDraft.projectId, id, true);
+      else markTaskDoneNow(id);
+      save(false);
+    }
+    captureDone(inModal, markDone
+      ? (capDraft.projectId?'Logged as done ✓ · in project':'Logged as done ✓')
+      : (capDraft.projectId?'Added to project':'Time block added'));
     return;
   }
   if(d==='meeting'){
@@ -241,7 +275,7 @@ function captureCommit(inModal, extra){
     // leakSubmit toasts on an outright capture; on a near-match it raises the
     // "same as…?" prompt instead and the text is held in leakPending
     const captured=leakSubmit(txt,'dash');
-    capDraft.text=''; capDraft.dest = captured ? null : 'leak';
+    capDraft.text=''; capDraft.done=false; capDraft.dest = captured ? null : 'leak';
     if(inModal && capModalIsOpen()){
       if(captured) closeCaptureModal(); else renderCaptureModal();   // stay open to answer
     }else{

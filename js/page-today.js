@@ -549,8 +549,10 @@ function completedRows(scope){
     const d=S.days[dk]||{};
     (d.tasks||[]).filter(t=>t.done && !t.projectId && !t.meetingId).forEach(t=>{
       // fire sessions key standalone tasks by the BARE id (not the 'S|' row key)
-      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, priority:!!t.priority,
-                workoutId:t.workoutId||null, fireMin:fm['S|'+t.id]||fm[t.id]||0});
+      // t.doneAt on a standalone task is the TIME it was completed (the archive's
+      // convention), so Completed Today can show it exactly like a swept row
+      out.push({source:'standalone', key:'S|'+t.id, txt:t.txt, kind:t.kind, when:dk, time:t.doneAt||'',
+                priority:!!t.priority, workoutId:t.workoutId||null, fireMin:fm['S|'+t.id]||fm[t.id]||0});
     });
     (d.archive||[]).forEach(a=>{
       // a swept task keeps its id, so a fire fought on it still resolves here
@@ -610,19 +612,22 @@ function renderCompletedRow(r, withDate){
 
 /* add a task from the unified add row, honouring kind + optional project.
    Project chosen → lives in that project's task list (kind decides section);
-   none → a standalone day-task (existing addTask path). */
+   none → a standalone day-task (existing addTask path).
+   Returns the new task's id (a project task's id when one was chosen, otherwise the
+   standalone day-task's), so a caller can act on what it just created — capture's
+   "already done" tick completes it immediately. */
 function addUnifiedTask(txt, kind, projectId, mins){
-  txt=(txt||'').trim(); if(!txt) return;
+  txt=(txt||'').trim(); if(!txt) return null;
   if(projectId){
-    const p=(S.projects||[]).find(x=>x.id===projectId); if(!p){ addTask(txt, kind, kind==='project'?(mins||60):2); return; }
+    const p=(S.projects||[]).find(x=>x.id===projectId); if(!p) return addTask(txt, kind, kind==='project'?(mins||60):2);
     if(!p.tasks) p.tasks=[];
     const t={id:b(), txt, done:false, priority:false, kind};
     if(kind==='project') t.mins=mins||60;     // remembered as the scheduler's default
     p.tasks.push(t);
     save();
-  }else{
-    addTask(txt, kind, kind==='project'?(mins||60):2);   // standalone day-task (saves itself)
+    return t.id;
   }
+  return addTask(txt, kind, kind==='project'?(mins||60):2);   // standalone day-task (saves itself)
 }
 
 /* ============================================================
@@ -684,6 +689,9 @@ function atToggle(key){
     if(!t){ const g=findTaskGlobal(k.id); t=g&&g.t; }
     if(!t) return;
     t.done=!t.done;
+    // stamp the time it was completed (cleared on re-open, so a re-tick is never
+    // shown with the old time). Capture's "already done" tick stamps the same field.
+    t.doneAt = t.done ? nowHM() : null;
     if(t.done && t.recurringId) markRecurringDone(t.recurringId);
     if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=t.done; }
     if(t.workoutId) syncWorkoutFromTask(t);   // planned training session follows its task

@@ -144,6 +144,16 @@ const NEAR_EMPTY    = 3;   // <=3 meaningful items ≈ just the default seed
 const AB_SLOTS      = 7;   // number of rolling auto-backup slots
 const AB_MIN_GAP_MS = 15*60*1000;   // advance to a NEW slot at most this often
 
+/* Total planned training sessions across every day. A day holds a LIST of sessions
+   (v2), so this counts sessions, not days — and it reads only the live structure,
+   never the legacy tr.sessions map the v2 fold leaves behind, so nothing is
+   double-counted during the transition. */
+function trainingSessionCount(s){
+  const days=((s||{}).training||{}).days||{};
+  let n=0;
+  Object.keys(days).forEach(k=>{ n+=(((days[k]||{}).sessions)||[]).length; });
+  return n;
+}
 /* A single "how much real data is here" magnitude. Used by both the shrink guard
    and the reconciler. The default seeded state scores ~2. */
 function stateCount(s){
@@ -161,7 +171,7 @@ function stateCount(s){
   // Training SESSIONS only — deliberately not the exercise library. The library is
   // seeded on first run, so counting it would push a brand-new state well above
   // NEAR_EMPTY and blind the "cloud looks emptied" protection to a real wipe.
-  n+=Object.keys((s.training||{}).sessions||{}).length;
+  n+=trainingSessionCount(s);
   // content IDEAS only, not pillars — seeded data must never inflate the count (see above)
   n+=((s.content||{}).ideas||[]).length;
   return n;
@@ -182,7 +192,7 @@ function backupSummary(s){
     followups:(s.followups||[]).length,
     meetings:(s.meetings||[]).length,
     appointments:(s.appointments||[]).length,
-    training:Object.keys((s.training||{}).sessions||{}).length,
+    training:trainingSessionCount(s),
     content:((s.content||{}).ideas||[]).length,
     days:Object.keys(s.days||{}).length,
   };

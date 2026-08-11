@@ -174,8 +174,10 @@ function deleteAppointment(id){
   // same for a training session's linked appointment: deleting it from the calendar
   // clears the session's time rather than leaving a link to a record that's gone.
   // The session itself — and its task — are untouched; it's just no longer timed.
-  const ts=(S.training&&S.training.sessions)||{};
-  Object.keys(ts).forEach(dk=>{ const s=ts[dk]; if(s && s.apptId===id){ s.apptId=null; s.time=null; } });
+  // workoutByApptId knows where sessions live (a day holds a list of them), so the
+  // shape stays owned by one module
+  const ws=(typeof workoutByApptId==='function') ? workoutByApptId(id) : null;
+  if(ws){ ws.apptId=null; ws.time=null; }
   save();
 }
 /* Complete ⇄ reopen. Completing ARCHIVES (the record stays; the main list filters

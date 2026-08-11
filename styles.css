@@ -1548,6 +1548,16 @@ body.pick-open{overflow:hidden}
 .td-meta{font-family:var(--mono);font-size:10px;color:var(--txt-dim)}
 .td-ex{font-size:10.5px;color:var(--txt-faint);line-height:1.35}
 .td-empty{font-family:var(--mono);font-size:10.5px;color:var(--txt-faint)}
+/* a day can hold several sessions — stack them compactly inside the card */
+.td-ses{display:flex;flex-direction:column;gap:5px}
+.td-s{display:flex;flex-direction:column;gap:1px;padding-left:7px;border-left:2px solid var(--line)}
+.td-s.done{border-left-color:var(--green);opacity:.62}
+.td-s.done .td-s-title{text-decoration:line-through}
+.td-s-top{display:flex;align-items:baseline;gap:5px}
+.td-s-tick{flex:none;font-size:9px;color:var(--txt-faint)}
+.td-s.done .td-s-tick{color:var(--green)}
+.td-s-title{font-size:12.5px;font-weight:700;line-height:1.25;word-break:break-word}
+.td-s-meta{font-family:var(--mono);font-size:9.5px;color:var(--txt-dim);padding-left:14px}
 
 /* ---- the builder modal ---- */
 .wb-kind{display:flex;gap:6px}
@@ -1560,6 +1570,29 @@ body.pick-open{overflow:hidden}
 .train-chip:hover{border-color:var(--accent);color:var(--accent)}
 .train-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .wb-presets,.wb-chosen,.wb-chips{display:flex;flex-wrap:wrap;gap:6px}
+/* chosen exercises are rows, not chips: each carries ONE optional number */
+.wb-chosen-list{display:flex;flex-direction:column;gap:4px}
+.wb-cx{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:7px;
+  border:1px solid var(--line);background:var(--bg)}
+.wb-cx-name{flex:1;min-width:0;font-size:13.5px;word-break:break-word}
+.wb-cx-target{flex:none;width:74px;text-align:center;background:var(--panel-2);
+  border:1px solid var(--line-soft);border-radius:6px;padding:4px 6px;
+  font-family:var(--mono);font-size:12.5px;color:var(--txt)}
+.wb-cx-target:focus{border-color:var(--accent);outline:none}
+.wb-cx-target::placeholder{color:var(--txt-faint)}
+/* the day builder: the sessions on one day */
+.wd-list{display:flex;flex-direction:column;gap:6px;margin-top:14px}
+.wd-row{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:8px;
+  border:1px solid var(--line);background:var(--panel-2)}
+.wd-row.done{opacity:.66;border-color:color-mix(in srgb, var(--green) 40%, transparent)}
+.wd-row.done .wd-title{text-decoration:line-through}
+.wd-tick{flex:none;font-size:11px;color:var(--txt-faint);padding-top:2px}
+.wd-row.done .wd-tick{color:var(--green)}
+.wd-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.wd-title{font-size:14px;font-weight:700;word-break:break-word}
+.wd-meta{font-family:var(--mono);font-size:10.5px;color:var(--txt-dim)}
+.wd-ex{font-size:11.5px;color:var(--txt-faint);line-height:1.4;word-break:break-word}
+.wd-add{margin-top:10px}
 .wb-presets{margin-top:8px}
 .wb-ct{font-family:var(--mono);font-size:10px;color:var(--txt-faint)}
 .wb-lib{max-height:34vh;overflow-y:auto;padding-right:4px;border-top:1px solid var(--line-soft);padding-top:12px}
@@ -1580,6 +1613,10 @@ body.pick-open{overflow:hidden}
 .wo-title{font-size:17px;font-weight:700;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .wo-card.is-done .wo-title{color:var(--txt-dim)}
 .wo-meta{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--txt-dim)}
+.wo-list{display:flex;flex-direction:column;gap:10px}
+.wo-item{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.wo-item + .wo-item{border-top:1px solid var(--line-soft);padding-top:10px}
+.wo-item.is-done .wo-title{color:var(--txt-dim);text-decoration:line-through}
 .wo-ex{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .wo-ex-chip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);
   background:var(--panel-2);color:var(--txt-dim)}
@@ -1618,9 +1655,11 @@ body.pick-open{overflow:hidden}
 @media(max-width:600px){
   .train-grid{grid-template-columns:repeat(2,1fr)}
   .train-day{min-height:92px}
-  .wo-main{flex-direction:column;gap:12px}
+  .wo-main,.wo-item{flex-direction:column;gap:12px}
   .wo-r{width:100%}
   .train-lib{grid-template-columns:1fr}
+  .wd-row{flex-wrap:wrap}
+  .wd-main{min-width:100%}
 }
 
 /* ============================================================
@@ -1692,3 +1731,13 @@ body.pick-open{overflow:hidden}
   .ci-txt{min-width:100%;order:-1}
   .ci-exp{order:-2}
 }
+
+/* the "already done" tick in the capture line — one line, one tick, Enter */
+.cap-done{display:flex;align-items:center;gap:5px;flex:none;cursor:pointer;user-select:none;
+  padding:0 9px;border:1px solid var(--line);border-radius:8px;
+  font-family:var(--mono);font-size:11px;color:var(--txt-faint);height:100%;min-height:36px;
+  transition:all .12s}
+.cap-done:hover{border-color:var(--green);color:var(--txt-dim)}
+.cap-done input{width:14px;height:14px;margin:0;accent-color:var(--green);cursor:pointer}
+.cap-done.on{border-color:var(--green);color:var(--green);background:color-mix(in srgb, var(--green) 12%, transparent)}
+@media(max-width:600px){ .cap-done span{display:none} .cap-done{padding:0 8px} }

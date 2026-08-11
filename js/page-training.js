@@ -1,24 +1,35 @@
 /* ============================================================
    TRAINING — plan the workout, show up, log it, build evidence.
 
-   Deliberately simple. No reps, sets, weights, distances, timers, exercise
-   instructions, progressive overload or analytics. The whole module is three
-   moves: maintain a library of exercise NAMES (Settings), build a week of
-   sessions (this tab), and complete them through the normal task path.
+   Deliberately simple. No sets, no weights, no reps-per-set, no distances,
+   timers, exercise instructions, progressive overload or analytics. The whole
+   module is three moves: maintain a library of exercise NAMES (Settings), build
+   a week of sessions (this tab), and complete them through the normal task path.
 
    Store: S.training — see seedDefaults() in state.js for the shape.
-     library  : {category: [{id,name}]}     — names only
-     floor    : the weekly FLOOR (default 3), never a target
-     sessions : {'YYYY-MM-DD': session}     — one session per day, keyed by date
+     library : {category: [{id,name}]}          — names only, always
+     floor   : the weekly FLOOR, never a target (Settings → Weekly floors)
+     days    : {'YYYY-MM-DD': {rest, sessions:[session]}}
 
-   A session is keyed by DATE rather than by weekday, so the weekly grid is just
-   "the seven dates of the displayed week" and history comes for free: editing this
+   A DAY HOLDS SESSIONS. A lift in the morning and a run in the evening are two
+   sessions on one day, each with its own task, its own optional time (and so its
+   own appointment), and its own completion. REST is a property of the DAY and
+   means no sessions at all.
+
+   Days are keyed by date rather than by weekday, so the weekly grid is just "the
+   seven dates of the displayed week" and history comes for free: editing this
    week can never rewrite a week you already did.
 
    A planned session is a TASK (see syncWorkoutTask) and, when it has a time, also
    a linked APPOINTMENT (see syncWorkoutAppt) — exactly the way a scheduled meeting
    works. There is no separate completion surface: you complete the task, wherever
    you meet it, and the session follows.
+
+   An exercise chosen into a session may carry ONE optional number — a bodyweight
+   target like 100 pushups. It is a number that sits there and nothing else: not
+   sets, not weight, not reps-per-set, never counted or tracked against. It lives
+   on the SESSION's copy of the exercise, so writing 100 today never stamps 100
+   onto every future pushup — the library stays names only.
    ============================================================ */
 
 /* ---------- date helpers (local, matching todayKey()) ---------- */
@@ -45,8 +56,26 @@ const TRAIN_DOW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 /* ---------- accessors ---------- */
 function trainLib(){ return (S.training&&S.training.library)||{}; }
 function trainFloor(){ const f=+((S.training||{}).floor); return f>=1?f:3; }
-function trainSessions(){ return (S.training&&S.training.sessions)||{}; }
-function trainSession(dk){ return trainSessions()[dk]||null; }
+function trainDays(){ return (S.training&&S.training.days)||{}; }
+function trainDay(dk){ return trainDays()[dk]||null; }
+function trainDaySessions(dk){ const d=trainDay(dk); return (d&&d.sessions)||[]; }
+/* Rest is a whole-day state and means NO sessions — if a day somehow holds both,
+   the sessions win (they carry links; the flag carries nothing). */
+function trainIsRest(dk){ const d=trainDay(dk); return !!(d && d.rest && !(d.sessions||[]).length); }
+function trainSessionAt(dk, sid){ return trainDaySessions(dk).find(s=>s.id===sid)||null; }
+function trainEnsureDay(dk){
+  if(!S.training.days) S.training.days={};
+  if(!S.training.days[dk]) S.training.days[dk]={rest:false, sessions:[]};
+  const d=S.training.days[dk];
+  if(!Array.isArray(d.sessions)) d.sessions=[];
+  return d;
+}
+/* every session in a date range, flattened — the basis of evidence and history */
+function trainSessionsIn(dateKeys){
+  const out=[];
+  dateKeys.forEach(dk=>trainDaySessions(dk).forEach(s=>out.push(s)));
+  return out;
+}
 function trainCatLabel(k){ const f=TRAIN_CATS.find(c=>c[0]===k); return f?f[1]:k; }
 /* the one line a session shows everywhere — the task text, the appointment title */
 function workoutTaskText(s){ return ((s&&s.title)||'').trim() || 'Training'; }
@@ -54,19 +83,32 @@ function workoutExLabel(s){
   const n=((s&&s.exercises)||[]).length;
   return n?`${n} exercise${n===1?'':'s'}`:'';
 }
+/* "Pushups · 100" when a target is set, "Pushups" when it isn't. The ONE place
+   the optional number is formatted, so it can never render as "· null". */
+function exDisplay(e){
+  if(!e) return '';
+  const n=e.target;
+  return (n!=null && n!=='') ? `${e.name} · ${n}` : e.name;
+}
+/* a plain number or nothing. No units, no ranges, no expressions. */
+function parseTarget(v){
+  const n=parseInt(String(v==null?'':v).trim(),10);
+  return (!isNaN(n) && n>0) ? n : null;
+}
 
 /* ============================================================
-   LINKS — task (always) + appointment (only when a time is set).
+   LINKS — per SESSION: a task always, an appointment only when timed.
    Modeled directly on scheduleMeeting / removeMeetingLinks: the linked records
    are UPDATED IN PLACE by their stored ids and never duplicated; if one was
-   deleted elsewhere it is recreated cleanly.
+   deleted elsewhere it is recreated cleanly. Two sessions on one day keep two
+   independent sets of links.
 
    A timed workout deliberately gets an appointment but NOT a Time Blocker
    block. The appointment already puts it on the calendar and drives reminders;
    a block as well would show the same session twice in the ☀ Today strip.
    ============================================================ */
 function syncWorkoutTask(s){
-  if(!s || s.kind!=='session'){ removeWorkoutTask(s); return; }   // a Rest day carries no task
+  if(!s) return;
   const ref = s.taskId ? findTaskGlobal(s.taskId) : null;
   if(ref){
     const t=ref.t;
@@ -94,7 +136,7 @@ function removeWorkoutTask(s){
   s.taskId=null;
 }
 function syncWorkoutAppt(s){
-  if(!s || s.kind!=='session' || !s.time){ removeWorkoutAppt(s); return; }
+  if(!s || !s.time){ removeWorkoutAppt(s); return; }
   let a = s.apptId ? (S.appointments||[]).find(x=>x.id===s.apptId) : null;
   if(a){ a.title=workoutTaskText(s); a.date=s.date; a.time=s.time; }
   else { a=createAppointment(workoutTaskText(s), s.date, s.time); s.apptId=a.id; }
@@ -105,13 +147,28 @@ function removeWorkoutAppt(s){
   S.appointments=(S.appointments||[]).filter(a=>a.id!==s.apptId);
   s.apptId=null;
 }
-/* the single writer for a session's links — called after every edit */
+/* the single writer for one session's links — called after every edit */
 function syncWorkoutLinks(s){ syncWorkoutTask(s); syncWorkoutAppt(s); }
 
-function deleteWorkout(dk){
-  const s=trainSession(dk); if(!s) return;
+/* delete ONE session from a day, cleaning up only its own links */
+function deleteSession(dk, sid){
+  const day=trainDay(dk); if(!day) return;
+  const s=(day.sessions||[]).find(x=>x.id===sid); if(!s) return;
   removeWorkoutTask(s); removeWorkoutAppt(s);
-  delete S.training.sessions[dk];
+  day.sessions=(day.sessions||[]).filter(x=>x.id!==sid);
+  save();
+}
+/* Rest applies to the WHOLE day and means no sessions: turning it on removes
+   every session on that day along with its task and appointment. */
+function setDayRest(dk, rest){
+  const day=trainEnsureDay(dk);
+  if(rest){
+    (day.sessions||[]).slice().forEach(s=>{ removeWorkoutTask(s); removeWorkoutAppt(s); });
+    day.sessions=[];
+    day.rest=true;
+  }else{
+    day.rest=false;
+  }
   save();
 }
 
@@ -120,16 +177,20 @@ function deleteWorkout(dk){
    syncWorkoutFromTask is the one hook the task machinery calls (atToggle,
    togglePipeline, fireCompleteTask); setWorkoutDone is the one writer.
    ============================================================ */
-function workoutById(id){
-  const ss=trainSessions();
-  const k=Object.keys(ss).find(dk=>ss[dk] && ss[dk].id===id);
-  return k?ss[k]:null;
+/* find a session across every day by one of its ids */
+function workoutFind(pred){
+  const days=trainDays();
+  const keys=Object.keys(days);
+  for(let i=0;i<keys.length;i++){
+    const list=(days[keys[i]]&&days[keys[i]].sessions)||[];
+    const hit=list.find(pred);
+    if(hit) return hit;
+  }
+  return null;
 }
-function workoutByTaskId(taskId){
-  const ss=trainSessions();
-  const k=Object.keys(ss).find(dk=>ss[dk] && ss[dk].taskId===taskId);
-  return k?ss[k]:null;
-}
+function workoutById(id){ return workoutFind(s=>s.id===id); }
+function workoutByTaskId(taskId){ return workoutFind(s=>s.taskId===taskId); }
+function workoutByApptId(apptId){ return workoutFind(s=>s.apptId===apptId); }
 /* Called wherever a standalone day-task's done flag flips. opts.log===false
    suppresses the optional log prompt — used by the Fire Station, whose takeover
    sits above the modal layer, so a modal opened there would be invisible. */
@@ -148,7 +209,7 @@ function setWorkoutDone(s, done, opts){
   // the linked appointment archives with the session (reversible in both directions)
   if(s.apptId){ const a=(S.appointments||[]).find(x=>x.id===s.apptId); if(a) a.done=!!done; }
   save(false);
-  if(done && opts.log!==false && !trainOverlayOpen()) openWorkoutLog(s.date);
+  if(done && opts.log!==false && !trainOverlayOpen()) openWorkoutLog(s.date, s.id);
 }
 /* Is a full-screen surface currently up? .pick-screen and .fire-screen share the
    modal's z-index band but sit LATER in the DOM, so they paint over it — a log
@@ -170,15 +231,13 @@ function trainOverlayOpen(){
    into toggleApptDone. */
 function syncWorkoutFromAppt(a){
   if(!a) return;
-  const ss=trainSessions();
-  const k=Object.keys(ss).find(dk=>ss[dk] && ss[dk].apptId===a.id);
-  if(!k) return;
-  setWorkoutDone(ss[k], !!a.done);
+  const s=workoutByApptId(a.id);
+  if(s) setWorkoutDone(s, !!a.done);
 }
 /* Complete/reopen from a training surface — goes through atToggle so it is the
    exact same path as ticking the task in All Tasks or the Today strip. */
-function toggleWorkoutViaTask(dk){
-  const s=trainSession(dk); if(!s) return;
+function toggleWorkoutViaTask(dk, sid){
+  const s=trainSessionAt(dk, sid); if(!s) return;
   if(s.taskId && findTaskGlobal(s.taskId)) atToggle('S|'+s.taskId);
   else { setWorkoutDone(s, !s.done); rerender(); }   // defensive: link lost somehow
 }
@@ -187,17 +246,17 @@ function toggleWorkoutViaTask(dk){
    THE OPTIONAL LOG — duration + a short note. Both optional, never required:
    Skip and Save both leave the session complete.
    ============================================================ */
-let woLogDraft=null;   // {date, mins, note, customOpen}
+let woLogDraft=null;   // {date, sid, mins, note, customOpen}
 const WO_MINS=[15,30,45,60,90];
 
-function openWorkoutLog(dk){
-  const s=trainSession(dk); if(!s) return;
-  woLogDraft={ date:dk, mins:(s.mins!=null?s.mins:null), note:s.note||'', customOpen:false };
+function openWorkoutLog(dk, sid){
+  const s=trainSessionAt(dk, sid); if(!s) return;
+  woLogDraft={ date:dk, sid:sid, mins:(s.mins!=null?s.mins:null), note:s.note||'', customOpen:false };
   renderWorkoutLog();
 }
 function renderWorkoutLog(){
   const d=woLogDraft; if(!d) return;
-  const s=trainSession(d.date); if(!s){ closeReset(); return; }
+  const s=trainSessionAt(d.date, d.sid); if(!s){ closeReset(); return; }
   const custom = d.mins!=null && !WO_MINS.includes(d.mins);
   const m=q('#resetModal');
   m.innerHTML=`
@@ -230,7 +289,7 @@ function renderWorkoutLog(){
   const cl=q('#wlClearMin'); if(cl) cl.onclick=()=>{ d.mins=null; d.customOpen=false; renderWorkoutLog(); };
   const nt=q('#wlNote'); if(nt) nt.oninput=()=>{ d.note=nt.value; };   // no repaint — keep the caret
   q('#wlSave').onclick=()=>{
-    const cur=trainSession(d.date);
+    const cur=trainSessionAt(d.date, d.sid);
     if(cur){ cur.mins=(d.mins!=null?d.mins:null); cur.note=(d.note||'').trim(); save(); }
     woLogDraft=null; closeReset(); rerender(); toast('Logged ✓');
   };
@@ -238,23 +297,23 @@ function renderWorkoutLog(){
 
 /* ============================================================
    WEEKLY EVIDENCE — a FLOOR met, never a target missed.
-   Counted by the session's own date (the day it was planned for), so the count
-   and the weekly grid always agree. No streaks, no broken-streak state, no
-   language about what is missing.
+   SESSIONS are counted, not days: a lift and a run on the same day are two
+   toward the floor. Counted by each session's own date (the day it was planned
+   for), so the count and the weekly grid always agree. No streaks, no
+   broken-streak state, no language about what is missing.
    ============================================================ */
 function trainWeekStats(mondayKey){
-  const ss=trainSessions();
   const dates=trainWeekDates(mondayKey);
-  const planned=dates.filter(dk=>ss[dk] && ss[dk].kind==='session');
-  const done=planned.filter(dk=>ss[dk].done);
-  return { floor:trainFloor(), planned:planned.length, done:done.length, doneKeys:done, dates };
+  const all=trainSessionsIn(dates);
+  const done=all.filter(s=>s.done);
+  return { floor:trainFloor(), planned:all.length, done:done.length, dates };
 }
 /* the phrasing itself is shared with content — see floorEvidenceLine in ui-core.js */
 function trainEvidenceLine(st){ return floorEvidenceLine(st.done, st.floor); }
 function trainEvidenceClass(st){ return floorEvidenceClass(st.done, st.floor); }
 
 /* ============================================================
-   THE TRAINING TAB — the weekly builder.
+   THE TRAINING TAB — the weekly grid.
    ============================================================ */
 let trainWeek=null;                 // displayed Monday key; null = the current week
 function trainCurrentWeek(){ return trainWeek || trainWeekStart(todayKey()); }
@@ -263,30 +322,36 @@ function renderTraining(){
   const wk=trainCurrentWeek();
   const st=trainWeekStats(wk);
   const isThis = wk===trainWeekStart(todayKey());
-  const ss=trainSessions();
   const tk=todayKey();
 
   const dayCard=(dk,i)=>{
-    const s=ss[dk];
+    const list=trainDaySessions(dk);
+    const rest=trainIsRest(dk);
     const isToday=dk===tk;
+    const doneCt=list.filter(s=>s.done).length;
+    const allDone=list.length>0 && doneCt===list.length;
     const dd=trainDateFrom(dk).toLocaleDateString('en-CA',{month:'short',day:'numeric'});
     let body;
-    if(!s){
-      body=`<span class="td-empty">+ plan a session</span>`;
-    }else if(s.kind==='rest'){
+    if(rest){
       body=`<span class="td-title rest">Rest</span>`;
+    }else if(!list.length){
+      body=`<span class="td-empty">+ plan a session</span>`;
     }else{
-      const bits=[workoutExLabel(s), s.time?fmtClock(s.time):''].filter(Boolean).join(' · ');
-      body=`<span class="td-title">${esc(workoutTaskText(s))}</span>
-            ${bits?`<span class="td-meta">${esc(bits)}</span>`:''}
-            ${(s.exercises||[]).length?`<span class="td-ex">${s.exercises.slice(0,4).map(e=>esc(e.name)).join(' · ')}${s.exercises.length>4?' …':''}</span>`:''}`;
+      // each session stacked compactly: title, exercise count, time, done state
+      body=`<span class="td-ses">${list.map(s=>{
+        const bits=[workoutExLabel(s), s.time?fmtClock(s.time):''].filter(Boolean).join(' · ');
+        return `<span class="td-s ${s.done?'done':''}">
+          <span class="td-s-top"><span class="td-s-tick">${s.done?'✓':'○'}</span><span class="td-s-title">${esc(workoutTaskText(s))}</span></span>
+          ${bits?`<span class="td-s-meta">${esc(bits)}</span>`:''}
+        </span>`;
+      }).join('')}</span>`;
     }
     return `
-    <button class="train-day ${isToday?'is-today':''} ${s&&s.done?'is-done':''} ${s&&s.kind==='rest'?'is-rest':''} ${!s?'is-empty':''}" data-trainday="${dk}">
+    <button class="train-day ${isToday?'is-today':''} ${allDone?'is-done':''} ${rest?'is-rest':''} ${(!rest&&!list.length)?'is-empty':''}" data-trainday="${dk}">
       <span class="td-head">
         <span class="td-dow">${TRAIN_DOW[i]}</span>
         <span class="td-date">${dd}</span>
-        ${s&&s.done?'<span class="td-done">✓</span>':''}
+        ${list.length?`<span class="td-done">${allDone?'✓':(doneCt?`${doneCt}/${list.length}`:'')}</span>`:''}
       </span>
       ${body}
     </button>`;
@@ -305,8 +370,8 @@ function renderTraining(){
         <button class="btn ghost sm" id="trainHistory">History</button>
       </span>
     </div>
-    <div class="train-ev ${trainEvidenceClass(st)}">${esc(trainEvidenceLine(trainWeekStats(trainWeekStart(todayKey()))))}</div>
-    <p class="list-note" style="margin-top:8px">Your floor is ${trainFloor()} session${trainFloor()===1?'':'s'} a week — set it in Settings. Anything past it is a bonus.</p>
+    <div class="train-ev ${trainEvidenceClass(trainWeekStats(trainWeekStart(todayKey())))}">${esc(trainEvidenceLine(trainWeekStats(trainWeekStart(todayKey()))))}</div>
+    <p class="list-note" style="margin-top:8px">Your floor is ${trainFloor()} session${trainFloor()===1?'':'s'} a week — set it in Settings. Sessions count, not days: two in one day count as two. Anything past the floor is a bonus.</p>
   </div>
 
   <div class="card">
@@ -321,7 +386,7 @@ function renderTraining(){
     </div>
     ${isThis?`<div class="train-week-lbl">${esc(trainWeekLabel(wk))}</div>`:''}
     <div class="train-grid">${trainWeekDates(wk).map(dayCard).join('')}</div>
-    <p class="list-note" style="margin-top:12px">Tap a day to build it. Planned sessions become tasks — complete them anywhere you meet them. Give one a time and it lands in your calendar with reminders.</p>
+    <p class="list-note" style="margin-top:12px">Tap a day to build it — a day can hold more than one session. Planned sessions become tasks; complete them anywhere you meet them. Give one a time and it lands in your calendar with reminders.</p>
   </div>
   `;
 }
@@ -335,27 +400,122 @@ function bindTraining(){
 }
 
 /* ============================================================
-   THE BUILDER — one day's session. Held as a draft and committed on Save, so
-   backing out writes nothing. Rendered into #resetModal, the same host the
-   meeting scheduler and the project scheduler use.
+   THE DAY BUILDER — the sessions on one day.
+   Two levels, both in #resetModal: this lists the day's sessions and owns the
+   whole-day Rest state; the SESSION EDITOR below builds one session as a draft
+   that is only written on Save. Add / delete / Rest here are discrete acts and
+   apply immediately (each is confirmed where it destroys something).
    ============================================================ */
-let wbDraft=null;   // {date, kind, title, exercises:[{id,name,cat}], time}
+let wbDay=null;    // the day key open in the day builder (null = closed)
 
-function openWorkoutBuilder(dk){
-  const s=trainSession(dk);
+function openWorkoutBuilder(dk){ wbDay=dk; wbDraft=null; renderDayBuilder(); }
+function closeDayBuilder(){ wbDay=null; wbDraft=null; closeReset(); rerender(); }
+
+function renderDayBuilder(){
+  const dk=wbDay; if(!dk) return;
+  const list=trainDaySessions(dk);
+  const rest=trainIsRest(dk);
+  const heading=trainDateFrom(dk).toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
+  const row=(s)=>{
+    const bits=[workoutExLabel(s), s.time?fmtClock(s.time):''].filter(Boolean).join(' · ');
+    return `
+    <div class="wd-row ${s.done?'done':''}">
+      <span class="wd-tick">${s.done?'✓':'○'}</span>
+      <span class="wd-main">
+        <span class="wd-title">${esc(workoutTaskText(s))}</span>
+        ${bits?`<span class="wd-meta">${esc(bits)}</span>`:''}
+        ${(s.exercises||[]).length?`<span class="wd-ex">${s.exercises.map(e=>esc(exDisplay(e))).join(' · ')}</span>`:''}
+      </span>
+      <button class="btn ghost sm" data-wdedit="${esc(s.id)}">Edit</button>
+      <span class="x" data-wddel="${esc(s.id)}" title="Delete this session">×</span>
+    </div>`;
+  };
+  const m=q('#resetModal');
+  m.innerHTML=`
+    <div class="modal modal-lg">
+      <span class="modal-close" id="wdClose">×</span>
+      <h3>${esc(heading)}</h3>
+      <div class="wb-kind">
+        <button class="wb-kind-opt ${!rest?'on':''}" data-wdday="sessions">Sessions</button>
+        <button class="wb-kind-opt ${rest?'on':''}" data-wdday="rest">Rest</button>
+      </div>
+
+      ${rest ? `<p class="intro" style="margin-top:14px">A rest day. Nothing to do, nothing owed.</p>` : `
+        <div class="wd-list">
+          ${list.length?list.map(row).join(''):'<div class="empty sm">No sessions yet on this day.</div>'}
+        </div>
+        <button class="btn ghost sm wd-add" id="wdAdd">+ Add session</button>
+        ${list.length>1?`<p class="list-note" style="margin-top:10px">${list.length} sessions — each has its own task${list.some(s=>s.time)?', time and reminder':''}, and each counts on its own toward your weekly floor.</p>`:''}
+      `}
+
+      <div class="btn-row" style="margin-top:18px">
+        <button class="btn" id="wdDone">Done</button>
+      </div>
+    </div>`;
+  m.classList.add('show');
+  bindDayBuilder();
+}
+function bindDayBuilder(){
+  const dk=wbDay; if(!dk) return;
+  q('#wdClose').onclick=closeDayBuilder;
+  q('#wdDone').onclick=closeDayBuilder;
+  const add=q('#wdAdd'); if(add) add.onclick=()=>openSessionEditor(dk, null);
+  q('#resetModal [data-wdedit]','all').forEach(el=>el.onclick=()=>openSessionEditor(dk, el.dataset.wdedit));
+  q('#resetModal [data-wddel]','all').forEach(el=>el.onclick=()=>{
+    const s=trainSessionAt(dk, el.dataset.wddel); if(!s) return;
+    if(!confirm(`Delete "${workoutTaskText(s)}"? Its task${s.apptId?' and calendar appointment':''} go with it.`)) return;
+    deleteSession(dk, s.id);
+    renderDayBuilder(); rerender(); toast('Removed');
+  });
+  q('#resetModal [data-wdday]','all').forEach(el=>el.onclick=()=>{
+    const want=el.dataset.wdday;
+    if((want==='rest')===trainIsRest(dk)) return;   // already there — no write, no repaint
+    if(want==='rest'){
+      const n=trainDaySessions(dk).length;
+      if(n && !confirm(`Make this a rest day? Its ${n} session${n===1?'':'s'} — and their tasks and appointments — are removed.`)) return;
+      setDayRest(dk, true);
+    }else{
+      setDayRest(dk, false);
+    }
+    renderDayBuilder(); rerender();
+  });
+}
+
+/* ============================================================
+   THE SESSION EDITOR — one session, held as a draft and committed on Save, so
+   backing out writes nothing. Cancel and Save both return to the day builder,
+   so adding a second session to a day is one more tap.
+   ============================================================ */
+let wbDraft=null;   // {date, sid, title, exercises:[{id,name,cat,target}], time}
+
+function openSessionEditor(dk, sid){
+  const s = sid ? trainSessionAt(dk, sid) : null;
   wbDraft = s
-    ? { date:dk, kind:s.kind, title:s.title||'', exercises:(s.exercises||[]).map(e=>({id:e.id,name:e.name,cat:e.cat})), time:s.time||'' }
-    : { date:dk, kind:'session', title:'', exercises:[], time:'' };
+    ? { date:dk, sid:s.id, title:s.title||'',
+        exercises:(s.exercises||[]).map(e=>({id:e.id, name:e.name, cat:e.cat, target:(e.target!=null?e.target:null)})),
+        time:s.time||'' }
+    : { date:dk, sid:null, title:'', exercises:[], time:'' };
   renderWorkoutBuilder();
 }
 function wbHasEx(name,cat){ return (wbDraft.exercises||[]).some(e=>e.name===name && e.cat===cat); }
 function wbToggleEx(name,cat){
   if(wbHasEx(name,cat)) wbDraft.exercises=wbDraft.exercises.filter(e=>!(e.name===name && e.cat===cat));
-  else wbDraft.exercises.push({id:b(), name, cat});
+  else wbDraft.exercises.push({id:b(), name, cat, target:null});
+}
+/* pull every on-screen field into the draft before a repaint or a save — the text
+   and number inputs autosave without re-rendering (so the caret never jumps), and
+   this catches a value typed immediately before pressing a button */
+function wbSyncFields(){
+  const d=wbDraft; if(!d) return;
+  const ti=q('#wbTitle'); if(ti) d.title=ti.value;
+  q('#resetModal [data-wbtarget]','all').forEach(el=>{
+    const e=d.exercises.find(x=>x.id===el.dataset.wbtarget);
+    if(e) e.target=parseTarget(el.value);
+  });
 }
 function renderWorkoutBuilder(){
   const d=wbDraft; if(!d) return;
-  const existing=trainSession(d.date);
+  const existing = d.sid ? trainSessionAt(d.date, d.sid) : null;
   const dt=trainDateFrom(d.date);
   const heading=dt.toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric'});
   const lib=trainLib();
@@ -373,20 +533,22 @@ function renderWorkoutBuilder(){
   m.innerHTML=`
     <div class="modal modal-lg">
       <span class="modal-close" id="wbClose">×</span>
-      <h3>${esc(heading)}</h3>
-      <div class="wb-kind">
-        <button class="wb-kind-opt ${d.kind==='session'?'on':''}" data-wbkind="session">Session</button>
-        <button class="wb-kind-opt ${d.kind==='rest'?'on':''}" data-wbkind="rest">Rest</button>
-      </div>
+      <button class="pick-back" id="wbBack">← ${esc(heading)}</button>
+      <h3>${existing?'Edit session':'New session'}</h3>
 
-      ${d.kind==='rest' ? `<p class="intro" style="margin-top:14px">A rest day. Nothing to do, nothing owed.</p>` : `
-      <div class="qf" style="margin-top:16px"><label>Session</label>
+      <div class="qf" style="margin-top:14px"><label>Session</label>
         <input type="text" id="wbTitle" value="${esc(d.title)}" placeholder="Name it — Strength, Run, Circuit…">
         <div class="wb-presets">${TRAIN_PRESETS.map(p=>`<button class="train-chip ${d.title===p?'on':''}" data-wbpreset="${esc(p)}">${esc(p)}</button>`).join('')}</div>
       </div>
 
-      <div class="qf"><label>Exercises${d.exercises.length?` <span class="wb-ct">${d.exercises.length}</span>`:''}</label>
-        ${d.exercises.length?`<div class="wb-chosen">${d.exercises.map(e=>`<button class="train-chip on" data-wbdrop="${esc(e.id)}" title="Remove">${esc(e.name)} ×</button>`).join('')}</div>`
+      <div class="qf"><label>Exercises${d.exercises.length?` <span class="wb-ct">${d.exercises.length}</span>`:''}
+        <span class="wb-opt">the number is optional — a total to aim at, nothing is counted against it</span></label>
+        ${d.exercises.length?`<div class="wb-chosen-list">${d.exercises.map(e=>`
+          <div class="wb-cx">
+            <span class="wb-cx-name">${esc(e.name)}</span>
+            <input type="number" class="wb-cx-target" data-wbtarget="${esc(e.id)}" value="${e.target!=null?e.target:''}" placeholder="—" min="1" max="100000" inputmode="numeric">
+            <span class="x" data-wbdrop="${esc(e.id)}" title="Remove">×</span>
+          </div>`).join('')}</div>`
           :`<div class="empty sm">No exercises — that's fine. A session type on its own (a Run) is a plan.</div>`}
       </div>
 
@@ -399,7 +561,7 @@ function renderWorkoutBuilder(){
           <input type="time" id="wbTime" value="${esc(d.time||'')}">
           ${d.time?`<button class="btn ghost sm" id="wbTimeClear">Clear</button>`:''}
         </div>
-      </div>`}
+      </div>
 
       <div class="btn-row" style="margin-top:18px">
         <button class="btn" id="wbSave">Save</button>
@@ -412,110 +574,118 @@ function renderWorkoutBuilder(){
 }
 function bindWorkoutBuilder(){
   const d=wbDraft; if(!d) return;
-  const close=()=>{ wbDraft=null; closeReset(); };
-  q('#wbClose').onclick=close;
-  q('#wbCancel').onclick=close;
-  q('#resetModal [data-wbkind]','all').forEach(el=>el.onclick=()=>{ d.kind=el.dataset.wbkind; renderWorkoutBuilder(); });
+  const back=()=>{ wbDraft=null; if(wbDay) renderDayBuilder(); else { closeReset(); rerender(); } };
+  q('#wbClose').onclick=()=>{ wbDraft=null; closeDayBuilder(); };
+  q('#wbCancel').onclick=back;
+  const bk=q('#wbBack'); if(bk) bk.onclick=back;
   const ti=q('#wbTitle'); if(ti) ti.oninput=()=>{ d.title=ti.value; };   // no repaint — keep the caret
+  // the optional target: written into the draft as you type, never re-rendering
+  q('#resetModal [data-wbtarget]','all').forEach(el=>el.oninput=()=>{
+    const e=d.exercises.find(x=>x.id===el.dataset.wbtarget);
+    if(e) e.target=parseTarget(el.value);
+  });
   q('#resetModal [data-wbpreset]','all').forEach(el=>el.onclick=()=>{
+    wbSyncFields();
     const p=el.dataset.wbpreset;
     d.title = (d.title===p) ? '' : p;
     renderWorkoutBuilder();
   });
   q('#resetModal [data-wbex]','all').forEach(el=>el.onclick=()=>{
+    wbSyncFields();
     const v=el.dataset.wbex, i=v.indexOf('|');
     wbToggleEx(v.slice(i+1), v.slice(0,i));
     renderWorkoutBuilder();
   });
   q('#resetModal [data-wbdrop]','all').forEach(el=>el.onclick=()=>{
+    wbSyncFields();
     d.exercises=d.exercises.filter(e=>e.id!==el.dataset.wbdrop);
     renderWorkoutBuilder();
   });
-  const tm=q('#wbTime'); if(tm) tm.onchange=()=>{ d.time=tm.value||''; renderWorkoutBuilder(); };
-  const tc=q('#wbTimeClear'); if(tc) tc.onclick=()=>{ d.time=''; renderWorkoutBuilder(); };
+  const tm=q('#wbTime'); if(tm) tm.onchange=()=>{ wbSyncFields(); d.time=tm.value||''; renderWorkoutBuilder(); };
+  const tc=q('#wbTimeClear'); if(tc) tc.onclick=()=>{ wbSyncFields(); d.time=''; renderWorkoutBuilder(); };
   const dl=q('#wbDel'); if(dl) dl.onclick=()=>{
-    const s=trainSession(d.date); if(!s) return;
-    if(!confirm(`Delete the session planned for ${apptDateLabel(d.date)}? Its task${s.apptId?' and calendar appointment':''} go with it.`)) return;
-    deleteWorkout(d.date);
-    wbDraft=null; closeReset(); rerender(); toast('Removed');
+    const s=trainSessionAt(d.date, d.sid); if(!s) return;
+    if(!confirm(`Delete "${workoutTaskText(s)}"? Its task${s.apptId?' and calendar appointment':''} go with it.`)) return;
+    deleteSession(d.date, d.sid);
+    wbDraft=null; renderDayBuilder(); rerender(); toast('Removed');
   };
   q('#wbSave').onclick=saveWorkoutBuilder;
 }
 function saveWorkoutBuilder(){
   const d=wbDraft; if(!d) return;
-  // read the title straight off the field: it autosaves into the draft without a
-  // repaint, so a save fired before any other interaction still sees the latest text
-  const ti=q('#wbTitle'); if(ti) d.title=ti.value;
-  if(!S.training.sessions) S.training.sessions={};
-  let s=trainSession(d.date);
+  wbSyncFields();                     // title + every target, read live
+  const day=trainEnsureDay(d.date);
+  day.rest=false;                     // a day with a session on it is not a rest day
+  let s = d.sid ? trainSessionAt(d.date, d.sid) : null;
   if(!s){
-    s={ id:b(), date:d.date, kind:'session', title:'', exercises:[], time:null, taskId:null,
+    s={ id:b(), date:d.date, title:'', exercises:[], time:null, taskId:null,
         apptId:null, done:false, doneAt:null, mins:null, note:'', createdAt:Date.now() };
-    S.training.sessions[d.date]=s;
+    day.sessions.push(s);
   }
-  s.kind=d.kind;
-  // Rest is the absence of a session, so it can't be complete or logged. Its task
-  // and appointment are removed by syncWorkoutLinks below.
-  if(d.kind==='rest'){ s.title=''; s.exercises=[]; s.time=null; s.done=false; s.doneAt=null; s.mins=null; s.note=''; }
-  else{
-    s.title=(d.title||'').trim();
-    s.exercises=d.exercises.map(e=>({id:e.id, name:e.name, cat:e.cat}));
-    s.time=(d.time||'')||null;
-  }
-  syncWorkoutLinks(s);      // task always; appointment only while a time is set
+  s.title=(d.title||'').trim();
+  s.exercises=d.exercises.map(e=>({id:e.id, name:e.name, cat:e.cat, target:(e.target!=null?e.target:null)}));
+  s.time=(d.time||'')||null;
+  syncWorkoutLinks(s);                // task always; appointment only while a time is set
   save();
-  wbDraft=null; closeReset(); rerender();
-  toast(d.kind==='rest' ? 'Rest day' : (s.time?'Planned ✓ · in your calendar':'Planned ✓'));
+  wbDraft=null;
+  renderDayBuilder();                 // back to the day, so a second session is one tap
+  rerender();
+  toast(s.time?'Planned ✓ · in your calendar':'Planned ✓');
 }
 
 /* ============================================================
-   DASHBOARD — today's workout.
+   DASHBOARD — today's sessions, each with its own complete action.
    ============================================================ */
 function renderTodayWorkout(){
   const dk=todayKey();
-  const s=trainSession(dk);
+  const list=trainDaySessions(dk);
   const st=trainWeekStats(trainWeekStart(dk));
   const ev=`<div class="wo-ev ${trainEvidenceClass(st)}">${esc(trainEvidenceLine(st))}</div>`;
 
-  if(!s){
-    return `
-    <div class="card wo-card">
-      <div class="card-h"><h3>⌁ Today's workout</h3><span class="ch-actions">${ev}</span></div>
-      <div class="wo-none">Nothing planned for today — <button class="wo-link" id="woGoPlan">plan your week in Training</button>.</div>
-    </div>`;
-  }
-  if(s.kind==='rest'){
+  if(trainIsRest(dk)){
     return `
     <div class="card wo-card is-rest">
       <div class="card-h"><h3>⌁ Today's workout</h3><span class="ch-actions">${ev}</span></div>
       <div class="wo-rest">Rest day. Nothing to do, nothing owed.</div>
     </div>`;
   }
-  const bits=[s.time?fmtClock(s.time):'', workoutExLabel(s)].filter(Boolean).join(' · ');
-  const logged=[s.mins!=null?fmtDuration(s.mins):'', (s.note||'').trim()].filter(Boolean).join(' · ');
-  return `
-  <div class="card wo-card ${s.done?'is-done':''}">
-    <div class="card-h"><h3>⌁ Today's workout</h3><span class="ch-actions">${ev}</span></div>
-    <div class="wo-main">
+  if(!list.length){
+    return `
+    <div class="card wo-card">
+      <div class="card-h"><h3>⌁ Today's workout</h3><span class="ch-actions">${ev}</span></div>
+      <div class="wo-none">Nothing planned for today — <button class="wo-link" id="woGoPlan">plan your week in Training</button>.</div>
+    </div>`;
+  }
+  const doneCt=list.filter(s=>s.done).length;
+  const item=(s)=>{
+    const bits=[s.time?fmtClock(s.time):'', workoutExLabel(s)].filter(Boolean).join(' · ');
+    const logged=[s.mins!=null?fmtDuration(s.mins):'', (s.note||'').trim()].filter(Boolean).join(' · ');
+    return `
+    <div class="wo-item ${s.done?'is-done':''}">
       <div class="wo-l">
         <div class="wo-title">${esc(workoutTaskText(s))}${bits?`<span class="wo-meta">${esc(bits)}</span>`:''}</div>
-        ${(s.exercises||[]).length?`<div class="wo-ex">${s.exercises.map(e=>`<span class="wo-ex-chip">${esc(e.name)}</span>`).join('')}</div>`:''}
+        ${(s.exercises||[]).length?`<div class="wo-ex">${s.exercises.map(e=>`<span class="wo-ex-chip">${esc(exDisplay(e))}</span>`).join('')}</div>`:''}
         ${s.done&&logged?`<div class="wo-logged">✓ ${esc(logged)}</div>`:''}
       </div>
       <div class="wo-r">
         ${s.done
-          ? `<button class="btn ghost sm" id="woLog">${s.mins!=null||(s.note||'').trim()?'Edit log':'Add a log'}</button>
-             <button class="btn ghost sm" id="woUndo" title="Mark not done">↩ Undo</button>`
-          : `<button class="btn" id="woDone">✓ Complete</button>`}
+          ? `<button class="btn ghost sm" data-wolog="${esc(s.id)}">${(s.mins!=null||(s.note||'').trim())?'Edit log':'Add a log'}</button>
+             <button class="btn ghost sm" data-wotoggle="${esc(s.id)}" title="Mark not done">↩ Undo</button>`
+          : `<button class="btn" data-wotoggle="${esc(s.id)}">✓ Complete</button>`}
       </div>
-    </div>
+    </div>`;
+  };
+  return `
+  <div class="card wo-card ${doneCt===list.length?'is-done':''}">
+    <div class="card-h"><h3>⌁ Today's workout</h3>
+      <span class="ch-actions">${list.length>1?`<span class="sub">${doneCt}/${list.length} done</span>`:''}${ev}</span></div>
+    <div class="wo-list">${list.map(item).join('')}</div>
   </div>`;
 }
 function bindTodayWorkout(){
   const g=q('#woGoPlan'); if(g) g.onclick=()=>go('training');
-  const dn=q('#woDone'); if(dn) dn.onclick=()=>toggleWorkoutViaTask(todayKey());
-  const un=q('#woUndo'); if(un) un.onclick=()=>toggleWorkoutViaTask(todayKey());
-  const lg=q('#woLog'); if(lg) lg.onclick=()=>openWorkoutLog(todayKey());
+  q('[data-wotoggle]','all').forEach(el=>el.onclick=()=>toggleWorkoutViaTask(todayKey(), el.dataset.wotoggle));
+  q('[data-wolog]','all').forEach(el=>el.onclick=()=>openWorkoutLog(todayKey(), el.dataset.wolog));
 }
 
 /* ============================================================
@@ -530,17 +700,18 @@ function closeTrainScreen(){ trainScreenOpen=false; paintTrainScreen(); rerender
 
 /* every week that holds at least one COMPLETED session, most recent first */
 function trainHistoryWeeks(){
-  const ss=trainSessions();
+  const days=trainDays();
   const by={};
-  Object.keys(ss).forEach(dk=>{
-    const s=ss[dk];
-    if(!s || s.kind!=='session' || !s.done) return;
-    const wk=trainWeekStart(dk);
-    (by[wk]=by[wk]||[]).push(s);
+  Object.keys(days).forEach(dk=>{
+    ((days[dk]&&days[dk].sessions)||[]).forEach(s=>{
+      if(!s || !s.done) return;
+      const wk=trainWeekStart(dk);
+      (by[wk]=by[wk]||[]).push(s);
+    });
   });
   return Object.keys(by).sort((a,b)=>b.localeCompare(a)).map(wk=>({
     key:wk,
-    sessions:by[wk].sort((a,b)=>a.date.localeCompare(b.date)),
+    sessions:by[wk].sort((a,b)=>String(a.date).localeCompare(String(b.date))),
   }));
 }
 function trainScreenHTML(){
@@ -588,7 +759,7 @@ function paintTrainScreen(){
 }
 
 /* ============================================================
-   SETTINGS — the exercise library + the weekly floor.
+   SETTINGS — the exercise library (names only).
    Rendered from renderSettings()/bindSettings(), the same way Projects and
    Recurring are, so Settings stays the one place things are maintained.
    ============================================================ */
@@ -617,7 +788,7 @@ function renderTrainingLibrary(){
   return `
   <div class="card" id="trainingLibrary">
     <div class="card-h"><h3>⌁ Training library</h3><span class="sub">names only</span></div>
-    <p class="list-note" style="margin-top:0">Your exercises, by category. These are what the weekly builder offers you in the <b>Training</b> tab. Renaming or deleting one here never changes a session you already did. Your weekly floor is set in <b>Weekly floors</b> above.</p>
+    <p class="list-note" style="margin-top:0">Your exercises, by category — names only. Any target number you type belongs to that one session, so it never follows the exercise around. Renaming or deleting one here never changes a session you already did. Your weekly floor is set in <b>Weekly floors</b> above.</p>
     <div class="train-lib" style="margin-top:14px">${TRAIN_CATS.map(cat).join('')}</div>
   </div>`;
 }

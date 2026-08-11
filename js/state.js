@@ -220,6 +220,64 @@ function seedDefaults(){
       if(s.note==null) s.note='';                     // optional, logged at completion
       if(s.createdAt==null) s.createdAt=Date.now();
     });
+    // ---- Training v2: a DAY HOLDS SESSIONS ----
+    // A day used to be one session; it is now {rest, sessions:[…]} so a lift in the
+    // morning and a run in the evening can both exist, each with its own task and
+    // (if timed) its own appointment. NON-DESTRUCTIVE and gated by _daysV2 so it
+    // runs exactly once and can never double-fold: every existing day becomes a day
+    // with ONE session, and an old rest day becomes a day with rest:true and none.
+    // The legacy tr.sessions map is left in place, dead — the app stops reading it,
+    // but a bad fold stays recoverable from the raw record or an export (the same
+    // approach as the leaks v2 fold). We copy rather than alias, so the legacy map
+    // is a true snapshot and later edits never write back into it.
+    if(!tr.days || typeof tr.days!=='object' || Array.isArray(tr.days)) tr.days={};
+    if(!tr._daysV2){
+      tr._daysV2=true;
+      Object.keys(tr.sessions||{}).forEach(dk=>{
+        const s=tr.sessions[dk];
+        if(!s || typeof s!=='object') return;
+        if(tr.days[dk]) return;                       // never overwrite an existing v2 day
+        if(s.kind==='rest'){ tr.days[dk]={rest:true, sessions:[]}; return; }
+        let copy; try{ copy=JSON.parse(JSON.stringify(s)); }catch(e){ copy=s; }
+        tr.days[dk]={rest:false, sessions:[copy]};
+      });
+    }
+    // backfill every day + every session it holds (repairs a partial record instead
+    // of dropping it, so nothing you planned can vanish because of a bad write)
+    Object.keys(tr.days).forEach(dk=>{
+      const d=tr.days[dk];
+      if(!d || typeof d!=='object' || Array.isArray(d)){ delete tr.days[dk]; return; }
+      if(d.rest==null) d.rest=false;
+      if(!Array.isArray(d.sessions)) d.sessions=[];
+      d.sessions=d.sessions.filter(s=>s && typeof s==='object');
+      d.sessions.forEach(s=>{
+        if(s.id==null) s.id=b();
+        if(s.date==null) s.date=dk;
+        if(s.title==null) s.title='';
+        if(!Array.isArray(s.exercises)) s.exercises=[];
+        s.exercises=s.exercises.filter(e=>e && typeof e==='object');
+        s.exercises.forEach(e=>{
+          if(e.id==null) e.id=b(); if(e.name==null) e.name=''; if(e.cat==null) e.cat='';
+          // ONE optional number per exercise — a bodyweight target like 100 pushups.
+          // Existing exercises get an empty one. Not sets, not weight, not
+          // reps-per-set, and never counted against; it just sits there.
+          if(e.target===undefined) e.target=null;
+          if(e.target!=null && !(+e.target>0)) e.target=null;
+          if(e.target!=null) e.target=+e.target;
+        });
+        if(s.time===undefined) s.time=null;
+        if(s.taskId===undefined) s.taskId=null;
+        if(s.apptId===undefined) s.apptId=null;
+        if(s.done==null) s.done=false;
+        if(s.doneAt===undefined) s.doneAt=null;
+        if(s.mins===undefined) s.mins=null;
+        if(s.note==null) s.note='';
+        if(s.createdAt==null) s.createdAt=Date.now();
+      });
+      // Rest is the whole day and means NO sessions. If a record somehow carries
+      // both, the sessions win — they hold the links; the flag holds nothing.
+      if(d.rest && d.sessions.length) d.rest=false;
+    });
   }
   // ---- CONTENT: pillars + three-stage ideas, each with its footage checklist ----
   // Same additive, idempotent, backfill-everything approach as training above. The

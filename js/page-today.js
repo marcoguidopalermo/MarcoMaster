@@ -22,7 +22,8 @@ let todayOpen={reset:false,wins:false,mood:false};
 /* ============================================================
    DASHBOARD — what you actually touch on a normal day, in the order you
    touch it: remember where you're going, capture, deal with what's on fire,
-   see today, work the shortlist, see what's done.
+   step into one of the three hubs, see today, work the shortlist, see what's
+   done.
 
    Everything else is one tap away rather than scrolled past. Appointments,
    Meetings and Projects are three hub cards into their full-screen overlays
@@ -50,6 +51,8 @@ function renderDashboard(){
     ${renderLeaksCta()}
   </div>
 
+  ${renderDashHubs()}
+
   ${renderTodayStrip()}
 
   ${renderPipeline()}
@@ -63,8 +66,6 @@ function renderDashboard(){
   ${renderCompletedToday()}
 
   ${renderFollowups()}
-
-  ${renderDashHubs()}
   `;
 }
 

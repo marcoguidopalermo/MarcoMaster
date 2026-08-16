@@ -316,7 +316,11 @@ textarea{min-height:70px;line-height:1.55}
 .list-note{font-size:12px;color:var(--txt-faint);font-family:var(--mono);margin-top:14px;line-height:1.6;border-top:1px solid var(--line-soft);padding-top:12px}
 
 /* RESET MODAL */
-.modal-bg{position:fixed;inset:0;background:#000a;backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:300;padding:20px}
+/* z-index 320 puts the modal layer ABOVE the full-screen pickers (.pick-screen,
+   300) and the fire screen (290). That is what lets a project or meeting detail —
+   which is a modal — open on top of its own overlay. Everything that opens a modal
+   from a picker depends on this ordering; Escape's chain in app.js mirrors it. */
+.modal-bg{position:fixed;inset:0;background:#000a;backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:320;padding:20px}
 .modal-bg.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:520px;width:100%;padding:30px 32px;animation:fade .25s}
 /* large modal (meeting quick-view): roomy talking points + a tall, writable notes area */
@@ -1347,6 +1351,7 @@ body.pick-open{overflow:hidden}
 .pick-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px;flex:none}
 .pick-h-txt h2{font-size:22px;font-weight:800;letter-spacing:-0.02em}
 .pick-h-txt p{font-size:12.5px;color:var(--txt-dim);margin-top:3px;max-width:60ch}
+.pick-head .btn{align-self:center;flex:none}
 .pick-close{margin-left:auto;flex:none;width:38px;height:38px;border-radius:9px;border:1px solid var(--line);
   background:var(--panel);color:var(--txt-dim);font-size:20px;line-height:1;cursor:pointer}
 .pick-close:hover{border-color:var(--red);color:var(--red)}
@@ -1372,6 +1377,11 @@ body.pick-open{overflow:hidden}
 .pick-badge.hot{color:var(--red);border-color:var(--red)}
 .pick-group.is-closed .pick-row{opacity:.6}
 .pick-group.is-closed .pick-txt{text-decoration:line-through}
+/* trailing detail on a row — a count, a date, whatever the surface's second fact
+   is. Never grows, never wraps, always last. */
+.pick-meta{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--txt-faint);white-space:nowrap}
+/* the project progress bar, shrunk to ride inside a one-line row */
+.pick-track{flex:none;width:44px;height:5px;display:block}
 
 /* density step-downs, applied by fitPickScreen() before any scrolling is allowed */
 .pick-screen.dense .pick-body{columns:220px;column-gap:12px}
@@ -1384,6 +1394,11 @@ body.pick-open{overflow:hidden}
 .pick-screen.denser .pick-group{margin-bottom:8px}
 .pick-screen.denser .pick-head{margin-bottom:8px}
 .pick-screen.denser .pick-h-txt h2{font-size:18px}
+/* the trailing detail is the first thing to give up room as columns narrow */
+.pick-screen.dense .proj-swatch{width:11px;height:11px}
+.pick-screen.dense .pick-track{width:34px;height:4px}
+.pick-screen.denser .pick-meta,.pick-screen.denser .pick-track{display:none}
+.pick-screen.denser .proj-swatch{width:9px;height:9px}
 
 /* ---------- leak detail inside the overlay ---------- */
 .pick-back{align-self:flex-start;background:none;border:none;cursor:pointer;padding:0 0 10px;
@@ -1462,12 +1477,19 @@ body.pick-open{overflow:hidden}
 .sl-line{font-size:14px;color:var(--txt)}
 .sl-sub{font-size:12.5px;color:var(--txt-dim);margin-bottom:6px}
 
-/* ---------- appointments overlay: view tabs, rows, calendar ---------- */
-.appt-open-h{background:none;border:none;padding:0;cursor:pointer;font-family:var(--sans);
+/* ---------- a dashboard section header that opens its overlay ----------
+   Looks exactly like the <h3> it replaces (same size, weight, tracking, caps) so
+   the card reads unchanged — the › is the only affordance. Shared by
+   Appointments, Projects and Meetings. */
+.sec-open-h{background:none;border:none;padding:0;cursor:pointer;font-family:var(--sans);
   font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--txt)}
-.appt-open-h:hover{color:var(--accent)}
-.appt-open-go{color:var(--txt-faint);font-size:14px}
-.appt-open-h:hover .appt-open-go{color:var(--accent)}
+.sec-open-h:hover{color:var(--accent)}
+.sec-open-go{color:var(--txt-faint);font-size:14px}
+.sec-open-h:hover .sec-open-go{color:var(--accent)}
+/* the quiet "there are more than the summary shows" line under a capped strip */
+.sec-more{display:block;margin-top:10px;background:none;border:none;padding:0;cursor:pointer;
+  font-family:var(--mono);font-size:11px;color:var(--txt-faint);text-align:left}
+.sec-more:hover{color:var(--accent)}
 
 .pick-tabs{display:flex;gap:6px;align-self:center;flex-wrap:wrap}
 .pick-tab{padding:6px 13px;border:1px solid var(--line);background:var(--bg);color:var(--txt-dim);

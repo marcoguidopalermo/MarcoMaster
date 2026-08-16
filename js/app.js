@@ -61,15 +61,21 @@ function startApp(){
   q('#resetBtn').onclick=openReset;
   const tb=q('#themeBtn'); if(tb) tb.onclick=toggleTheme;
   q('#resetModal').onclick=(e)=>{ if(e.target.id==='resetModal') closeReset(); };
-  // Escape closes the topmost surface: a full-screen picker first (they sit above
-  // the modal layer), otherwise the modal.
+  // Escape closes the topmost surface. The modal layer paints ABOVE the
+  // full-screen pickers (a project/meeting detail opens over its overlay — see
+  // .modal-bg's z-index), so a VISIBLE modal is always topmost and goes first;
+  // otherwise the frontmost picker; otherwise the modal layer as the fallback.
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape') return;
+    const m=q('#resetModal');
+    if(m && m.classList.contains('show')){ closeReset(); return; }
     if(typeof firePickerOpen!=='undefined' && firePickerOpen){ closeFirePicker(); return; }
     if(typeof leakScreenOpen!=='undefined' && leakScreenOpen){ closeLeakScreen(); return; }
     if(typeof taskScreenOpen!=='undefined' && taskScreenOpen){ closeTaskScreen(); return; }
     if(typeof apptScreenOpen!=='undefined' && apptScreenOpen){ closeApptScreen(); return; }
     if(typeof trainScreenOpen!=='undefined' && trainScreenOpen){ closeTrainScreen(); return; }
+    if(typeof projScreenOpen!=='undefined' && projScreenOpen){ closeProjScreen(); return; }
+    if(typeof mtgScreenOpen!=='undefined' && mtgScreenOpen){ closeMtgScreen(); return; }
     closeReset();
   });
   go('dashboard');

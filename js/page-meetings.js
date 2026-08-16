@@ -108,13 +108,17 @@ function bindMeetings(){
   const add=q('#addMeeting'); if(add) add.onclick=()=>{ if(createMeeting(newMeetingName)){ newMeetingName=''; rerender(); } };
   if(ni) ni.onkeydown=e=>{ if(e.key==='Enter') q('#addMeeting').click(); };
 }
-/* create a meeting from a name; returns true if created. Shared by the Meetings
-   tab add-input and the Dashboard inline "+" so the logic lives in one place. */
+/* create a meeting from a name; returns the new meeting (falsy if not created).
+   Shared by the Meetings tab add-input, the Dashboard inline "+" and the overlay,
+   so the logic lives in one place. Callers that only need "did it work?" still
+   read it as a boolean; the ones that open the new meeting's detail straight away
+   use the returned object. */
 function createMeeting(name){
-  const v=(name||'').trim(); if(!v) return false;
+  const v=(name||'').trim(); if(!v) return null;
   if(!S.meetings) S.meetings=[];
-  S.meetings.push({id:b(), name:v, points:[], notes:'', createdAt:Date.now(), nextMeeting:null, apptId:null, blockId:null});
-  save(); return true;
+  const m={id:b(), name:v, points:[], notes:'', createdAt:Date.now(), nextMeeting:null, apptId:null, blockId:null};
+  S.meetings.push(m);
+  save(); return m;
 }
 
 /* add a talking point to a meeting. The single writer for m.points — shared by the
@@ -134,27 +138,139 @@ function addMeetingPoint(mid){
 }
 
 /* ============================================================
-   DASHBOARD — at-a-glance Meetings strip, mirroring Active Projects.
-   Each meeting is a compact card (name + talking-point progress); tap
-   opens a modal with the checkable points + notes. Full management
-   stays on the Meetings tab. Reuses the project-card-mini visual +
-   the project-modal pattern, on the meetings data.
+   DASHBOARD — a SHORT Meetings summary, mirroring Active Projects.
+   Only what's live shows here (see mtgLive): something scheduled, or talking
+   points waiting to be raised. Everything else — and the full survey — lives in
+   the overlay, which the section header opens. Each card is still the same
+   .proj-card-mini, and still opens the same modal.
    ============================================================ */
+const MTG_DASH_MAX=4;   // beyond this the strip would scroll again — the overlay's job
+
+function mtgOpenPoints(m){ return (m.points||[]).filter(p=>!p.done).length; }
+/* live = scheduled, or points waiting. A meeting with neither is quiet: nothing
+   is owed to it today, so it steps aside into the overlay. */
+function mtgLive(m){ return !!(m.nextMeeting && m.nextMeeting.date) || mtgOpenPoints(m)>0; }
+/* soonest first, then most points waiting — the same "what's most pressing"
+   ordering the overlay groups express */
+function mtgDashSort(a,b){
+  const da=(a.nextMeeting&&a.nextMeeting.date)||'', db=(b.nextMeeting&&b.nextMeeting.date)||'';
+  if(da&&db&&da!==db) return da.localeCompare(db);
+  if(da!==db) return da?-1:1;
+  return mtgOpenPoints(b)-mtgOpenPoints(a);
+}
+
+/* the compact card — unchanged markup, pulled out of the summary so the filtering
+   above it stays readable */
+function mtgMiniCardHTML(m){
+  const s=meetingStats(m); const pct=s.total?Math.round(s.done/s.total*100):0;
+  return `
+    <button class="proj-card-mini" data-mtgopen="${m.id}">
+      <span class="pcm-top"><span class="proj-swatch" style="background:var(--accent)"></span><span class="pcm-name">${esc(m.name)}</span></span>
+      <div class="proj-track"><div class="proj-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      <span class="pcm-count">${s.done}/${s.total} covered</span>
+      ${m.nextMeeting?`<span class="pcm-next">${meetingNextLabel(m)} <span class="pcm-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></span>`:''}
+    </button>`;
+}
 function renderDashMeetings(){
   const meetings=S.meetings||[];
+  const live=meetings.filter(mtgLive).sort(mtgDashSort);
+  const shown=live.slice(0, MTG_DASH_MAX);
+  const more=meetings.length-shown.length;
+  const sched=live.filter(m=>m.nextMeeting&&m.nextMeeting.date).length;
+  const waiting=live.reduce((n,m)=>n+mtgOpenPoints(m),0);
   return `
   <div class="card dash-projects">
-    <div class="card-h"><h3>Meetings</h3><span class="ch-actions"><span class="sub">${meetings.length}</span><button class="dash-add-btn" id="dashAddMtg" title="Add a meeting">+</button></span></div>
-    ${meetings.length?`<div class="proj-strip">
-      ${meetings.map(m=>{ const s=meetingStats(m); const pct=s.total?Math.round(s.done/s.total*100):0; return `
-        <button class="proj-card-mini" data-mtgopen="${m.id}">
-          <span class="pcm-top"><span class="proj-swatch" style="background:var(--accent)"></span><span class="pcm-name">${esc(m.name)}</span></span>
-          <div class="proj-track"><div class="proj-fill" style="width:${pct}%;background:var(--accent)"></div></div>
-          <span class="pcm-count">${s.done}/${s.total} covered</span>
-          ${m.nextMeeting?`<span class="pcm-next">${meetingNextLabel(m)} <span class="pcm-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></span>`:''}
-        </button>`; }).join('')}
-    </div>`:'<div class="empty sm">No meetings — add one in the Meetings tab.</div>'}
+    <div class="card-h">
+      <button class="sec-open-h" id="mtgOpenAll" title="Open the full meetings view">Meetings <span class="sec-open-go">›</span></button>
+      <span class="ch-actions">
+        <span class="sub">${sched?sched+' scheduled · ':''}${waiting?waiting+' point'+(waiting===1?'':'s')+' waiting':meetings.length+' total'}</span>
+        <button class="dash-add-btn" id="dashAddMtg" title="Add a meeting">+</button>
+      </span>
+    </div>
+    ${shown.length?`<div class="proj-strip">${shown.map(mtgMiniCardHTML).join('')}</div>`:`
+      <div class="empty sm">${meetings.length
+        ? 'Nothing scheduled and no points waiting.'
+        : 'No meetings yet — add one with +.'}</div>`}
+    ${more>0?`<button class="sec-more" id="mtgSeeAll">See all ${meetings.length} meetings →</button>`:''}
   </div>`;
+}
+
+/* ============================================================
+   THE MEETINGS OVERLAY — every meeting visible at once.
+   Same .pick-screen component and same reasoning as the projects overlay: one
+   host OUTSIDE .app (#mtgScreen), shared header / group / row markup, and
+   fitPickScreen()'s density step-down instead of a scrollbar. A row opens the
+   EXISTING meeting modal rather than reimplementing the detail.
+   ============================================================ */
+let mtgScreenOpen=false;
+function openMtgScreen(){ mtgScreenOpen=true; paintMtgScreen(); }
+function closeMtgScreen(){ mtgScreenOpen=false; paintMtgScreen(); rerender(); }
+
+/* Scheduled / waiting / quiet — the same three states the dashboard filters on,
+   made explicit. Scheduled sorts by date so the next one you'll actually walk
+   into is first. */
+function mtgGroups(){
+  const all=S.meetings||[];
+  const sched=all.filter(m=>m.nextMeeting&&m.nextMeeting.date)
+                 .sort((a,b)=>(a.nextMeeting.date+ (a.nextMeeting.time||'')).localeCompare(b.nextMeeting.date+(b.nextMeeting.time||'')));
+  const rest=all.filter(m=>!(m.nextMeeting&&m.nextMeeting.date));
+  return [
+    {title:'Scheduled',      color:'var(--accent)',  cls:'', items:sched},
+    {title:'Points waiting', color:'var(--amber)',   cls:'', items:rest.filter(m=>mtgOpenPoints(m)>0)},
+    {title:'Quiet',          color:'var(--txt-dim)', cls:'', items:rest.filter(m=>mtgOpenPoints(m)===0)},
+  ].filter(g=>g.items.length);
+}
+function mtgRowHTML(m){
+  const s=meetingStats(m), open=mtgOpenPoints(m);
+  const when=(m.nextMeeting&&m.nextMeeting.date)
+    ? apptDateLabel(m.nextMeeting.date)+' · '+fmtClock(m.nextMeeting.time)
+    : (s.total?`${s.done}/${s.total} covered`:'no points');
+  return `<button class="pick-row" data-mtgrow="${m.id}" title="Open ${esc(m.name)}">
+    <span class="proj-swatch" style="background:var(--accent)"></span>
+    <span class="pick-txt">${esc(m.name)}</span>
+    ${open?`<span class="pick-badge warm">${open}</span>`:''}
+    <span class="pick-meta">${esc(when)}</span>
+  </button>`;
+}
+function mtgScreenHTML(){
+  const groups=mtgGroups();
+  const total=groups.reduce((n,g)=>n+g.items.length,0);
+  const waiting=(S.meetings||[]).reduce((n,m)=>n+mtgOpenPoints(m),0);
+  const group=(g)=>`<section class="pick-group ${g.cls}" style="--gc:${g.color}">
+      <h3 class="pick-g-title">${esc(g.title)}<span class="pick-g-ct">${g.items.length}</span></h3>
+      <div class="pick-rows">${g.items.map(mtgRowHTML).join('')}</div>
+    </section>`;
+  return `<div class="pick-inner">
+    <header class="pick-head">
+      <div class="pick-h-txt"><h2>◇ Meetings</h2>
+        <p>Every person and recurring meeting at once. Open one to check off talking points — the dashboard keeps only what's live.</p></div>
+      <span class="pick-h-ct">${waiting} point${waiting===1?'':'s'} waiting</span>
+      <button class="btn ghost sm" id="mtgScreenAdd">+ New meeting</button>
+      <button class="pick-close" id="mtgScreenClose" title="Close">×</button>
+    </header>
+    ${total
+      ? `<div class="pick-body">${groups.map(group).join('')}</div>`
+      : `<div class="empty">No meetings yet. Add the people you meet with regularly.</div>`}
+  </div>`;
+}
+function paintMtgScreen(){
+  const el=q('#mtgScreen'); if(!el) return;
+  if(!mtgScreenOpen){ el.classList.remove('show'); el.innerHTML=''; document.body.classList.remove('pick-open'); return; }
+  el.innerHTML=mtgScreenHTML();
+  el.classList.add('show');
+  document.body.classList.add('pick-open');
+  bindMtgScreen();
+  fitPickScreen(el);     // re-fit: rows move between groups as points get covered
+}
+function bindMtgScreen(){
+  const cl=q('#mtgScreenClose'); if(cl) cl.onclick=closeMtgScreen;
+  // A row opens the existing meeting modal, which paints ABOVE the overlay and
+  // already ends every mutation in rerender(); closeReset() repaints this overlay.
+  q('#mtgScreen [data-mtgrow]','all').forEach(el=>el.onclick=()=>openMeetingModal(el.dataset.mtgrow));
+  const ad=q('#mtgScreenAdd'); if(ad) ad.onclick=()=>{
+    const v=prompt('New meeting / person'); const m=v&&createMeeting(v);
+    if(m){ paintMtgScreen(); rerender(); openMeetingModal(m.id); }   // straight into its points
+  };
 }
 
 /* ---------- meeting quick-view modal (mirrors the project task modal) ---------- */

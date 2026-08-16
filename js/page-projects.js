@@ -83,14 +83,18 @@ function bindProjects(){
   const add=q('#addProj'); if(add) add.onclick=()=>{ if(createProject(newProjName)){ newProjName=''; rerender(); } };
   const ni=q('#newProj'); if(ni) ni.onkeydown=e=>{ if(e.key==='Enter') q('#addProj').click(); };
 }
-/* create a project from a name; returns true if created. Shared by the Settings
-   tab add-input and the Dashboard inline "+" so the logic lives in one place. */
+/* create a project from a name; returns the new project (falsy if not created).
+   Shared by the Settings tab add-input, the Dashboard inline "+" and the overlay,
+   so the logic lives in one place. Callers that only need "did it work?" still
+   read it as a boolean; the ones that want to open the new project's detail
+   straight away use the returned object. */
 function createProject(name){
-  const v=(name||'').trim(); if(!v) return false;
+  const v=(name||'').trim(); if(!v) return null;
   if(!S.projects) S.projects=[];
   const color=PROJ_COLORS[(S.projects||[]).length % PROJ_COLORS.length];
-  S.projects.push({id:b(),name:v,color,done:false,tasks:[]});
-  save(); return true;
+  const p={id:b(),name:v,color,done:false,tasks:[]};
+  S.projects.push(p);
+  save(); return p;
 }
 /* remove everything linked to a project across all days, so deleting it leaves
    no orphans (mirrors removeMeetingLinks for meetings):
@@ -118,4 +122,91 @@ function deleteProject(p){
   removeProjectLinks(p);
   S.projects=(S.projects||[]).filter(x=>x.id!==p.id);
   save();
+}
+
+/* ============================================================
+   THE PROJECTS OVERLAY — every project visible at once.
+   The same .pick-screen component the fire picker, leaks, all-tasks and
+   appointments already use: one host OUTSIDE .app (#projScreen), the shared
+   header / group / row markup, and fitPickScreen()'s density step-down instead
+   of a scrollbar. It replaces the dashboard's horizontally-scrolling strip as
+   the way in — it does NOT reimplement the detail: a row opens the EXISTING
+   project modal, so the detail, its handlers and its data path are unchanged.
+   ============================================================ */
+let projScreenOpen=false;
+function openProjScreen(){ projScreenOpen=true; paintProjScreen(); }
+function closeProjScreen(){ projScreenOpen=false; paintProjScreen(); rerender(); }
+
+function projOpenCount(p){ return (p.tasks||[]).filter(t=>!t.done).length; }
+/* "Live and relevant" — what the DASHBOARD summary shows. Open tasks mean work is
+   waiting; a project with NO tasks yet is equally live, because it's waiting on a
+   first task (this is also what keeps a just-created project on the dashboard
+   instead of vanishing the moment you add it). A project whose tasks are all
+   ticked is momentarily clear, so it steps aside into the overlay. */
+function projLive(p){ return !p.done && (projOpenCount(p)>0 || !(p.tasks||[]).length); }
+
+/* Active / Finished is the grouping the Projects tab has always used; the overlay
+   just splits Active by whether anything is actually open, which is the one
+   distinction a survey surface needs to be worth opening. */
+function projGroups(){
+  const all=S.projects||[];
+  const active=all.filter(p=>!p.done);
+  return [
+    {title:'In progress', color:'var(--accent)',  cls:'', items:active.filter(p=>projOpenCount(p)>0)},
+    {title:'Nothing open',color:'var(--txt-dim)', cls:'', items:active.filter(p=>projOpenCount(p)===0)},
+    {title:'Finished',    color:'var(--line)',    cls:'is-closed', items:all.filter(p=>p.done)},
+  ].filter(g=>g.items.length);
+}
+/* one compact single-line row — the shared .pick-row base, plus the project's own
+   swatch and progress track so it still reads as a project at a glance */
+function projRowHTML(p){
+  const s=projectStats(p), open=projOpenCount(p);
+  return `<button class="pick-row" data-projrow="${p.id}" title="Open ${esc(p.name)}">
+    <span class="proj-swatch" style="background:${p.color}"></span>
+    <span class="pick-txt">${esc(p.name)}</span>
+    ${open?`<span class="pick-badge">${open}</span>`:''}
+    <span class="proj-track pick-track"><span class="proj-fill" style="width:${s.pct}%;background:${p.color}"></span></span>
+    <span class="pick-meta">${s.done}/${s.total}</span>
+  </button>`;
+}
+function projScreenHTML(){
+  const groups=projGroups();
+  const total=groups.reduce((n,g)=>n+g.items.length,0);
+  const openCt=(S.projects||[]).filter(p=>!p.done).reduce((n,p)=>n+projOpenCount(p),0);
+  const group=(g)=>`<section class="pick-group ${g.cls}" style="--gc:${g.color}">
+      <h3 class="pick-g-title">${esc(g.title)}<span class="pick-g-ct">${g.items.length}</span></h3>
+      <div class="pick-rows">${g.items.map(projRowHTML).join('')}</div>
+    </section>`;
+  return `<div class="pick-inner">
+    <header class="pick-head">
+      <div class="pick-h-txt"><h2>◈ Projects</h2>
+        <p>Everything on the go, in one place. Open one to work its task list — the dashboard keeps only what's live.</p></div>
+      <span class="pick-h-ct">${openCt} open task${openCt===1?'':'s'}</span>
+      <button class="btn ghost sm" id="projScreenAdd">+ New project</button>
+      <button class="pick-close" id="projScreenClose" title="Close">×</button>
+    </header>
+    ${total
+      ? `<div class="pick-body">${groups.map(group).join('')}</div>`
+      : `<div class="empty">No projects yet. Add one to start tracking something on the go.</div>`}
+  </div>`;
+}
+function paintProjScreen(){
+  const el=q('#projScreen'); if(!el) return;
+  if(!projScreenOpen){ el.classList.remove('show'); el.innerHTML=''; document.body.classList.remove('pick-open'); return; }
+  el.innerHTML=projScreenHTML();
+  el.classList.add('show');
+  document.body.classList.add('pick-open');
+  bindProjScreen();
+  fitPickScreen(el);     // re-fit: rows move between groups as tasks get ticked
+}
+function bindProjScreen(){
+  const cl=q('#projScreenClose'); if(cl) cl.onclick=closeProjScreen;
+  // A row opens the existing project modal. That modal paints ABOVE the overlay
+  // (see .modal-bg's z-index) and already ends every mutation in rerender(), so
+  // the dashboard behind both is current; closeReset() repaints this overlay.
+  q('#projScreen [data-projrow]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projrow));
+  const ad=q('#projScreenAdd'); if(ad) ad.onclick=()=>{
+    const v=prompt('New project name'); const p=v&&createProject(v);
+    if(p){ paintProjScreen(); rerender(); openProjectModal(p.id); }   // straight into its task list
+  };
 }

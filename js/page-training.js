@@ -270,18 +270,22 @@ function setWorkoutDone(s, done, opts){
   save(false);
   if(done && opts.log!==false && !trainOverlayOpen()) openWorkoutLog(s.date, s.id);
 }
-/* Is a full-screen surface currently up? .pick-screen and .fire-screen share the
-   modal's z-index band but sit LATER in the DOM, so they paint over it — a log
-   prompt opened from the "see all tasks" overlay would be invisible behind it.
-   In that case completing just completes; the log stays one tap away on the
-   dashboard card ("Add a log"), which is the whole point of it being optional. */
+/* Is a full-screen surface currently up? A survey surface is something you're
+   reading, so an optional log prompt must not interrupt it — completing just
+   completes, and the log stays one tap away on the dashboard card ("Add a log"),
+   which is the whole point of it being optional. (This started as a visibility
+   workaround: .pick-screen used to paint over the modal layer. It no longer does
+   — .modal-bg now sits above it so a detail can open from an overlay — but not
+   interrupting a survey is the better behaviour on its own terms.) */
 function trainOverlayOpen(){
   return (typeof taskScreenOpen!=='undefined'  && taskScreenOpen)
       || (typeof leakScreenOpen!=='undefined'  && leakScreenOpen)
       || (typeof apptScreenOpen!=='undefined'  && apptScreenOpen)
       || (typeof firePickerOpen!=='undefined'  && firePickerOpen)
       || (typeof fireScreenOpen!=='undefined'  && fireScreenOpen)
-      || (typeof trainScreenOpen!=='undefined' && trainScreenOpen);
+      || (typeof trainScreenOpen!=='undefined' && trainScreenOpen)
+      || (typeof projScreenOpen!=='undefined'  && projScreenOpen)
+      || (typeof mtgScreenOpen!=='undefined'   && mtgScreenOpen);
 }
 /* The other direction: a timed session also shows in the ☀ Today strip and the
    calendar as its appointment, and those surfaces have their own ✓. Ticking there

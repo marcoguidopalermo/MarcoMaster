@@ -132,7 +132,7 @@ function renderAppointments(){
   return `
   <div class="card appt-card">
     <div class="card-h">
-      <button class="appt-open-h" id="apptOpen" title="Open the full appointments view">📅 Appointments <span class="appt-open-go">›</span></button>
+      <button class="sec-open-h" id="apptOpen" title="Open the full appointments view">📅 Appointments <span class="sec-open-go">›</span></button>
       <span class="ch-actions">
         <span class="sub">${overdue.length?overdue.length+' overdue · ':''}${today.length?today.length+' today · ':''}${upcoming.length} upcoming</span>
         ${archived.length?`<button class="btn ghost sm" id="apptArchive">Archive (${archived.length})</button>`:''}

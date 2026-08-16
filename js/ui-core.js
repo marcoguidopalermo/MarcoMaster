@@ -248,5 +248,14 @@ function openReset(){
     toast('Back in. One step at a time.');
   };
 }
-function closeReset(){ q('#resetModal').classList.remove('show'); }
+/* The single exit from the modal layer. The projects and meetings overlays open
+   their detail as a modal ON TOP of themselves, so this is also the moment to
+   refresh whichever of them is still open underneath — the modal's own handlers
+   already end in rerender(), which covers the dashboard but not a .pick-screen
+   (those live outside #main by design). Both repaints are no-ops when closed. */
+function closeReset(){
+  q('#resetModal').classList.remove('show');
+  if(typeof projScreenOpen!=='undefined' && projScreenOpen) paintProjScreen();
+  if(typeof mtgScreenOpen!=='undefined' && mtgScreenOpen) paintMtgScreen();
+}
 

@@ -862,21 +862,43 @@ function projTaskState(pid, t){
   if(e && e.t.schedDate!=null) return {state:'scheduled', tb:e.t};
   return {state:'unscheduled'};
 }
-/* Active Projects — horizontal strip of cards (name + progress + count).
-   Tap a card → openProjectModal to manage that project's task list. */
+/* Active Projects — a SHORT summary, not the full list. Only projects that are
+   live (projLive: open tasks, or no tasks yet) appear, capped so the strip can
+   never become the horizontal scroller it used to be. The header opens the
+   projects overlay, which holds everything. Tap a card → openProjectModal, same
+   as before. */
+const PROJ_DASH_MAX=4;   // beyond this the strip would scroll again — the overlay's job
+
+function projMiniCardHTML(p){
+  const s=projectStats(p);
+  return `
+    <button class="proj-card-mini" data-projopen="${p.id}">
+      <span class="pcm-top"><span class="proj-swatch" style="background:${p.color}"></span><span class="pcm-name">${esc(p.name)}</span><span class="pcm-del" data-pdeldash="${p.id}" title="Delete project">×</span></span>
+      <div class="proj-track"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
+      <span class="pcm-count">${s.done}/${s.total} done</span>
+    </button>`;
+}
 function renderActiveProjects(){
-  const active=(S.projects||[]).filter(p=>!p.done);
+  const all=(S.projects||[]).filter(p=>!p.done);
+  // most work waiting first, so the cap keeps the ones that actually need you
+  const live=all.filter(projLive).sort((a,b)=>projOpenCount(b)-projOpenCount(a));
+  const shown=live.slice(0, PROJ_DASH_MAX);
+  const more=(S.projects||[]).length-shown.length;
+  const openCt=all.reduce((n,p)=>n+projOpenCount(p),0);
   return `
   <div class="card dash-projects">
-    <div class="card-h"><h3>Active Projects</h3><span class="ch-actions"><span class="sub">${active.length}</span><button class="dash-add-btn" id="dashAddProj" title="Add a project">+</button></span></div>
-    ${active.length?`<div class="proj-strip">
-      ${active.map(p=>{ const s=projectStats(p); return `
-        <button class="proj-card-mini" data-projopen="${p.id}">
-          <span class="pcm-top"><span class="proj-swatch" style="background:${p.color}"></span><span class="pcm-name">${esc(p.name)}</span><span class="pcm-del" data-pdeldash="${p.id}" title="Delete project">×</span></span>
-          <div class="proj-track"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
-          <span class="pcm-count">${s.done}/${s.total} done</span>
-        </button>`; }).join('')}
-    </div>`:'<div class="empty sm">No active projects — add one in Settings.</div>'}
+    <div class="card-h">
+      <button class="sec-open-h" id="projOpenAll" title="Open the full projects view">Projects <span class="sec-open-go">›</span></button>
+      <span class="ch-actions">
+        <span class="sub">${openCt?`${openCt} open task${openCt===1?'':'s'} · `:''}${all.length} active</span>
+        <button class="dash-add-btn" id="dashAddProj" title="Add a project">+</button>
+      </span>
+    </div>
+    ${shown.length?`<div class="proj-strip">${shown.map(projMiniCardHTML).join('')}</div>`:`
+      <div class="empty sm">${all.length
+        ? 'Nothing open on any project.'
+        : 'No active projects — add one with +.'}</div>`}
+    ${more>0?`<button class="sec-more" id="projSeeAll">See all ${(S.projects||[]).length} projects →</button>`:''}
   </div>`;
 }
 
@@ -1056,9 +1078,18 @@ function bindDashboard(){
   // Cancel a scheduled meeting straight from the dashboard strip (don't open the modal)
   q('[data-mcancel]','all').forEach(el=>el.onclick=e=>{ e.stopPropagation(); if(cancelMeetingSchedule(el.dataset.mcancel)) rerender(); });
 
-  // Dashboard inline add: create a project / meeting right here (reuses the tab logic)
-  const dap=q('#dashAddProj'); if(dap) dap.onclick=()=>{ const v=prompt('New project name'); if(v && createProject(v)) rerender(); };
-  const dam=q('#dashAddMtg'); if(dam) dam.onclick=()=>{ const v=prompt('New meeting / person'); if(v && createMeeting(v)) rerender(); };
+  // Section headers (and the "see all" line under a capped strip) open the full
+  // overlay — the same move the Appointments header makes.
+  const poa=q('#projOpenAll'); if(poa) poa.onclick=openProjScreen;
+  const psa=q('#projSeeAll');  if(psa) psa.onclick=openProjScreen;
+  const moa=q('#mtgOpenAll');  if(moa) moa.onclick=openMtgScreen;
+  const msa=q('#mtgSeeAll');   if(msa) msa.onclick=openMtgScreen;
+
+  // Dashboard inline add: create a project / meeting right here (reuses the tab
+  // logic), then open its detail — a brand-new one has nothing in it yet, so it
+  // would otherwise not qualify as "live" and wouldn't appear on the strip.
+  const dap=q('#dashAddProj'); if(dap) dap.onclick=()=>{ const v=prompt('New project name'); const p=v&&createProject(v); if(p){ rerender(); openProjectModal(p.id); } };
+  const dam=q('#dashAddMtg'); if(dam) dam.onclick=()=>{ const v=prompt('New meeting / person'); const m=v&&createMeeting(v); if(m){ rerender(); openMeetingModal(m.id); } };
 
   // Time Blocker expand/collapse (day view ↔ full plan)
   const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };

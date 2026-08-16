@@ -114,15 +114,19 @@ function fitPickScreen(el){
 /* ============================================================
    ROUTER
    ============================================================ */
-/* Two-tab app. Other render functions (projects, recurring, insights, board,
-   parking, rules, scorecard, shutdown, settings, followups, plan) still exist in
-   their files and are REUSED inside these two tabs — they just no longer have
-   their own routes/nav. */
+/* The routed pages. Others (recurring, insights, board, parking, rules,
+   scorecard, shutdown, followups) still exist in their files and are REUSED
+   inside these — they just don't have their own routes/nav.
+   goals and plan are routes because the Dashboard stopped carrying them: the
+   week/month notes and the Time Blocker are both real pages you visit
+   deliberately, not things to scroll past every morning. */
 const PAGES={
   dashboard:{render:renderDashboard,bind:bindDashboard},
   training:{render:renderTraining,bind:bindTraining},
   content:{render:renderContent,bind:bindContent},
   fsn:{render:renderFSN,bind:bindFSN},
+  goals:{render:renderGoals,bind:bindGoals},
+  plan:{render:renderPlan,bind:bindPlan},
   journal:{render:renderJournal,bind:bindJournal},
   meetings:{render:renderMeetings,bind:bindMeetings},
   settings:{render:renderSettings,bind:bindSettings},
@@ -151,12 +155,14 @@ function rerender(){
   window.scrollTo(0,scroll);
 }
 
-/* two tabs: Dashboard (execution) + Journal (reflection) */
+/* Dashboard (today's execution) first, then the surfaces you visit on purpose. */
 const NAV_DAILY=[
   ['dashboard','◧','Dashboard'],
   ['training','⌁','Training'],
   ['content','✎','Content'],
   ['fsn','☼','Future Self'],
+  ['goals','◎','Goals'],
+  ['plan','▦','Time Blocker'],
   ['journal','✦','Journal'],
   ['settings','⚙','Settings'],
 ];

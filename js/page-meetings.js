@@ -137,62 +137,24 @@ function addMeetingPoint(mid){
   meetingDraftText[mid]=''; rerender();
 }
 
-/* ============================================================
-   DASHBOARD — a SHORT Meetings summary, mirroring Active Projects.
-   Only what's live shows here (see mtgLive): something scheduled, or talking
-   points waiting to be raised. Everything else — and the full survey — lives in
-   the overlay, which the section header opens. Each card is still the same
-   .proj-card-mini, and still opens the same modal.
-   ============================================================ */
-const MTG_DASH_MAX=4;   // beyond this the strip would scroll again — the overlay's job
-
+/* ---------- what the dashboard's Meetings hub card shows ----------
+   The dashboard no longer previews meetings at all — it has one big card into the
+   overlay below, and this is the single live number on it: how many people have
+   something waiting to be raised. Captioned with what's actually booked. */
 function mtgOpenPoints(m){ return (m.points||[]).filter(p=>!p.done).length; }
 /* live = scheduled, or points waiting. A meeting with neither is quiet: nothing
-   is owed to it today, so it steps aside into the overlay. */
+   is owed to it today. Used by the overlay's grouping too. */
 function mtgLive(m){ return !!(m.nextMeeting && m.nextMeeting.date) || mtgOpenPoints(m)>0; }
-/* soonest first, then most points waiting — the same "what's most pressing"
-   ordering the overlay groups express */
-function mtgDashSort(a,b){
-  const da=(a.nextMeeting&&a.nextMeeting.date)||'', db=(b.nextMeeting&&b.nextMeeting.date)||'';
-  if(da&&db&&da!==db) return da.localeCompare(db);
-  if(da!==db) return da?-1:1;
-  return mtgOpenPoints(b)-mtgOpenPoints(a);
-}
 
-/* the compact card — unchanged markup, pulled out of the summary so the filtering
-   above it stays readable */
-function mtgMiniCardHTML(m){
-  const s=meetingStats(m); const pct=s.total?Math.round(s.done/s.total*100):0;
-  return `
-    <button class="proj-card-mini" data-mtgopen="${m.id}">
-      <span class="pcm-top"><span class="proj-swatch" style="background:var(--accent)"></span><span class="pcm-name">${esc(m.name)}</span></span>
-      <div class="proj-track"><div class="proj-fill" style="width:${pct}%;background:var(--accent)"></div></div>
-      <span class="pcm-count">${s.done}/${s.total} covered</span>
-      ${m.nextMeeting?`<span class="pcm-next">${meetingNextLabel(m)} <span class="pcm-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></span>`:''}
-    </button>`;
-}
-function renderDashMeetings(){
-  const meetings=S.meetings||[];
-  const live=meetings.filter(mtgLive).sort(mtgDashSort);
-  const shown=live.slice(0, MTG_DASH_MAX);
-  const more=meetings.length-shown.length;
-  const sched=live.filter(m=>m.nextMeeting&&m.nextMeeting.date).length;
-  const waiting=live.reduce((n,m)=>n+mtgOpenPoints(m),0);
-  return `
-  <div class="card dash-projects">
-    <div class="card-h">
-      <button class="sec-open-h" id="mtgOpenAll" title="Open the full meetings view">Meetings <span class="sec-open-go">›</span></button>
-      <span class="ch-actions">
-        <span class="sub">${sched?sched+' scheduled · ':''}${waiting?waiting+' point'+(waiting===1?'':'s')+' waiting':meetings.length+' total'}</span>
-        <button class="dash-add-btn" id="dashAddMtg" title="Add a meeting">+</button>
-      </span>
-    </div>
-    ${shown.length?`<div class="proj-strip">${shown.map(mtgMiniCardHTML).join('')}</div>`:`
-      <div class="empty sm">${meetings.length
-        ? 'Nothing scheduled and no points waiting.'
-        : 'No meetings yet — add one with +.'}</div>`}
-    ${more>0?`<button class="sec-more" id="mtgSeeAll">See all ${meetings.length} meetings →</button>`:''}
-  </div>`;
+function mtgHubStat(){
+  const all=S.meetings||[];
+  const waiting=all.filter(m=>mtgOpenPoints(m)>0);
+  const sched=all.filter(m=>m.nextMeeting&&m.nextMeeting.date).length;
+  return {
+    id:'hubMtgs', ic:'◇', name:'Meetings', color:'var(--amber)',
+    n: waiting.length,
+    sub: sched ? `${sched} scheduled` : (waiting.length ? 'with points waiting' : (all.length?'nothing waiting':'none yet')),
+  };
 }
 
 /* ============================================================

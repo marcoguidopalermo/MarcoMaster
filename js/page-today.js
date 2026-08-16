@@ -20,12 +20,16 @@ let ciDraft={energy:'Medium',mood:''};
 let todayOpen={reset:false,wins:false,mood:false};
 
 /* ============================================================
-   DASHBOARD — execution. Compact, card-based, fits one screen.
-   Pipeline on top, then a grid of compact (scrollable) cards, a
-   horizontal project strip, and a collapsible day-view Time Blocker.
-   ============================================================ */
-let dashPlanExpanded=false;   // Time Blocker: false = compact day view, true = full plan
+   DASHBOARD — what you actually touch on a normal day, in the order you
+   touch it: remember where you're going, capture, deal with what's on fire,
+   see today, work the shortlist, see what's done.
 
+   Everything else is one tap away rather than scrolled past. Appointments,
+   Meetings and Projects are three hub cards into their full-screen overlays
+   (see renderDashHubs); the Time Blocker and the week/month goals moved to
+   their own nav pages; Things to think about moved under Journal. Nothing was
+   dropped — this page just stopped being the index of the whole app.
+   ============================================================ */
 function renderDashboard(){
   return `
   <div class="phead compact">
@@ -33,13 +37,13 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
-  ${renderCapture()}
-
   <button class="fsn-cta" id="fsnCta">
     <span class="fsn-cta-ic">☼</span>
     <span class="fsn-cta-txt"><b>Read your Future Self Narrative</b><span>Start the morning by remembering where you're going</span></span>
     <span class="fsn-cta-go">→</span>
   </button>
+
+  ${renderCapture()}
 
   <div class="dash-actions">
     ${renderFireCTA()}
@@ -48,56 +52,50 @@ function renderDashboard(){
 
   ${renderTodayStrip()}
 
+  ${renderPipeline()}
+
   ${renderTodayWorkout()}
 
   ${renderContentFootage()}
 
-  ${renderPipeline()}
+  ${renderAllTasks()}
 
   ${renderCompletedToday()}
 
-  ${renderAllTasks()}
+  ${renderFollowups()}
 
-  ${renderWeeklyGoals()}
-
-  ${renderMonthlyGoals()}
-
-  ${renderAppointments()}
-
-  <div class="dash-grid">
-    <div class="dash-col">
-      ${renderFollowups()}
-    </div>
-    <div class="dash-col">
-      ${renderThinkAbout()}
-    </div>
-  </div>
-
-  ${renderActiveProjects()}
-
-  ${renderDashMeetings()}
-
-  <div class="card dash-plan-card">
-    <div class="card-h">
-      <h3>Time Blocker</h3>
-      <button class="btn ghost sm" id="planExpand">${dashPlanExpanded?'▾ Collapse':'⤢ Expand'}</button>
-    </div>
-    <div id="dash-plan">${dashPlanExpanded?renderPlan():renderDayView()}</div>
-  </div>
+  ${renderDashHubs()}
   `;
 }
 
-/* THINGS TO THINK ABOUT — reuses the Parking Lot data */
-function renderThinkAbout(){
-  const p=(S.board&&S.board.parking)||[];
-  return `
-  <div class="card">
-    <div class="card-h"><h3>Things to think about</h3><span class="sub">${p.length}</span></div>
-    <div class="think-list">
-      ${p.length?p.map(it=>`<div class="think-row"><span>${esc(it.txt)}</span><span class="x" data-thinkdel="${it.id}">×</span></div>`).join(''):'<div class="empty sm">Nothing parked.</div>'}
-    </div>
-    <div class="mini-add"><input type="text" id="thinkInput" placeholder="Park a thought to revisit later…"><button class="btn sm" id="thinkAdd">+</button></div>
-  </div>`;
+/* ---------- THE THREE HUB CARDS ----------
+   Appointments, Meetings and Projects each have a full-screen overlay that holds
+   everything; what belongs on the dashboard is a door, not a preview. One icon,
+   one name, one live number and a short caption — big enough to hit without
+   reading, and never long enough to scroll past.
+
+   Each module computes its own number (apptHubStat / mtgHubStat / projHubStat),
+   so this knows nothing about how appointments, meetings or projects are shaped. */
+function renderDashHubs(){
+  const card=(h)=>`
+    <button class="hub-card" id="${h.id}" style="--hc:${h.color}" title="Open ${h.name}">
+      <span class="hub-ic">${h.ic}</span>
+      <span class="hub-n">${h.n}</span>
+      <span class="hub-name">${h.name}</span>
+      <span class="hub-sub">${esc(h.sub)}</span>
+    </button>`;
+  return `<div class="hub-row">${[apptHubStat(), mtgHubStat(), projHubStat()].map(card).join('')}</div>`;
+}
+/* projects: how many have work waiting, captioned with the total outstanding */
+function projHubStat(){
+  const active=(S.projects||[]).filter(p=>!p.done);
+  const withOpen=active.filter(p=>projOpenCount(p)>0);
+  const tasks=active.reduce((n,p)=>n+projOpenCount(p),0);
+  return {
+    id:'hubProjs', ic:'◈', name:'Projects', color:'var(--green)',
+    n: withOpen.length,
+    sub: tasks ? `${tasks} open task${tasks===1?'':'s'}` : (active.length?'nothing open':'none yet'),
+  };
 }
 
 /* ---------- THE PIPELINE — today's top 3, the dominant element ---------- */
@@ -845,15 +843,32 @@ function renderMonthlyGoals(){
 function bindMonthlyGoals(){
   const ta=q('#monthlyGoals'); if(ta) ta.oninput=()=>{ S.monthlyGoals=ta.value; save(false); };
 }
+
+/* ---------- GOALS — the week and the month, on their own page ----------
+   Off the dashboard: these are rewritten weekly/monthly, not read daily, so they
+   were pure length on a page you're trying to skim. The two notes themselves are
+   untouched — same S.weeklyGoals / S.monthlyGoals strings, same renderers, same
+   autosave-without-rerender binds. One nav tap away. */
+function renderGoals(){
+  return `
+  <div class="phead compact">
+    <div class="kicker">Where the week and the month are going</div>
+    <h2>Goals</h2>
+    <p>Rewrite these when the week or the month turns. Today's execution lives on the Dashboard.</p>
+  </div>
+
+  ${renderWeeklyGoals()}
+
+  ${renderMonthlyGoals()}
+  `;
+}
+function bindGoals(){ bindWeeklyGoals(); bindMonthlyGoals(); }
 function winsSummary(d){
   const set=['health','lev','content','not'].filter(k=>d.focus[k]&&d.focus[k].trim()).length;
   return set?`${set}/4 set`:'tap to set';
 }
 
 function focusKey(cls){ return cls==='not'?'not':cls; }
-
-/* ---------- ACTIVE PROJECTS (collapsed list on Today) ---------- */
-let projOpen={};   // {projectId:true} = expanded; default collapsed so Today stays clean
 
 /* visual state of a project task: done | scheduled (has a linked dated block) | unscheduled */
 function projTaskState(pid, t){
@@ -862,50 +877,12 @@ function projTaskState(pid, t){
   if(e && e.t.schedDate!=null) return {state:'scheduled', tb:e.t};
   return {state:'unscheduled'};
 }
-/* Active Projects — a SHORT summary, not the full list. Only projects that are
-   live (projLive: open tasks, or no tasks yet) appear, capped so the strip can
-   never become the horizontal scroller it used to be. The header opens the
-   projects overlay, which holds everything. Tap a card → openProjectModal, same
-   as before. */
-const PROJ_DASH_MAX=4;   // beyond this the strip would scroll again — the overlay's job
-
-function projMiniCardHTML(p){
-  const s=projectStats(p);
-  return `
-    <button class="proj-card-mini" data-projopen="${p.id}">
-      <span class="pcm-top"><span class="proj-swatch" style="background:${p.color}"></span><span class="pcm-name">${esc(p.name)}</span><span class="pcm-del" data-pdeldash="${p.id}" title="Delete project">×</span></span>
-      <div class="proj-track"><div class="proj-fill" style="width:${s.pct}%;background:${p.color}"></div></div>
-      <span class="pcm-count">${s.done}/${s.total} done</span>
-    </button>`;
-}
-function renderActiveProjects(){
-  const all=(S.projects||[]).filter(p=>!p.done);
-  // most work waiting first, so the cap keeps the ones that actually need you
-  const live=all.filter(projLive).sort((a,b)=>projOpenCount(b)-projOpenCount(a));
-  const shown=live.slice(0, PROJ_DASH_MAX);
-  const more=(S.projects||[]).length-shown.length;
-  const openCt=all.reduce((n,p)=>n+projOpenCount(p),0);
-  return `
-  <div class="card dash-projects">
-    <div class="card-h">
-      <button class="sec-open-h" id="projOpenAll" title="Open the full projects view">Projects <span class="sec-open-go">›</span></button>
-      <span class="ch-actions">
-        <span class="sub">${openCt?`${openCt} open task${openCt===1?'':'s'} · `:''}${all.length} active</span>
-        <button class="dash-add-btn" id="dashAddProj" title="Add a project">+</button>
-      </span>
-    </div>
-    ${shown.length?`<div class="proj-strip">${shown.map(projMiniCardHTML).join('')}</div>`:`
-      <div class="empty sm">${all.length
-        ? 'Nothing open on any project.'
-        : 'No active projects — add one with +.'}</div>`}
-    ${more>0?`<button class="sec-more" id="projSeeAll">See all ${(S.projects||[]).length} projects →</button>`:''}
-  </div>`;
-}
 
 /* ---------- project task modal: manage + drag-reorder tasks ----------
-   Opened from an Active Projects card. Add / complete / delete / schedule /
-   promote a project's tasks in one place; edits flow straight into the flat
-   All Tasks list. Tasks added here default to time-block (▣ Time blocks). */
+   Opened from a row in the projects overlay (and from the Projects hub card by
+   way of it). Add / complete / delete / schedule / promote a project's tasks in
+   one place; edits flow straight into the flat All Tasks list. Tasks added here
+   default to time-block (▣ Time blocks). */
 let projModalId=null;
 let projModalDraft='';
 function openProjectModal(pid){ projModalId=pid; projModalDraft=''; renderProjectModal(); }
@@ -1058,50 +1035,17 @@ function bindDashboard(){
   // outside #main — see page-leaks.js). Capture lives in the unified line above.
   bindLeaksCta();
 
-  // Things to think about (Parking Lot data)
-  const ta=q('#thinkAdd'); const ti=q('#thinkInput');
-  const addThink=()=>{ const v=(ti&&ti.value||'').trim(); if(!v) return; if(!S.board) S.board={mustwin:[],scheduled:[],parking:[]}; if(!S.board.parking) S.board.parking=[]; S.board.parking.push({id:b(),txt:v}); save(); rerender(); };
-  if(ta) ta.onclick=addThink; if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addThink(); };
-  q('[data-thinkdel]','all').forEach(el=>el.onclick=()=>{ S.board.parking=(S.board.parking||[]).filter(x=>x.id!==el.dataset.thinkdel); save(); rerender(); });
-
-  // Active Projects: tap a card → open that project's task-list modal
-  q('[data-projopen]','all').forEach(el=>el.onclick=()=>openProjectModal(el.dataset.projopen));
-  // Active Projects: × → delete project (confirm + clean up linked tasks/pipeline)
-  q('[data-pdeldash]','all').forEach(el=>el.onclick=(e)=>{
-    e.stopPropagation();   // don't also open the card's modal
-    const p=(S.projects||[]).find(x=>x.id===el.dataset.pdeldash); if(!p) return;
-    if(confirm(`Delete "${p.name}" and its tasks?`)){ deleteProject(p); rerender(); }
-  });
-
-  // Meetings: tap a card → open the meeting quick-view modal
-  q('[data-mtgopen]','all').forEach(el=>el.onclick=()=>openMeetingModal(el.dataset.mtgopen));
-  // Cancel a scheduled meeting straight from the dashboard strip (don't open the modal)
-  q('[data-mcancel]','all').forEach(el=>el.onclick=e=>{ e.stopPropagation(); if(cancelMeetingSchedule(el.dataset.mcancel)) rerender(); });
-
-  // Section headers (and the "see all" line under a capped strip) open the full
-  // overlay — the same move the Appointments header makes.
-  const poa=q('#projOpenAll'); if(poa) poa.onclick=openProjScreen;
-  const psa=q('#projSeeAll');  if(psa) psa.onclick=openProjScreen;
-  const moa=q('#mtgOpenAll');  if(moa) moa.onclick=openMtgScreen;
-  const msa=q('#mtgSeeAll');   if(msa) msa.onclick=openMtgScreen;
-
-  // Dashboard inline add: create a project / meeting right here (reuses the tab
-  // logic), then open its detail — a brand-new one has nothing in it yet, so it
-  // would otherwise not qualify as "live" and wouldn't appear on the strip.
-  const dap=q('#dashAddProj'); if(dap) dap.onclick=()=>{ const v=prompt('New project name'); const p=v&&createProject(v); if(p){ rerender(); openProjectModal(p.id); } };
-  const dam=q('#dashAddMtg'); if(dam) dam.onclick=()=>{ const v=prompt('New meeting / person'); const m=v&&createMeeting(v); if(m){ rerender(); openMeetingModal(m.id); } };
-
-  // Time Blocker expand/collapse (day view ↔ full plan)
-  const pe=q('#planExpand'); if(pe) pe.onclick=()=>{ dashPlanExpanded=!dashPlanExpanded; if(!dashPlanExpanded) planView='day'; rerender(); };
+  // The three hub cards: each opens the overlay that holds that whole area.
+  // Adding, editing and deleting all live in there — this page only has doors.
+  const ha=q('#hubAppts'); if(ha) ha.onclick=()=>openApptScreen('list');
+  const hm=q('#hubMtgs');  if(hm) hm.onclick=openMtgScreen;
+  const hp=q('#hubProjs'); if(hp) hp.onclick=openProjScreen;
 
   bindTodayWorkout();      // today's planned training session
   bindContentFootage();    // the master footage list (only when something's outstanding)
   bindPipeline();          // the top-3 pipeline hero
   bindAllTasks();          // the single flat "All Tasks" list — add + every source
-  bindWeeklyGoals();       // the "This Week" free-text goals note
-  bindMonthlyGoals();      // the "This Month" free-text goals note
-  bindAppointments();      // fixed date/time commitments
+  bindAppointments();      // the ☀ Today strip's appointment rows (✓ complete, × delete)
   bindFollowups();         // full follow-ups list
-  bindPlan();              // reused Time Blocker (day view, or full plan when expanded)
 }
 

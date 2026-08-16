@@ -166,6 +166,8 @@ function renderJournal(){
     </div>
   </div>
 
+  ${renderThinkAbout()}
+
   <div class="card">
     <div class="card-h"><h3>Recent entries</h3><span class="sub">last 7 days</span></div>
     <div class="jrnl-history">${renderJournalHistory()}</div>
@@ -184,6 +186,34 @@ function renderJournal(){
   <button class="btn ghost" id="jInsightsToggle" style="width:100%">${journalInsightsOpen?'▾ Hide insights & patterns':'▸ Show insights & patterns'}</button>
   ${journalInsightsOpen?`<div class="jrnl-insights">${renderInsights()}</div>`:''}
   `;
+}
+
+/* ---------- THINGS TO THINK ABOUT — reuses the Parking Lot data ----------
+   Moved here off the Dashboard: parking a thought to revisit later is reflection,
+   not execution, and it sits naturally beside the evening entry. The data is
+   unchanged — still S.board.parking, still shared with the Parking Lot. */
+function renderThinkAbout(){
+  const p=(S.board&&S.board.parking)||[];
+  return `
+  <div class="card">
+    <div class="card-h"><h3>Things to think about</h3><span class="sub">${p.length}</span></div>
+    <div class="think-list">
+      ${p.length?p.map(it=>`<div class="think-row"><span>${esc(it.txt)}</span><span class="x" data-thinkdel="${it.id}">×</span></div>`).join(''):'<div class="empty sm">Nothing parked.</div>'}
+    </div>
+    <div class="mini-add"><input type="text" id="thinkInput" placeholder="Park a thought to revisit later…"><button class="btn sm" id="thinkAdd">+</button></div>
+  </div>`;
+}
+function bindThinkAbout(){
+  const ta=q('#thinkAdd'), ti=q('#thinkInput');
+  const addThink=()=>{
+    const v=(ti&&ti.value||'').trim(); if(!v) return;
+    if(!S.board) S.board={mustwin:[],scheduled:[],parking:[]};
+    if(!S.board.parking) S.board.parking=[];
+    S.board.parking.push({id:b(),txt:v}); save(); rerender();
+  };
+  if(ta) ta.onclick=addThink;
+  if(ti) ti.onkeydown=e=>{ if(e.key==='Enter') addThink(); };
+  q('[data-thinkdel]','all').forEach(el=>el.onclick=()=>{ S.board.parking=(S.board.parking||[]).filter(x=>x.id!==el.dataset.thinkdel); save(); rerender(); });
 }
 
 function renderJournalHistory(){
@@ -263,6 +293,7 @@ function exportJournalJson(){
 }
 
 function bindJournal(){
+  bindThinkAbout();   // the parking lot, moved here off the Dashboard
   // legacy flat text fields (sleep, meds, feelings) → straight onto the day record
   q('[data-jrnl]','all').forEach(el=>el.oninput=()=>{ day()[el.dataset.jrnl]=el.value; save(); });
   // morning/evening text fields → into the sub-object (no rerender = no caret jump)

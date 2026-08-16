@@ -711,6 +711,36 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 /* unified follow-ups card: add-input sits directly under the header, list below */
 .fu-add{margin-bottom:12px}
 
+/* ---------- THE THREE HUB CARDS (Appointments · Meetings · Projects) ----------
+   Doors, not previews. Big enough to hit without reading, and they stay three
+   across at every width — the row IS the point, so they scale down rather than
+   stack. Each card's colour comes from --hc, set per card by the JS. */
+.hub-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+.hub-card{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:18px 18px 16px;cursor:pointer;text-align:left;font-family:var(--sans);color:var(--txt);
+  background:linear-gradient(160deg, color-mix(in srgb, var(--hc) 16%, var(--panel)) 0%, var(--panel) 62%);
+  border:1px solid color-mix(in srgb, var(--hc) 38%, var(--line));
+  border-top:3px solid var(--hc);border-radius:14px;
+  transition:transform .12s, border-color .12s, box-shadow .12s;
+}
+.hub-card:hover{transform:translateY(-2px);border-color:var(--hc);
+  box-shadow:0 10px 26px color-mix(in srgb, var(--hc) 22%, transparent)}
+.hub-card:active{transform:none}
+.hub-ic{font-size:22px;line-height:1;margin-bottom:6px}
+.hub-n{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;color:var(--hc)}
+.hub-name{font-size:15px;font-weight:800;letter-spacing:-0.01em;margin-top:4px}
+.hub-sub{font-family:var(--mono);font-size:10.5px;color:var(--txt-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+@media(max-width:700px){
+  .hub-row{gap:8px}
+  .hub-card{padding:13px 11px 12px;border-radius:11px}
+  .hub-ic{font-size:18px}
+  .hub-n{font-size:26px}
+  .hub-name{font-size:13px}
+  .hub-sub{font-size:9.5px}
+}
+
 /* horizontal project strip */
 .dash-projects{margin-bottom:18px}
 .proj-strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px}
@@ -1067,12 +1097,16 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
   }
   .brand,.side-foot{display:none}                 /* hide logo + reset/theme on mobile */
   #navLinks{display:flex;flex-direction:row;width:100%}
+  /* Eight tabs share the bar, so each gets ~46px on a small phone: the label is
+     sized to fit that, wraps to a second line when it can't, and clips rather
+     than pushing the row wider. */
   .navbtn{
-    flex:1;flex-direction:column;justify-content:center;gap:3px;
-    min-height:58px;padding:8px 4px;border-radius:0;border:none;
-    font-size:11px;text-align:center;
+    flex:1;min-width:0;overflow:hidden;
+    flex-direction:column;justify-content:center;gap:2px;
+    min-height:58px;padding:7px 2px;border-radius:0;border:none;
+    font-size:9.5px;line-height:1.15;letter-spacing:-0.01em;text-align:center;
   }
-  .navbtn .ic{width:auto;font-size:18px}
+  .navbtn .ic{width:auto;font-size:16px}
   .navbtn.active{background:var(--accent-soft);color:var(--accent);border-bottom:2px solid var(--accent)}
 
   /* content uses the full screen width; leave room for the bottom bar */

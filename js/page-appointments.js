@@ -108,50 +108,31 @@ function renderTodayStrip(){
   </div>`;
 }
 
-function renderAppointments(){
-  const tk=todayKey();
-  const list=(S.appointments||[]).filter(a=>a.date);
-  // COMPLETED APPOINTMENTS ARE ARCHIVED, NEVER DELETED. This is purely a filter:
-  // the record keeps a.done=true and stays in S.appointments — the archive view of
-  // the overlay renders exactly these, and un-ticking one there returns it here.
-  const active=list.filter(a=>!a.done);
-  const archived=list.filter(a=>a.done);
-  const overdue=active.filter(apptOverdue)
-    .sort((a,b)=>(b.date+(b.time||'')).localeCompare(a.date+(a.time||'')));
-  const today=active.filter(a=>!apptOverdue(a) && a.date===tk).sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-  const upcoming=active.filter(a=>!apptOverdue(a) && a.date>tk).sort((a,b)=>((a.date+(a.time||''))).localeCompare(b.date+(b.time||'')));
-  const row=(a)=>{ const od=apptOverdue(a); return `
-    <div class="appt-row ${od?'overdue':(a.date===tk?'today':'')}">
-      <div class="box appt-box" data-apptdone="${a.id}" title="Mark done — moves it to the archive">✓</div>
-      <span class="appt-date">${(a.date===tk && !od)?'Today':apptDateFull(a.date)}</span>
-      <span class="appt-time">${fmtClock(a.time)}</span>
-      <span class="appt-title">${esc(a.title)}</span>
-      ${od?`<span class="appt-od">Overdue</span>`:''}
-      <span class="x" data-apptdel="${a.id}">×</span>
-    </div>`; };
-  return `
-  <div class="card appt-card">
-    <div class="card-h">
-      <button class="sec-open-h" id="apptOpen" title="Open the full appointments view">📅 Appointments <span class="sec-open-go">›</span></button>
-      <span class="ch-actions">
-        <span class="sub">${overdue.length?overdue.length+' overdue · ':''}${today.length?today.length+' today · ':''}${upcoming.length} upcoming</span>
-        ${archived.length?`<button class="btn ghost sm" id="apptArchive">Archive (${archived.length})</button>`:''}
-      </span>
-    </div>
+/* ---------- what the dashboard's Appointments hub card shows ----------
+   The dashboard's appointment LIST is gone: today's appointments are already
+   pinned in the ☀ Today strip above, and everything else — upcoming, calendar,
+   archive — is in the overlay this card opens. What's left is one number.
 
-    ${overdue.length?`
-      <div class="appt-group-lbl overdue-lbl">⚠ Overdue — follow up</div>
-      <div class="appt-list">${overdue.map(row).join('')}</div>`:''}
+   Overdue wins when there is any, because that's the state that needs you; it
+   also turns the card red. Otherwise it's what's still coming, captioned with
+   when the next one actually is.
 
-    ${today.length?`<p class="list-note" style="margin:4px 0 10px">Today's ${today.length} appointment${today.length>1?'s are':' is'} pinned to the top of the Dashboard.</p>`:''}
-
-    ${upcoming.length?`
-      <div class="appt-group-lbl">Upcoming</div>
-      <div class="appt-list">${upcoming.map(row).join('')}</div>`:''}
-
-    ${(!overdue.length && !today.length && !upcoming.length)
-      ? `<div class="empty">No upcoming appointments.${archived.length?` ${archived.length} in the archive.`:''}</div>`:''}
-  </div>`;
+   COMPLETED APPOINTMENTS ARE ARCHIVED, NEVER DELETED — a.done stays on the
+   record and the overlay's Archive view renders exactly these; this only filters. */
+function apptHubStat(){
+  const active=(S.appointments||[]).filter(a=>a.date && !a.done);
+  const overdue=active.filter(apptOverdue);
+  const ahead=active.filter(a=>!apptOverdue(a))
+    .sort((a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||'')));
+  const next=ahead[0];
+  return {
+    id:'hubAppts', ic:'📅', name:'Appointments',
+    color: overdue.length ? 'var(--red)' : 'var(--blue)',
+    n: overdue.length || ahead.length,
+    sub: overdue.length
+      ? `overdue — follow up`
+      : (next ? `next ${apptDateLabel(next.date)} · ${fmtClock(next.time)}` : 'nothing scheduled'),
+  };
 }
 
 /* create an appointment and return it. Shared by the manual add-input and by
@@ -191,14 +172,13 @@ function toggleApptDone(id){
   return a;
 }
 
+/* Row actions for appointments rendered inside #main — now just the ☀ Today strip,
+   which carries a ✓ and a × per appointment. Adding lives in unified Capture at
+   the top of the Dashboard (capture.js), which calls createAppointment(); meeting
+   scheduling calls it too. Everything else lives in the overlay. */
 function bindAppointments(){
-  // Adding lives in unified Capture at the top of the Dashboard (capture.js), which
-  // calls createAppointment(). Meeting scheduling calls it too. This card is the
-  // active list + its row actions; everything else lives in the overlay.
   q('[data-apptdel]','all').forEach(el=>el.onclick=()=>{ deleteAppointment(el.dataset.apptdel); rerender(); });
   q('[data-apptdone]','all').forEach(el=>el.onclick=()=>{ toggleApptDone(el.dataset.apptdone); rerender(); });
-  const op=q('#apptOpen'); if(op) op.onclick=()=>openApptScreen('list');
-  const ar=q('#apptArchive'); if(ar) ar.onclick=()=>openApptScreen('archive');
 }
 
 /* ============================================================

@@ -138,12 +138,6 @@ function openProjScreen(){ projScreenOpen=true; paintProjScreen(); }
 function closeProjScreen(){ projScreenOpen=false; paintProjScreen(); rerender(); }
 
 function projOpenCount(p){ return (p.tasks||[]).filter(t=>!t.done).length; }
-/* "Live and relevant" — what the DASHBOARD summary shows. Open tasks mean work is
-   waiting; a project with NO tasks yet is equally live, because it's waiting on a
-   first task (this is also what keeps a just-created project on the dashboard
-   instead of vanishing the moment you add it). A project whose tasks are all
-   ticked is momentarily clear, so it steps aside into the overlay. */
-function projLive(p){ return !p.done && (projOpenCount(p)>0 || !(p.tasks||[]).length); }
 
 /* Active / Finished is the grouping the Projects tab has always used; the overlay
    just splits Active by whether anything is actually open, which is the one

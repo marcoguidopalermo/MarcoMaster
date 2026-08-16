@@ -184,6 +184,7 @@ function renderMeetingModal(){
         <input type="text" id="mmAdd" value="${esc(meetingModalDraft)}" placeholder="Add a talking point for ${esc(m.name)}…">
         <button class="btn sm" id="mmAddBtn">+ Add</button>
       </div>
+      <div class="plan-row"><button class="plan-btn" id="mmPlan" title="Adds a quick task “${esc(planTaskTitle(m.name))}” to All Tasks">Plan this</button></div>
       <div class="mtg-section-lbl">Notes</div>
       <textarea class="mtg-notes" id="mmNotes" placeholder="Open notes / context for ${esc(m.name)}…">${esc(m.notes||'')}</textarea>
       <p class="list-note" style="margin-top:10px">Quick view · full management on the Meetings tab</p>
@@ -205,6 +206,8 @@ function bindMeetingModal(){
   const ab=q('#mmAddBtn'); if(ab) ab.onclick=addP;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addP(); };
   const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)
+  // "Plan this" — an ordinary quick task; rerender only, so All Tasks shows it
+  const pl=q('#mmPlan'); if(pl) pl.onclick=()=>{ if(planThis(m.name)) rerender(); };
   const sc=q('#mmSched'); if(sc) sc.onclick=()=>openMeetingSchedule(meetingModalId);
   q('[data-mcancel]','all').forEach(el=>el.onclick=()=>{ if(cancelMeetingSchedule(el.dataset.mcancel)){ renderMeetingModal(); rerender(); } });
   // delete the whole meeting — person, talking points, notes — and cancel anything scheduled

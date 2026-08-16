@@ -184,6 +184,20 @@ textarea{min-height:70px;line-height:1.55}
 .btn.sm{padding:6px 12px;font-size:12px}
 .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
 
+/* "PLAN THIS" — the same quiet action on projects, meetings and leaks. It makes an
+   ordinary quick task ("Plan: <name>"), so it is deliberately understated and must
+   never compete with the real controls in the panel it sits in. */
+.plan-row{display:flex;margin-top:10px}
+.plan-btn{
+  display:inline-flex;align-items:center;gap:6px;background:none;cursor:pointer;
+  border:1px solid var(--line);border-radius:7px;padding:5px 11px;
+  font-family:var(--mono);font-size:11px;letter-spacing:0.03em;color:var(--txt-faint);
+  transition:all .15s;
+}
+.plan-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* the leaks overlay is blue throughout — keep the hover in its palette */
+.leak-detail-full .plan-btn:hover{border-color:var(--blue);color:var(--blue)}
+
 /* SAVE TOAST */
 .toast{
   position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
@@ -1072,6 +1086,7 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 
   /* bigger touch targets */
   .btn,.btn.sm{padding:11px 16px;font-size:14px}
+  .plan-btn{padding:9px 14px;font-size:12px}   /* quiet, but still thumb-sized */
   .pl-check{width:34px;height:34px}
   .box,.qtask .box,.ptask .box,.ptask-row .box,.pm-row .box,.rtask .box{width:26px;height:26px}
   .fu-act,.fu-row .x,.think-row .x,.appt-row .x,.pm-row .x{font-size:20px;padding:4px}

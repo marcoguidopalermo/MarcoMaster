@@ -917,6 +917,7 @@ function renderProjectModal(){
         <input type="text" id="pmAdd" value="${esc(projModalDraft)}" placeholder="Add a task to ${esc(p.name)}…">
         <button class="btn sm" id="pmAddBtn">+ Add</button>
       </div>
+      <div class="plan-row"><button class="plan-btn" id="pmPlan" title="Adds a quick task “${esc(planTaskTitle(p.name))}” to All Tasks">Plan this</button></div>
       <p class="list-note" style="margin-top:10px">Drag ⋮⋮ to reorder · ✓ complete · ⏱ schedule · ↑ pipeline · ✎ edit. Done tasks move to “Completed Today / Archive” on the Dashboard.</p>
     </div>`;
   m.classList.add('show');
@@ -935,6 +936,8 @@ function bindProjectModal(){
   const addT=()=>{ const v=(projModalDraft||'').trim(); if(!v) return; p.tasks.push({id:b(),txt:v,done:false,priority:false,kind:'project',mins:60}); projModalDraft=''; save(); renderProjectModal(); rerender(); };
   const ab=q('#pmAddBtn'); if(ab) ab.onclick=addT;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addT(); };
+  // "Plan this" — an ordinary quick task; rerender only, so All Tasks shows it
+  const pl=q('#pmPlan'); if(pl) pl.onclick=()=>{ if(planThis(p.name)) rerender(); };
   // drag-to-reorder p.tasks by the grip (mouse + touch), via the shared helper
   makeReorderable(q('.pm-tasks'), '[data-pmdrag]', 'pmdrag', '.pm-grip', (order)=>{
     const byId=Object.fromEntries(p.tasks.map(t=>[t.id,t]));

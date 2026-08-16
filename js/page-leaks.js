@@ -379,6 +379,7 @@ function leakDetailHTML(l){
       <input type="text" data-leaktadd="${l.id}" placeholder="Add a task that closes this leak…">
       <button class="btn sm" data-leaktaddbtn="${l.id}">+</button>
     </div>
+    <div class="plan-row"><button class="plan-btn" data-leakplan="${l.id}" title="Adds a quick task “${esc(planTaskTitle(l.text))}” to All Tasks">Plan this</button></div>
 
     <div class="leak-d-lbl">Notes</div>
     <textarea class="leak-notes" data-leaknotes="${l.id}" placeholder="Notes — whatever you want to remember about this leak: who should own it, what would kill it, what you already tried.">${esc(l.notes||'')}</textarea>
@@ -460,6 +461,13 @@ function bindLeakScreen(){
   const addT=()=>{ if(!ti) return; if(!addLeakTask(ti.dataset.leaktadd, ti.value)) return; paintLeakScreen(); rerender(); };
   if(tb) tb.onclick=addT;
   if(ti) ti.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); addT(); } };
+
+  // "Plan this" — an ordinary quick task ("Plan: <leak>"). The leak itself is
+  // untouched, so the overlay needs no repaint; rerender() so All Tasks shows it.
+  q('#leakScreen [data-leakplan]','all').forEach(el=>el.onclick=()=>{
+    const l=byId(el.dataset.leakplan); if(!l) return;
+    if(planThis(l.text)) rerender();
+  });
 
   // status — closing stamps closedAt, reopening clears it. Never deletes.
   q('#leakScreen [data-leakstatus]','all').forEach(el=>el.onclick=()=>{

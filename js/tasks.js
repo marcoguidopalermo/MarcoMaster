@@ -94,6 +94,36 @@ function markTaskDoneNow(id){
   save(false);
   return true;
 }
+/* ---------- "Plan this" ----------
+   Projects, meetings and leaks all carry the same small action: it creates an
+   ORDINARY quick task titled "Plan: <name>" and nothing else. No planning store,
+   no planning screen — the task then behaves like any other one (All Tasks,
+   priority, pipeline, fire), which is the whole point.
+   Tapping it again while that task is still open must not fork a duplicate. */
+function planTaskTitle(name){ return 'Plan: '+String(name??'').trim(); }
+/* an OPEN plan task for this name, searched across every day record: unfinished
+   tasks are MOVED forward into today (see day()), but a stale one can still sit on
+   an older day if the app hasn't been opened since. */
+function findOpenPlanTask(name){
+  const want=planTaskTitle(name).toLowerCase();
+  for(const dk of Object.keys(S.days||{})){
+    const t=(S.days[dk].tasks||[]).find(x=>!x.done && String(x.txt||'').trim().toLowerCase()===want);
+    if(t) return {t,dayKey:dk};
+  }
+  return null;
+}
+/* Create the plan task unless one is already open. Returns true if it created one.
+   The extra save(false) re-arms the debounced push WITHOUT its "Saved ✓" toast, so
+   the message below is the one that actually stays on screen. */
+function planThis(name){
+  const v=String(name??'').trim(); if(!v) return false;
+  if(findOpenPlanTask(v)){ toast('Already on your list — '+planTaskTitle(v)); return false; }
+  addTask(planTaskTitle(v),'quick',QUICK_LIMIT);
+  save(false);
+  toast('Added — '+planTaskTitle(v));
+  return true;
+}
+
 function archiveCompleted(){
   const d=day();
   const done=d.tasks.filter(t=>t.done);

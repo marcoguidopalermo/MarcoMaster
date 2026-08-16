@@ -32,18 +32,42 @@ function apptOverdue(a){
   return dt.getTime() < Date.now();
 }
 
+/* ============================================================
+   THE DASHBOARD APPOINTMENT WINDOW — one week, no further.
+   The dashboard is for what's imminent; a long tail of future commitments is
+   exactly the length that makes it unreadable. So the ☀ Today strip looks seven
+   days ahead and stops.
+
+   Nothing is hidden by this. Anything past the window is counted in a quiet
+   "+N later" that opens the overlay, and the OVERLAY IS UNWINDOWED — List,
+   Calendar and Archive all still show everything, which is where you go to see
+   the full picture. Overdue appointments ignore the window entirely: a missed
+   commitment must never scroll out of sight.
+   ============================================================ */
+const APPT_WINDOW_DAYS=7;
+function apptWindowEndKey(){ return keyPlusDays(todayKey(), APPT_WINDOW_DAYS-1); }
+/* active, not overdue, and past the window — the ones we only COUNT */
+function apptBeyondWindow(){
+  const end=apptWindowEndKey();
+  return (S.appointments||[]).filter(a=>a && a.date && !a.done && !apptOverdue(a) && a.date>end);
+}
+
 /* TODAY — a lightweight glance strip pinned to the very top of the Dashboard:
-   today's appointments first, then today's scheduled + overdue tasks (compact,
-   check-off only — no edit/schedule/delete). It's a "here's your day" overview;
-   the full interactive task list stays below in All Tasks. Returns '' when there
-   is nothing today. Appointment delete reuses [data-apptdel]; the task check-off
-   reuses [data-atcheck] — both already bound (bindAppointments / bindAllTasks). */
+   appointments within the window first, then today's scheduled + overdue tasks
+   (compact, check-off only — no edit/schedule/delete). It's a "here's your day"
+   overview; the full interactive task list stays below in All Tasks. Returns ''
+   when there is genuinely nothing to say. Appointment delete reuses
+   [data-apptdel]; the task check-off reuses [data-atcheck] — both already bound
+   (bindAppointments / bindAllTasks). */
 function renderTodayStrip(){
   const tk=todayKey();
-  // today's appointments PLUS any overdue (past) ones — overdue stay visible at the
-  // top so they aren't forgotten, surfaced before today's still-upcoming ones.
-  // done appointments today still show (as "happened") but sink to the bottom, muted.
-  const appts=(S.appointments||[]).filter(a=>a.date && (a.date===tk || apptOverdue(a)))
+  const winEnd=apptWindowEndKey();
+  // appointments inside the seven-day window PLUS any overdue (past) ones —
+  // overdue stay visible at the top so they aren't forgotten, surfaced before
+  // what's still upcoming. Done appointments today still show (as "happened")
+  // but sink to the bottom, muted.
+  const later=apptBeyondWindow();
+  const appts=(S.appointments||[]).filter(a=>a.date && (apptOverdue(a) || (a.date>=tk && a.date<=winEnd)))
     .sort((a,b)=>{
       if(!!a.done!==!!b.done) return a.done?1:-1;                  // completed sink to bottom
       const oa=apptOverdue(a), ob=apptOverdue(b);
@@ -74,7 +98,8 @@ function renderTodayStrip(){
     const kb=(b.schedDate||'')+'|'+(b.start!=null?String(b.start).padStart(6,'0'):'zzzzzz');
     return ka.localeCompare(kb);
   });
-  if(!appts.length && !tasks.length) return '';
+  // nothing in the window, no tasks, and nothing beyond it either → no card at all
+  if(!appts.length && !tasks.length && !later.length) return '';
   const apptRow=(a)=>{ const od=apptOverdue(a); return `
     <div class="glance-row appt ${od?'overdue':''} ${a.done?'done':''}">
       <span class="appt-date-lead">${apptDateFull(a.date)}</span>
@@ -105,6 +130,7 @@ function renderTodayStrip(){
       ${appts.map(apptRow).join('')}
       ${tasks.map(taskRow).join('')}
     </div>
+    ${later.length?`<button class="glance-more" id="glanceMore" title="Open the full appointments view">+${later.length} later · beyond the next ${APPT_WINDOW_DAYS} days →</button>`:''}
   </div>`;
 }
 
@@ -168,6 +194,15 @@ function toggleApptDone(id){
   if(!a) return null;
   a.done=!a.done;
   syncWorkoutFromAppt(a);   // a training session completes with its appointment too
+  syncMeetingBlockFromAppt(a);   // …and a meeting's calendar block does the same
+  // A RECURRING meeting rolls straight on to its next occurrence the moment this
+  // one is ticked. The completed appointment and block stay put as the record that
+  // this one happened — advanceMeetingRecurrence releases them and books fresh
+  // ones. Un-ticking never advances: that's a correction, not a completion.
+  if(a.done && typeof meetingIsRecurring==='function'){
+    const m=(S.meetings||[]).find(x=>x && x.apptId===a.id);
+    if(meetingIsRecurring(m)) advanceMeetingRecurrence(m);
+  }
   save();
   return a;
 }
@@ -179,6 +214,8 @@ function toggleApptDone(id){
 function bindAppointments(){
   q('[data-apptdel]','all').forEach(el=>el.onclick=()=>{ deleteAppointment(el.dataset.apptdel); rerender(); });
   q('[data-apptdone]','all').forEach(el=>el.onclick=()=>{ toggleApptDone(el.dataset.apptdone); rerender(); });
+  // "+N later" — the window's escape hatch, straight into the unwindowed list
+  const gm=q('#glanceMore'); if(gm) gm.onclick=()=>openApptScreen('list');
 }
 
 /* ============================================================

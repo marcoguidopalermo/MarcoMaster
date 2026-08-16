@@ -9,7 +9,13 @@ function daysBetween(aKey,bKey){
   const a=new Date(ay,am-1,ad), b2=new Date(by,bm-1,bd);
   return Math.round((b2-a)/86400000);
 }
+/* Date-key ⇄ Date. Pure utilities, not cadence logic — they happen to live beside
+   the engine that first needed them and are reused wherever a YYYY-MM-DD key has
+   to be walked (the Time Blocker, meeting recurrence, the appointment window). */
 function dateFromKey(k){ const [y,m,d]=k.split('-').map(Number); return new Date(y,m-1,d); }
+function keyFromDate(dt){ return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); }
+/* the key n whole days after `k` (n may be negative) */
+function keyPlusDays(k,n){ const d=dateFromKey(k); return keyFromDate(new Date(d.getFullYear(),d.getMonth(),d.getDate()+n)); }
 const DOW_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function recMode(r){ return r.mode || 'everyN'; }

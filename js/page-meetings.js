@@ -27,7 +27,8 @@ function renderMeetings(){
         <span class="x" data-mdel="${m.id}">×</span>
       </div>
 
-      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)} <span class="mtg-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></div>`:''}
+      ${meetingIsRecurring(m)?`<div class="mtg-recur">⟳ ${esc(meetingRecurLabel(m))}</div>`:''}
+      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)} <span class="mtg-cancel" data-mcancel="${m.id}" title="${meetingIsRecurring(m)?'Skip this occurrence — the recurrence continues':'Cancel this scheduled meeting'}">×</span></div>`:''}
       <button class="btn ghost sm mtg-sched-btn" data-msched="${m.id}">📅 ${m.nextMeeting?'Reschedule':'Schedule next meeting'}</button>
 
       <div class="mtg-section-lbl">Talking points</div>
@@ -187,9 +188,11 @@ function mtgRowHTML(m){
   const when=(m.nextMeeting&&m.nextMeeting.date)
     ? apptDateLabel(m.nextMeeting.date)+' · '+fmtClock(m.nextMeeting.time)
     : (s.total?`${s.done}/${s.total} covered`:'no points');
-  return `<button class="pick-row" data-mtgrow="${m.id}" title="Open ${esc(m.name)}">
+  const rec=meetingIsRecurring(m);
+  return `<button class="pick-row" data-mtgrow="${m.id}" title="${rec?esc(meetingRecurLabel(m))+' — ':''}Open ${esc(m.name)}">
     <span class="proj-swatch" style="background:var(--accent)"></span>
     <span class="pick-txt">${esc(m.name)}</span>
+    ${rec?`<span class="pick-ic" title="${esc(meetingRecurLabel(m))}">⟳</span>`:''}
     ${open?`<span class="pick-badge warm">${open}</span>`:''}
     <span class="pick-meta">${esc(when)}</span>
   </button>`;
@@ -247,7 +250,8 @@ function renderMeetingModal(){
     <div class="modal modal-lg">
       <span class="modal-close" id="mmClose">×</span>
       <h3><span class="proj-swatch" style="background:var(--accent);display:inline-block;vertical-align:middle;margin-right:8px"></span>${esc(m.name)}</h3>
-      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)} <span class="mtg-cancel" data-mcancel="${m.id}" title="Cancel this scheduled meeting">×</span></div>`:''}
+      ${meetingIsRecurring(m)?`<div class="mtg-recur">⟳ ${esc(meetingRecurLabel(m))}</div>`:''}
+      ${m.nextMeeting?`<div class="mtg-next">📅 ${meetingNextLabel(m)} <span class="mtg-cancel" data-mcancel="${m.id}" title="${meetingIsRecurring(m)?'Skip this occurrence — the recurrence continues':'Cancel this scheduled meeting'}">×</span></div>`:''}
       <button class="btn ghost sm mtg-sched-btn" id="mmSched">📅 ${m.nextMeeting?'Reschedule':'Schedule next meeting'}</button>
       <div class="mtg-section-lbl">Talking points</div>
       <div class="pm-tasks">
@@ -311,16 +315,192 @@ function meetingNextLabel(m){
   if(!m.nextMeeting || !m.nextMeeting.date) return '';
   return 'Next: '+apptDateLabel(m.nextMeeting.date)+', '+fmtClock(m.nextMeeting.time);
 }
+
+/* ============================================================
+   RECURRENCE — deliberately NOT the recurring-TASK engine.
+   A meeting recurrence produces an APPOINTMENT, not a task, so the two systems
+   stay separate: nothing here touches S.recurring, syncRecurringIntoToday, or a
+   task's recurringId, and nothing there knows meetings exist.
+
+   The pattern lives on the meeting as m.recur:
+     { freq:'weekly'|'biweekly'|'monthly', time:'HH:MM', dow:0-6, dom:1-31,
+       anchor:'YYYY-MM-DD' }
+   `anchor` is a known-good occurrence date and is what gives biweekly its phase;
+   weekly/monthly could be derived from dow/dom alone but use it for consistency.
+
+   ONLY ONE OCCURRENCE EVER EXISTS. The next occurrence is a real linked
+   appointment + calendar block, exactly like a one-off meeting's — which is the
+   whole point: the calendar, the ☀ Today strip and push reminders all keep
+   working with no Cloud Function changes. Occurrences are never materialised as a
+   series; the one after this one is computed from the pattern when this one is
+   completed or passes (see syncMeetingRecurrences).
+   ============================================================ */
+const MTG_FREQS=[['once','One-off'],['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly']];
+const MTG_DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+function meetingIsRecurring(m){ return !!(m && m.recur && m.recur.freq && m.recur.freq!=='once'); }
+function ordinal(n){ const s=(n%10===1&&n!==11)?'st':(n%10===2&&n!==12)?'nd':(n%10===3&&n!==13)?'rd':'th'; return n+s; }
+/* "Every Tuesday · 9:00am" — shown on the card, the modal and the overlay row */
+function meetingRecurLabel(m){
+  if(!meetingIsRecurring(m)) return '';
+  const r=m.recur, t=fmtClock(r.time);
+  if(r.freq==='weekly')   return `Every ${MTG_DOW[r.dow||0]} · ${t}`;
+  if(r.freq==='biweekly') return `Every 2 weeks on ${MTG_DOW[r.dow||0]} · ${t}`;
+  if(r.freq==='monthly')  return `Monthly on the ${ordinal(r.dom||1)} · ${t}`;
+  return '';
+}
+/* has this {date,time} moment already gone by? */
+function meetingMomentPassed(date, time){
+  if(!date) return false;
+  const [y,mo,d]=date.split('-').map(Number);
+  const [h,mn]=String(time||'23:59').split(':').map(Number);
+  return new Date(y,mo-1,d,h||0,mn||0,0).getTime() < Date.now();
+}
+/* The FIRST occurrence strictly after `afterKey`. Pure computation from the
+   pattern — nothing is read from or written to storage. */
+function meetingNextDate(r, afterKey){
+  if(!r || !r.freq || r.freq==='once') return null;
+  const after=dateFromKey(afterKey);
+  if(r.freq==='weekly' || r.freq==='biweekly'){
+    const step=(r.freq==='biweekly')?14:7;
+    let d=dateFromKey(r.anchor||afterKey);
+    if(d.getTime()<=after.getTime()){
+      const gap=Math.round((after.getTime()-d.getTime())/86400000);
+      d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+(Math.floor(gap/step)+1)*step);
+    }
+    return keyFromDate(d);
+  }
+  if(r.freq==='monthly'){
+    let y=after.getFullYear(), mo=after.getMonth();
+    for(let i=0;i<60;i++){
+      const last=new Date(y,mo+1,0).getDate();          // clamp: the 31st in a 30-day month lands on the 30th
+      const cand=new Date(y,mo,Math.min(r.dom||1,last));
+      if(cand.getTime()>after.getTime()) return keyFromDate(cand);
+      mo++; if(mo>11){ mo=0; y++; }
+    }
+  }
+  return null;
+}
+/* The first occurrence from TODAY when a pattern is set: today counts if it
+   matches and its time hasn't already gone by, so "every Tuesday 9am" set on a
+   Tuesday morning schedules today, not next week. */
+function meetingFirstDate(r){
+  const tk=todayKey();
+  if(r.freq==='monthly'){
+    const now=dateFromKey(tk);
+    let y=now.getFullYear(), mo=now.getMonth();
+    for(let i=0;i<60;i++){
+      const last=new Date(y,mo+1,0).getDate();
+      const cand=new Date(y,mo,Math.min(r.dom||1,last));
+      const key=keyFromDate(cand);
+      if(cand.getTime()>=now.getTime() && !meetingMomentPassed(key, r.time)) return key;
+      mo++; if(mo>11){ mo=0; y++; }
+    }
+    return null;
+  }
+  let d=dateFromKey(tk);
+  for(let i=0;i<15;i++){                                 // two weeks covers weekly and biweekly's first hit
+    const key=keyFromDate(d);
+    if(d.getDay()===(r.dow||0) && !meetingMomentPassed(key, r.time)) return key;
+    d=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+  }
+  return null;
+}
+
+/* Apply a pattern (or clear it). r===null / freq 'once' STOPS the repeat but
+   KEEPS whatever occurrence is currently booked — it simply becomes an ordinary
+   one-off appointment, so switching back to one-off never silently loses a
+   meeting you already have in the diary. Returns true if anything changed. */
+function setMeetingRecurrence(m, r){
+  if(!m) return false;
+  if(!r || r.freq==='once'){ m.recur=null; save(); return true; }
+  const first=meetingFirstDate(r);
+  if(!first) return false;
+  m.recur={ freq:r.freq, time:r.time, dow:r.dow, dom:r.dom, anchor:first };
+  scheduleMeeting(m, first, r.time);   // saves
+  return true;
+}
+/* Move a recurring meeting on to its next occurrence. Returns true if it moved. */
+function advanceMeetingRecurrence(m){
+  if(!meetingIsRecurring(m)) return false;
+  const from=(m.nextMeeting && m.nextMeeting.date) || todayKey();
+  const next=meetingNextDate(m.recur, from);
+  if(!next) return false;
+  // Release a COMPLETED occurrence rather than reusing its records: a ticked
+  // appointment has to stay in the archive as the evidence that this one
+  // happened, and its calendar block has to stay on the day it happened. An
+  // occurrence that merely passed without being ticked is reused instead, so a
+  // missed meeting doesn't litter the archive with empty rows.
+  const prevAppt=m.apptId && (S.appointments||[]).find(a=>a.id===m.apptId);
+  if(prevAppt && prevAppt.done) m.apptId=null;
+  const prevBlock=m.blockId && findTaskGlobal(m.blockId);
+  if(prevBlock && prevBlock.t.done) m.blockId=null;
+  scheduleMeeting(m, next, m.recur.time);   // saves; creates fresh records where released
+  return true;
+}
+/* Roll every recurring meeting forward until its booked occurrence is in the
+   future. Called on load and whenever an appointment is completed, so there is
+   always exactly one pending occurrence and never a generated series. */
+function syncMeetingRecurrences(){
+  let changed=false;
+  (S.meetings||[]).forEach(m=>{
+    if(!meetingIsRecurring(m)) return;
+    const appt=m.apptId && (S.appointments||[]).find(a=>a.id===m.apptId);
+    const nm=m.nextMeeting;
+    const booked = appt && !appt.done && nm && nm.date && !meetingMomentPassed(nm.date, nm.time);
+    if(booked) return;
+    // A meeting untouched for months walks forward a step at a time; the cap is a
+    // runaway guard, not a limit anyone should reach (200 weeks ≈ 4 years).
+    for(let i=0;i<200;i++){
+      if(!advanceMeetingRecurrence(m)) break;
+      changed=true;
+      const n=m.nextMeeting;
+      if(n && !meetingMomentPassed(n.date, n.time)) break;
+    }
+  });
+  if(changed) save(false);
+  return changed;
+}
+/* Ticking a meeting's appointment ticks its calendar block too, and un-ticking
+   reopens it — so the block stays a truthful record of whether the meeting
+   actually happened. Mirrors syncWorkoutFromAppt for training sessions, and like
+   it, writes t.done directly and never calls back into toggleApptDone.
+
+   This also underpins recurrence: advanceMeetingRecurrence leaves a COMPLETED
+   block on the day it happened and books a fresh one, so without this the
+   finished block would be dragged forward onto the next occurrence's date. */
+function syncMeetingBlockFromAppt(a){
+  if(!a) return;
+  const m=(S.meetings||[]).find(x=>x && x.apptId===a.id);
+  if(!m || !m.blockId) return;
+  const ref=findTaskGlobal(m.blockId);
+  if(ref) ref.t.done=!!a.done;
+}
 /* remove the appointment + calendar block linked to a meeting (used on delete) */
 function removeMeetingLinks(m){
   if(m.apptId){ S.appointments=(S.appointments||[]).filter(a=>a.id!==m.apptId); }
   if(m.blockId){ const ref=findTaskGlobal(m.blockId); if(ref){ S.days[ref.dayKey].tasks=(S.days[ref.dayKey].tasks||[]).filter(x=>x.id!==m.blockId); } }
 }
-/* cancel a scheduled next-meeting: strip the linked appointment + calendar block
-   (via removeMeetingLinks) and clear the scheduling fields. The meeting itself —
-   person, talking points, notes — is untouched. Returns true if cancelled. */
+/* Cancel the booked occurrence.
+
+   RECURRING: this SKIPS one occurrence — it moves to the next date in the pattern
+   rather than ending the repeat, because "I can't make Tuesday" is not "stop
+   meeting this person". Stopping the repeat is a separate, explicit act: set the
+   pattern back to One-off in the schedule flow.
+
+   ONE-OFF: strips the linked appointment + calendar block (via removeMeetingLinks)
+   and clears the scheduling fields. Either way the meeting itself — person,
+   talking points, notes — is untouched. Returns true if anything changed. */
 function cancelMeetingSchedule(mid){
   const m=(S.meetings||[]).find(x=>x.id===mid); if(!m || !m.nextMeeting) return false;
+  if(meetingIsRecurring(m)){
+    const next=meetingNextDate(m.recur, m.nextMeeting.date);
+    if(next){
+      if(!confirm(`Skip the ${apptDateLabel(m.nextMeeting.date)} meeting with "${m.name}"?\n\nIt moves to ${apptDateLabel(next)} — the recurrence keeps going. To stop it repeating, set the pattern to One-off instead.`)) return false;
+      scheduleMeeting(m, next, m.recur.time);   // reuses the same records: a skip leaves no trace
+      return true;
+    }
+  }
   if(!confirm(`Cancel the scheduled meeting for "${m.name}"? This removes its appointment and time block. The meeting itself — talking points and notes — stays.`)) return false;
   removeMeetingLinks(m);
   m.nextMeeting=null; m.apptId=null; m.blockId=null;
@@ -350,35 +530,118 @@ function scheduleMeeting(m, date, time){
   m.nextMeeting={date, time};
   save();
 }
-/* date+time picker modal; Save upserts via scheduleMeeting */
+/* ---------- the schedule flow: one-off date+time, or a repeating pattern ----------
+   One modal with a frequency row at the top. "One-off" is the original date+time
+   picker, unchanged; the repeating options swap the date field for the part of the
+   pattern that varies (a weekday, or a day of the month) and keep the time.
+   Held in a draft object and re-rendered on every change, like the project-task
+   scheduler, so switching frequency never loses the time you already typed. */
+let mtgSchedDraft=null;   // {mid, freq, date, time, dow, dom}
+
 function openMeetingSchedule(mid){
   const m=(S.meetings||[]).find(x=>x.id===mid); if(!m) return;
   meetingModalId=mid;
-  const nm=m.nextMeeting||{};
-  const dateVal=nm.date||todayKey();
-  const timeVal=nm.time||'';
+  const nm=m.nextMeeting||{}, r=m.recur||{};
+  const seedDate=nm.date||todayKey();
+  mtgSchedDraft={
+    mid,
+    freq: r.freq || 'once',
+    date: seedDate,
+    time: r.time || nm.time || '',
+    // sensible defaults for the fields the current pattern doesn't carry, taken
+    // from whatever is already booked so switching frequency starts somewhere real
+    dow: (r.dow!=null) ? r.dow : dateFromKey(seedDate).getDay(),
+    dom: (r.dom!=null) ? r.dom : dateFromKey(seedDate).getDate(),
+  };
+  renderMeetingSchedule();
+}
+function renderMeetingSchedule(){
+  const d=mtgSchedDraft; if(!d) return;
+  const m=(S.meetings||[]).find(x=>x.id===d.mid); if(!m){ closeReset(); return; }
+  const wasRecurring=meetingIsRecurring(m);
+  // live preview of what will actually be booked
+  let preview='';
+  if(d.freq==='once') preview = d.date&&d.time ? `${apptDateLabel(d.date)} · ${fmtClock(d.time)}` : 'Pick a date and time';
+  else if(!d.time) preview='Pick a time';
+  else {
+    const first=meetingFirstDate({freq:d.freq, time:d.time, dow:d.dow, dom:d.dom});
+    preview = first ? `First: ${apptDateLabel(first)} · ${fmtClock(d.time)}` : 'No date matches that pattern';
+  }
   const el=q('#resetModal');
   el.innerHTML=`
     <div class="modal">
       <span class="modal-close" id="msClose">×</span>
-      <h3>${m.nextMeeting?'Reschedule':'Schedule next'} meeting</h3>
-      <p class="intro">Pick a date and time for "${esc(m.name)}". This adds it to Appointments and blocks it on your Time Blocker.</p>
-      <div class="ms-fields">
-        <input type="date" id="msDate" min="${todayKey()}" value="${esc(dateVal)}">
-        <input type="time" id="msTime" value="${esc(timeVal)}">
+      <h3>${m.nextMeeting?'Reschedule':'Schedule'} — ${esc(m.name)}</h3>
+      <p class="intro">This books a real appointment and blocks it on your Time Blocker, so it shows on the calendar, in ☀ Today and in your reminders.</p>
+
+      <div class="qf"><label>Repeats</label>
+        <div class="ms-freq">
+          ${MTG_FREQS.map(([k,lbl])=>`<button class="ms-freq-btn ${d.freq===k?'sel':''}" data-msfreq="${k}">${lbl}</button>`).join('')}
+        </div>
       </div>
+
+      ${d.freq==='once'?`
+        <div class="qf"><label>Date</label>
+          <input type="date" id="msDate" min="${todayKey()}" value="${esc(d.date)}"></div>`:''}
+
+      ${(d.freq==='weekly'||d.freq==='biweekly')?`
+        <div class="qf"><label>Day</label>
+          <div class="ms-dow">
+            ${MTG_DOW.map((n,i)=>`<button class="ms-dow-btn ${d.dow===i?'sel':''}" data-msdow="${i}" title="${n}">${n.slice(0,3)}</button>`).join('')}
+          </div></div>`:''}
+
+      ${d.freq==='monthly'?`
+        <div class="qf"><label>Day of the month</label>
+          <input type="number" id="msDom" min="1" max="31" class="num-in" value="${d.dom||1}">
+          <span class="hint" style="margin-left:8px">A day past the end of a short month lands on its last day.</span>
+        </div>`:''}
+
+      <div class="qf"><label>Time</label>
+        <input type="time" id="msTime" value="${esc(d.time)}"></div>
+
+      <div class="ms-preview">${esc(preview)}</div>
+
+      ${d.freq!=='once'?`<p class="list-note">Only the next occurrence is ever booked. When it's done or the time passes, the one after it appears automatically.</p>`
+        :(wasRecurring?`<p class="list-note">Switching to one-off stops the repeat. The meeting you already have booked stays exactly where it is.</p>`:'')}
+
       <div class="btn-row" style="margin-top:18px">
         <button class="btn" id="msSave">${m.nextMeeting?'Update':'Schedule'}</button>
         <button class="btn ghost" id="msCancel">Cancel</button>
       </div>
     </div>`;
   el.classList.add('show');
+  bindMeetingSchedule();
+}
+function bindMeetingSchedule(){
+  const d=mtgSchedDraft; if(!d) return;
   q('#msClose').onclick=()=>closeReset();
   q('#msCancel').onclick=()=>closeReset();
-  q('#msSave').onclick=()=>{
-    const d=q('#msDate').value, t=q('#msTime').value;
-    if(!d||!t){ toast('Pick a date and time'); return; }
-    scheduleMeeting(m, d, t);
+  // discrete choices re-render (to swap the fields + refresh the preview); the
+  // free inputs only write to the draft, so typing never re-renders under you
+  q('#resetModal [data-msfreq]','all').forEach(el=>el.onclick=()=>{ d.freq=el.dataset.msfreq; renderMeetingSchedule(); });
+  q('#resetModal [data-msdow]','all').forEach(el=>el.onclick=()=>{ d.dow=+el.dataset.msdow; renderMeetingSchedule(); });
+  const di=q('#msDate'); if(di) di.onchange=()=>{ d.date=di.value||todayKey(); renderMeetingSchedule(); };
+  const ti=q('#msTime'); if(ti) ti.onchange=()=>{ d.time=ti.value; renderMeetingSchedule(); };
+  const dm=q('#msDom'); if(dm) dm.oninput=()=>{ const n=parseInt(dm.value,10); if(!isNaN(n)&&n>=1&&n<=31) d.dom=n; };
+  q('#msSave').onclick=saveMeetingSchedule;
+}
+function saveMeetingSchedule(){
+  const d=mtgSchedDraft; if(!d) return;
+  const m=(S.meetings||[]).find(x=>x.id===d.mid); if(!m){ closeReset(); return; }
+  const time=(q('#msTime')&&q('#msTime').value)||d.time;
+  if(!time){ toast('Pick a time'); return; }
+  d.time=time;
+  if(d.freq==='once'){
+    const date=(q('#msDate')&&q('#msDate').value)||d.date;
+    if(!date){ toast('Pick a date'); return; }
+    // clearing the pattern keeps the booking — it just stops repeating
+    if(meetingIsRecurring(m)) setMeetingRecurrence(m, null);
+    scheduleMeeting(m, date, time);
     closeReset(); toast('Meeting scheduled ✓'); rerender();
-  };
+    return;
+  }
+  if(!setMeetingRecurrence(m, {freq:d.freq, time, dow:d.dow, dom:d.dom})){
+    toast('No date matches that pattern'); return;
+  }
+  closeReset(); toast(`Repeating — ${meetingRecurLabel(m)}`); rerender();
 }

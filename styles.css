@@ -793,6 +793,12 @@ input.fu-note:focus{outline:none;border:none;border-bottom:1px solid var(--line)
 .appt-row.done .appt-date,.appt-row.done .appt-time{color:var(--txt-faint)}
 .appt-group-lbl.done-lbl{color:var(--green)}
 /* Today strip: appointment done-checkbox + completed state */
+/* "+N later" — the seven-day window's quiet escape hatch. Deliberately faint: it
+   exists so nothing is ever hidden, not to pull you out of today. */
+.glance-more{display:block;width:100%;margin-top:8px;padding:6px 8px;background:none;border:none;
+  border-top:1px dashed var(--line);cursor:pointer;text-align:left;
+  font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.glance-more:hover{color:var(--amber)}
 .glance-row.appt.done{opacity:.6}
 .glance-row.appt.done .glance-box{background:var(--green);border-color:var(--green);color:#06210b}
 .glance-row.appt.done .glance-txt{color:var(--txt-faint);text-decoration:line-through}
@@ -964,6 +970,23 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .mtg-cancel:hover,.pcm-cancel:hover{color:var(--red)}
 .ms-fields{display:flex;gap:10px;flex-wrap:wrap}
 .ms-fields input{flex:1;min-width:140px}
+
+/* the recurrence pattern, wherever a meeting is shown */
+.mtg-recur{font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:0.02em;margin:2px 0 4px}
+
+/* ---------- the schedule flow: frequency + weekday pickers ----------
+   Same pill vocabulary as the duration presets (.dur-btn), so a repeating
+   schedule is picked the same way a block length is. */
+.ms-freq{display:flex;gap:7px;flex-wrap:wrap}
+.ms-freq-btn,.ms-dow-btn{padding:6px 12px;border-radius:7px;border:1px solid var(--line);
+  background:var(--bg);color:var(--txt-dim);cursor:pointer;font-family:var(--mono);font-size:12px;transition:all .14s}
+.ms-freq-btn:hover,.ms-dow-btn:hover{color:var(--txt)}
+.ms-freq-btn.sel,.ms-dow-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.ms-dow{display:flex;gap:5px;flex-wrap:wrap}
+.ms-dow-btn{padding:6px 9px;min-width:44px;text-align:center}
+/* what will actually be booked — the answer to "so when is it, then?" */
+.ms-preview{margin-top:16px;padding:10px 13px;border:1px solid var(--accent);border-radius:9px;
+  background:var(--accent-soft);font-family:var(--mono);font-size:12.5px;color:var(--accent)}
 
 /* PLAN tabs */
 .plan-tabs{display:flex;gap:6px;margin-bottom:18px}

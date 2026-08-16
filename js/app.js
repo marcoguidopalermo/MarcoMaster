@@ -54,6 +54,10 @@ function startApp(){
   catch(e){ console.error('loadState failed — rendering with default state', e); try{ seedDefaults(); }catch(_){ } }
   applyTheme();
   try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
+  // Roll every recurring MEETING on to its next pending occurrence. Separate from
+  // the recurring-task engine above by design: a meeting recurrence produces an
+  // appointment, not a task.
+  try{ syncMeetingRecurrences(); }catch(e){ console.warn('syncMeetingRecurrences failed', e); }
   // NOTE: we deliberately do NOT push to the cloud here. The write gate
   // (Store._gateOpen=false) blocks all cloud writes until the first cloud snapshot
   // has been received and reconciled — so an empty/stale device can never overwrite
@@ -200,6 +204,7 @@ function subscribeCloud(){
       if((+S.updatedAt||0)<cloudV) S.updatedAt=cloudV;   // carry the version forward (legacy docs)
       Store._lsSet('marcomaster', S);
       try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
+      try{ syncMeetingRecurrences(); }catch(e){ console.warn('syncMeetingRecurrences failed', e); }
       renderNav(); rerender();
     }else{
       // HOOK B — local wins (newer/equal, or adoption deferred by a pending save):

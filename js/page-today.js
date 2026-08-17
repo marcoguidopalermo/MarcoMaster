@@ -694,6 +694,7 @@ function atToggle(key){
     if(t.done && t.recurringId) markRecurringDone(t.recurringId);
     if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt) pt.done=t.done; }
     if(t.workoutId) syncWorkoutFromTask(t);   // planned training session follows its task
+    if(t.meetingId) syncMeetingFromBlock(t);  // …and a meeting occurrence finishes with its block
   }
   save(false); rerender();
 }

@@ -241,7 +241,44 @@ function bindMtgScreen(){
 /* ---------- meeting quick-view modal (mirrors the project task modal) ---------- */
 let meetingModalId=null;
 let meetingModalDraft='';
-function openMeetingModal(mid){ meetingModalId=mid; meetingModalDraft=''; renderMeetingModal(); }
+let meetingLogOpen=false;   // the Log panel — collapsed on every open, so the working view stays the working view
+function openMeetingModal(mid){ meetingModalId=mid; meetingModalDraft=''; meetingLogOpen=false; renderMeetingModal(); }
+
+/* ---------- the Log panel: past occurrences, newest first ----------
+   Collapsed by default. The point of the modal is the NEXT meeting; the log is
+   what you open when you need to remember the last one. */
+function meetingLogEntries(m){
+  return (m.log||[]).slice().sort((a,b)=>
+    String(b.date||'').localeCompare(String(a.date||'')) || ((b.loggedAt||0)-(a.loggedAt||0)));
+}
+function meetingLogEntryHTML(e){
+  const pts=e.points||[];
+  const covered=pts.filter(p=>p.done);
+  const carried=pts.length-covered.length;
+  return `<div class="mlog-entry">
+    <div class="mlog-date">${esc(apptDateLabel(e.date))}</div>
+    ${e.notes
+      ? `<div class="mlog-notes">${esc(e.notes)}</div>`
+      : `<div class="mlog-empty">No notes written.</div>`}
+    ${covered.length?`
+      <div class="mlog-lbl">Covered</div>
+      <div class="mlog-points">${covered.map(p=>`<div class="mlog-pt">✓ ${esc(p.txt)}</div>`).join('')}</div>`:''}
+    ${carried?`<div class="mlog-carried">${carried} point${carried===1?'':'s'} still open, carried forward</div>`:''}
+  </div>`;
+}
+function meetingLogHTML(m){
+  const entries=meetingLogEntries(m);
+  if(!entries.length) return '';
+  return `
+    <div class="panel ${meetingLogOpen?'open':''}" style="margin-top:14px">
+      <button class="panel-h" id="mmLogToggle">
+        <span class="panel-caret">${meetingLogOpen?'▾':'▸'}</span>
+        <span class="panel-title">Log</span>
+        <span class="panel-meta">${entries.length} past meeting${entries.length===1?'':'s'}</span>
+      </button>
+      ${meetingLogOpen?`<div class="panel-body"><div class="mlog-list">${entries.map(meetingLogEntryHTML).join('')}</div></div>`:''}
+    </div>`;
+}
 function renderMeetingModal(){
   const m=(S.meetings||[]).find(x=>x.id===meetingModalId); if(!m){ closeReset(); return; }
   const pts=m.points||[];
@@ -268,7 +305,8 @@ function renderMeetingModal(){
       </div>
       <div class="plan-row"><button class="plan-btn" id="mmPlan" title="Adds a quick task “${esc(planTaskTitle(m.name))}” to All Tasks">Plan this</button></div>
       <div class="mtg-section-lbl">Notes</div>
-      <textarea class="mtg-notes" id="mmNotes" placeholder="Open notes / context for ${esc(m.name)}…">${esc(m.notes||'')}</textarea>
+      <textarea class="mtg-notes" id="mmNotes" placeholder="What was discussed? Cleared into the log when this meeting is done.">${esc(m.notes||'')}</textarea>
+      ${meetingLogHTML(m)}
       <p class="list-note" style="margin-top:10px">Quick view · full management on the Meetings tab</p>
       <div class="mtg-danger" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
         <button class="btn danger sm" id="mmDelMeeting">Delete meeting</button>
@@ -288,6 +326,8 @@ function bindMeetingModal(){
   const ab=q('#mmAddBtn'); if(ab) ab.onclick=addP;
   if(ai) ai.onkeydown=e=>{ if(e.key==='Enter') addP(); };
   const nt=q('#mmNotes'); if(nt) nt.oninput=()=>{ m.notes=nt.value; save(); };   // autosave; no re-render (keep caret)
+  // Log panel — modal-only repaint; nothing on the dashboard changes by opening it
+  const lt=q('#mmLogToggle'); if(lt) lt.onclick=()=>{ meetingLogOpen=!meetingLogOpen; renderMeetingModal(); };
   // "Plan this" — an ordinary quick task; rerender only, so All Tasks shows it
   const pl=q('#mmPlan'); if(pl) pl.onclick=()=>{ if(planThis(m.name)) rerender(); };
   const sc=q('#mmSched'); if(sc) sc.onclick=()=>openMeetingSchedule(meetingModalId);
@@ -426,6 +466,11 @@ function advanceMeetingRecurrence(m){
   const from=(m.nextMeeting && m.nextMeeting.date) || todayKey();
   const next=meetingNextDate(m.recur, from);
   if(!next) return false;
+  // Snapshot the occurrence we're leaving BEFORE its records move on. This is what
+  // catches an occurrence whose time simply passed (syncMeetingRecurrences never
+  // ticks anything): if you wrote it up, it happened. The call is idempotent, so
+  // the tick paths having already snapshotted is harmless.
+  completeMeetingOccurrence(m, from);
   // Release a COMPLETED occurrence rather than reusing its records: a ticked
   // appointment has to stay in the archive as the evidence that this one
   // happened, and its calendar block has to stay on the day it happened. An
@@ -461,6 +506,80 @@ function syncMeetingRecurrences(){
   if(changed) save(false);
   return changed;
 }
+/* ============================================================
+   THE MEETING LOG — history, because points and notes are working state.
+   Talking points accumulate undated and notes are one string edited in place, so
+   without this a meeting has no past: you cannot see what you discussed last time,
+   only the residue of it.
+
+   An entry is a SNAPSHOT of the occurrence as it stood when it finished:
+     { id, date, loggedAt, notes, points:[{txt, done}] }
+   Points are stored with their done state, so an entry records both what was
+   covered and what was still open at the time.
+
+   After snapshotting, the working set is cleaned for the next meeting: notes are
+   cleared (they belong to the meeting that just happened) and COVERED points are
+   removed (they're in the entry now). Open points stay on the agenda — they
+   weren't discussed, so they're still owed.
+
+   Nothing is ever reconstructed: entries only exist for occurrences that finished
+   after this shipped. Existing points carry no dates and cannot be attributed.
+   ============================================================ */
+
+/* THE choke point. Every way of finishing an occurrence ends here — ticking its
+   appointment, ticking its calendar block on the Time Blocker, or a recurrence
+   rolling on (which also covers one whose time merely passed).
+
+   IDEMPOTENT PER OCCURRENCE: a second call for the same date is a no-op, so it
+   does not matter how many entry points fire for one completion, or in what
+   order. Returns true only when an entry was actually written. */
+function completeMeetingOccurrence(m, dateKey){
+  if(!m) return false;
+  const date = dateKey || (m.nextMeeting && m.nextMeeting.date);
+  if(!date) return false;
+  if(!Array.isArray(m.log)) m.log=[];
+  if(m.log.some(e=>e && e.date===date)) return false;      // already snapshotted
+  const points=(m.points||[]);
+  const notes=String(m.notes||'').trim();
+  const covered=points.filter(p=>p.done);
+  // Nothing written and nothing ticked → the occurrence left no trace worth
+  // keeping. An empty entry would be noise in the log, not history.
+  if(!notes && !covered.length) return false;
+  m.log.unshift({
+    id:b(), date, loggedAt:Date.now(), notes,
+    points: points.map(p=>({txt:p.txt, done:!!p.done})),
+  });
+  m.points=points.filter(p=>!p.done);   // covered ones are recorded above
+  m.notes='';
+  save(false);
+  return true;
+}
+/* Finish an occurrence: snapshot it, then roll a recurring meeting on to the next.
+   The two tick paths (appointment, calendar block) both come through here, so they
+   behave identically; one-off meetings simply have nothing to advance. */
+function finishMeetingOccurrence(m, date){
+  if(!m) return false;
+  const logged=completeMeetingOccurrence(m, date);
+  if(meetingIsRecurring(m)) advanceMeetingRecurrence(m);
+  return logged;
+}
+/* Block → meeting. The mirror of syncMeetingBlockFromAppt: ticking a meeting's
+   block on the Time Blocker completes the occurrence exactly as ticking its
+   appointment does — same appointment state, same snapshot, same advance. Writes
+   appt.done directly and never calls back into toggleApptDone, so the two
+   directions can't loop. Un-ticking is a correction, and never logs or advances. */
+function syncMeetingFromBlock(t){
+  if(!t || !t.meetingId) return false;
+  const m=(S.meetings||[]).find(x=>x && x.id===t.meetingId);
+  if(!m) return false;
+  const appt=m.apptId && (S.appointments||[]).find(a=>a.id===m.apptId);
+  if(appt) appt.done=!!t.done;
+  if(!t.done) return false;
+  const date=(appt&&appt.date) || t.schedDate || (m.nextMeeting&&m.nextMeeting.date);
+  finishMeetingOccurrence(m, date);
+  return true;
+}
+
 /* Ticking a meeting's appointment ticks its calendar block too, and un-ticking
    reopens it — so the block stays a truthful record of whether the meeting
    actually happened. Mirrors syncWorkoutFromAppt for training sessions, and like

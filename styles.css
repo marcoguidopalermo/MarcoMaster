@@ -974,6 +974,19 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 /* the recurrence pattern, wherever a meeting is shown */
 .mtg-recur{font-family:var(--mono);font-size:11px;color:var(--green);letter-spacing:0.02em;margin:2px 0 4px}
 
+/* ---------- the meeting LOG: past occurrences, newest first ----------
+   Reading material, not a working list: no controls, no hover states, and the
+   notes keep the line breaks they were written with. */
+.mlog-list{display:flex;flex-direction:column;gap:12px;max-height:340px;overflow-y:auto}
+.mlog-entry{border-left:2px solid var(--line);padding:2px 0 2px 12px}
+.mlog-date{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.04em;color:var(--accent);margin-bottom:5px}
+.mlog-notes{font-size:13.5px;line-height:1.55;color:var(--txt);white-space:pre-wrap}
+.mlog-empty{font-size:12.5px;color:var(--txt-faint);font-style:italic}
+.mlog-lbl{font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--txt-faint);margin:9px 0 4px}
+.mlog-points{display:flex;flex-direction:column;gap:2px}
+.mlog-pt{font-size:13px;color:var(--txt-dim)}
+.mlog-carried{font-family:var(--mono);font-size:10.5px;color:var(--amber);margin-top:7px}
+
 /* ---------- the schedule flow: frequency + weekday pickers ----------
    Same pill vocabulary as the duration presets (.dur-btn), so a repeating
    schedule is picked the same way a block length is. */

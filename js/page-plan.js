@@ -304,6 +304,8 @@ function bindPlan(){
     if(found){
       const t=found.t; t.done=true;
       if(t.projectId && t.projTaskId){ const p=S.projects.find(x=>x.id===t.projectId); const pt2=p&&p.tasks.find(x=>x.id===t.projTaskId); if(pt2) pt2.done=true; }
+      // a meeting's block completes that occurrence — same path as its appointment
+      if(t.meetingId) syncMeetingFromBlock(t);
       save(false); toast('Done ✓'); rerender();
     }
   });

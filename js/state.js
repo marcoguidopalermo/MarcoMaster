@@ -61,6 +61,11 @@ function seedDefaults(){
     if(m.nextMeeting===undefined) m.nextMeeting=null;
     if(m.apptId===undefined) m.apptId=null;
     if(m.blockId===undefined) m.blockId=null;
+    // migrate: the meeting LOG (dated snapshots of finished occurrences). Existing
+    // meetings start EMPTY and stay that way — history is never reconstructed from
+    // their current points, which carry no dates and cannot be attributed to any
+    // occurrence. The log fills from the next completion onward.
+    if(!Array.isArray(m.log)) m.log=[];
   });
   if(!S.theme) S.theme='dark';
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat

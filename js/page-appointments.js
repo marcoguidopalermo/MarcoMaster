@@ -195,13 +195,14 @@ function toggleApptDone(id){
   a.done=!a.done;
   syncWorkoutFromAppt(a);   // a training session completes with its appointment too
   syncMeetingBlockFromAppt(a);   // …and a meeting's calendar block does the same
-  // A RECURRING meeting rolls straight on to its next occurrence the moment this
-  // one is ticked. The completed appointment and block stay put as the record that
-  // this one happened — advanceMeetingRecurrence releases them and books fresh
-  // ones. Un-ticking never advances: that's a correction, not a completion.
-  if(a.done && typeof meetingIsRecurring==='function'){
+  // Ticking a meeting's appointment FINISHES that occurrence: it is snapshotted
+  // into the meeting's log, and a recurring meeting rolls straight on to the next
+  // one. The completed appointment and block stay put as the record that this one
+  // happened — advanceMeetingRecurrence releases them and books fresh ones.
+  // Un-ticking never finishes anything: that's a correction, not a completion.
+  if(a.done && typeof finishMeetingOccurrence==='function'){
     const m=(S.meetings||[]).find(x=>x && x.apptId===a.id);
-    if(meetingIsRecurring(m)) advanceMeetingRecurrence(m);
+    if(m) finishMeetingOccurrence(m, a.date);
   }
   save();
   return a;

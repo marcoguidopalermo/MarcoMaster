@@ -27,7 +27,7 @@
 
 /* transient draft only — never persisted, never part of S.
    projectId/meetingId: undefined = not chosen yet, null = "no project". */
-let capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'', done:false };
+let capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'', done:false, prio:false };
 let capModalOpen=false;   // the Leak CTA popup (a second mount of this same control)
 
 const CAP_DESTS=[
@@ -48,20 +48,24 @@ function capModalIsOpen(){
 }
 function captureRoot(inModal){ return inModal ? q('#capModalBody') : q('#capCard'); }
 function capDestNeedsMore(d){ return d==='project'||d==='meeting'||d==='appt'; }
-/* "already done" only means something for the two destinations that ARE tasks.
-   An appointment, a talking point and a leak are not things you complete this way,
-   so the tick isn't offered for them (and is ignored if one is chosen after ticking). */
-function capDoneApplies(d){ return !d || d==='quick' || d==='project'; }
+/* The two row toggles — "already done" and 🔥 priority — only mean something for
+   the destinations that ARE tasks. An appointment, a talking point and a leak are
+   not things you complete or prioritise this way, so neither is offered for them
+   (and both are ignored if such a destination is chosen after ticking). */
+function capTaskDest(d){ return !d || d==='quick' || d==='project'; }
 
 function captureHint(){
+  // the 🔥 suffix only shows where priority actually applies, and never alongside
+  // "already done" — a completed item is not on any shortlist
+  const f=(capDraft.prio && !capDraft.done)?' · flagged 🔥':'';
   switch(capDraft.dest){
-    case 'project': return 'Pick a project — or a standalone time block';
+    case 'project': return 'Pick a project — or a standalone time block'+f;
     case 'meeting': return 'Pick a meeting';
     case 'appt':    return 'Pick a date and time';
     case 'leak':    return 'Enter captures it as a leak';
     case 'content': return 'Enter captures it as a content idea';
-    case 'quick':   return capDraft.done?'Enter logs it as already done':'Enter adds it to Quick';
-    default:        return capDraft.done?'Enter logs a quick task as already done':'Enter adds a quick task · or pick a destination';
+    case 'quick':   return (capDraft.done?'Enter logs it as already done':'Enter adds it to Quick')+f;
+    default:        return (capDraft.done?'Enter logs a quick task as already done':'Enter adds a quick task · or pick a destination')+f;
   }
 }
 
@@ -113,7 +117,10 @@ function captureInnerHTML(inModal){
     ${prompt}
     <div class="cap-row">
       <input type="text" data-capinput value="${esc(capDraft.text)}" placeholder="Capture anything — Enter for a quick task">
-      ${capDoneApplies(capDraft.dest)?`
+      ${capTaskDest(capDraft.dest)?`
+      <label class="cap-prio ${capDraft.prio?'on':''}" title="Priority — put it straight on the dashboard's 🔥 Priority list">
+        <input type="checkbox" data-capprio ${capDraft.prio?'checked':''}><span>🔥</span>
+      </label>
       <label class="cap-done ${capDraft.done?'on':''}" title="Already done — log it straight into Completed Today">
         <input type="checkbox" data-capdone ${capDraft.done?'checked':''}><span>done</span>
       </label>`:''}
@@ -174,6 +181,13 @@ function bindCaptureIn(root, inModal){
     const lab=el.closest('.cap-done'); if(lab) lab.classList.toggle('on', capDraft.done);
     const hint=root.querySelector('.cap-hint'); if(hint) hint.textContent=captureHint();
   });
+  // 🔥 priority — same contract as the tick above: no re-render, so the caret
+  // never leaves the input; the label and the hint update in place.
+  root.querySelectorAll('[data-capprio]').forEach(el=>el.onchange=()=>{
+    capDraft.prio=!!el.checked;
+    const lab=el.closest('.cap-prio'); if(lab) lab.classList.toggle('on', capDraft.prio);
+    const hint=root.querySelector('.cap-hint'); if(hint) hint.textContent=captureHint();
+  });
 
   // destination chips: quick / leak commit straight away, the rest open one field
   root.querySelectorAll('[data-capdest]').forEach(el=>el.onclick=()=>{
@@ -202,8 +216,26 @@ function bindCaptureIn(root, inModal){
   bindLeakCaptureIn(root, 'dash', after);
 }
 
-/* Always clears `done` — the tick can never silently survive a submit. */
-function captureReset(){ capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'', done:false }; }
+/* Always clears `done` AND `prio` — neither toggle can silently survive a submit. */
+function captureReset(){ capDraft={ text:'', dest:null, projectId:undefined, meetingId:undefined, date:'', time:'', done:false, prio:false }; }
+
+/* Flag a just-created task as priority, so it lands straight on the dashboard's
+   🔥 Priority list. Both creators start a task at priority:false, so this is a
+   plain set rather than atPriority's toggle — and a task created a moment ago
+   cannot have a linked time block yet, so there is nothing to keep in sync. */
+function capSetPriority(projectId, id){
+  if(!id) return false;
+  if(projectId){
+    const p=(S.projects||[]).find(x=>x.id===projectId);
+    const t=p&&(p.tasks||[]).find(x=>x.id===id);
+    if(!t) return false;
+    t.priority=true; return true;
+  }
+  let t=day().tasks.find(x=>x.id===id);
+  if(!t){ const g=findTaskGlobal(id); t=g&&g.t; }
+  if(!t) return false;
+  t.priority=true; return true;
+}
 
 /* Commit to the chosen destination — or to a quick task when none is chosen.
    Returns without writing anything when a destination still needs its field. */
@@ -218,20 +250,29 @@ function captureCommit(inModal, extra){
   // read the tick live, like the text: it writes into the draft without a repaint,
   // so this also catches a tick made immediately before pressing Enter
   const de=root && root.querySelector('[data-capdone]');
-  const markDone = (de ? !!de.checked : !!capDraft.done) && capDoneApplies(d);
+  const pe=root && root.querySelector('[data-capprio]');
+  const markDone = (de ? !!de.checked : !!capDraft.done) && capTaskDest(d);
+  const markPrio = (pe ? !!pe.checked : !!capDraft.prio) && capTaskDest(d);
+  // Both toggles on is allowed and means exactly what it says: a completed item
+  // that was also flagged. The flag is simply moot once done — the 🔥 list shows
+  // open tasks — so it is written and then ignored, never treated as an error.
+  const flag = (markPrio && !markDone) ? ' 🔥' : '';
 
   if(d==='quick'){
     const id=addTask(txt,'quick',2);
+    if(markPrio) capSetPriority(null, id);
     // already done → complete it on the spot, so it lands in Completed Today with
     // the time it happened and never passes through the open list
     if(markDone && id) markTaskDoneNow(id);
-    captureDone(inModal, markDone?'Logged as done ✓':'Quick task added');
+    else if(markPrio) save(false);
+    captureDone(inModal, markDone?'Logged as done ✓':('Quick task added'+flag));
     return;
   }
   if(d==='project'){
     if(capDraft.projectId===undefined){ toast('Pick a project'); return; }
     // 60 min is the default; adjust it on the row with the existing duration picker
     const id=addUnifiedTask(txt,'project',capDraft.projectId,60);
+    if(markPrio) capSetPriority(capDraft.projectId, id);
     if(markDone && id){
       // a project task stamps its completion DAY via the shared writer (which also
       // keeps any linked time block in step); a standalone block stamps the time
@@ -239,9 +280,10 @@ function captureCommit(inModal, extra){
       else markTaskDoneNow(id);
       save(false);
     }
+    else if(markPrio) save(false);
     captureDone(inModal, markDone
       ? (capDraft.projectId?'Logged as done ✓ · in project':'Logged as done ✓')
-      : (capDraft.projectId?'Added to project':'Time block added'));
+      : ((capDraft.projectId?'Added to project':'Time block added')+flag));
     return;
   }
   if(d==='meeting'){
@@ -275,7 +317,7 @@ function captureCommit(inModal, extra){
     // leakSubmit toasts on an outright capture; on a near-match it raises the
     // "same as…?" prompt instead and the text is held in leakPending
     const captured=leakSubmit(txt,'dash');
-    capDraft.text=''; capDraft.done=false; capDraft.dest = captured ? null : 'leak';
+    capDraft.text=''; capDraft.done=false; capDraft.prio=false; capDraft.dest = captured ? null : 'leak';
     if(inModal && capModalIsOpen()){
       if(captured) closeCaptureModal(); else renderCaptureModal();   // stay open to answer
     }else{

@@ -1889,6 +1889,20 @@ body.pick-open{overflow:hidden}
 .cap-done.on{border-color:var(--green);color:var(--green);background:color-mix(in srgb, var(--green) 12%, transparent)}
 @media(max-width:600px){ .cap-done span{display:none} .cap-done{padding:0 8px} }
 
+/* the 🔥 priority toggle beside it — same shape and same contract, in the
+   priority colour. Its glyph IS the label, so it survives the narrow breakpoint
+   where "done" drops its text. */
+.cap-prio{display:flex;align-items:center;gap:5px;flex:none;cursor:pointer;user-select:none;
+  padding:0 9px;border:1px solid var(--line);border-radius:8px;
+  font-family:var(--mono);font-size:11px;color:var(--txt-faint);height:100%;min-height:36px;
+  transition:all .12s}
+.cap-prio:hover{border-color:var(--red);color:var(--txt-dim)}
+.cap-prio input{width:14px;height:14px;margin:0;accent-color:var(--red);cursor:pointer}
+.cap-prio span{filter:grayscale(1);opacity:.55;transition:all .12s}
+.cap-prio.on{border-color:var(--red);color:var(--red);background:color-mix(in srgb, var(--red) 12%, transparent)}
+.cap-prio.on span{filter:none;opacity:1}
+@media(max-width:600px){ .cap-prio{padding:0 8px} }
+
 /* ---- editable library categories (Settings) ---- */
 .tl-head{gap:6px;align-items:center}
 .tl-cat-name{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;

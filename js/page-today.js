@@ -38,9 +38,9 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
-  <button class="fsn-cta" id="fsnCta">
+  <button class="fsn-cta" id="startDayCta">
     <span class="fsn-cta-ic">☼</span>
-    <span class="fsn-cta-txt"><b>Read your Future Self Narrative</b><span>Start the morning by remembering where you're going</span></span>
+    <span class="fsn-cta-txt"><b>Start your day</b><span>Your narrative, and what today actually holds</span></span>
     <span class="fsn-cta-go">→</span>
   </button>
 
@@ -1027,8 +1027,9 @@ function confirmProjSchedule(){
 }
 
 function bindDashboard(){
-  // Morning surfacing: jump straight into the Future Self Narrative reader
-  const fc=q('#fsnCta'); if(fc) fc.onclick=()=>go('fsn');
+  // Morning surfacing: the ritual screen — the narrative plus what today holds.
+  // (The FSN reader is still its own nav page; this is the morning version of it.)
+  const sd=q('#startDayCta'); if(sd) sd.onclick=openDayScreen;
   // Fire Station: start-a-fire CTA / return-to-fire, and evidence card
   bindFireDash();
   // Unified capture — the app's single general entry point (top of the Dashboard)

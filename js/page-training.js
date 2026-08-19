@@ -285,7 +285,8 @@ function trainOverlayOpen(){
       || (typeof fireScreenOpen!=='undefined'  && fireScreenOpen)
       || (typeof trainScreenOpen!=='undefined' && trainScreenOpen)
       || (typeof projScreenOpen!=='undefined'  && projScreenOpen)
-      || (typeof mtgScreenOpen!=='undefined'   && mtgScreenOpen);
+      || (typeof mtgScreenOpen!=='undefined'   && mtgScreenOpen)
+      || (typeof dayScreenOpen!=='undefined'   && dayScreenOpen);
 }
 /* The other direction: a timed session also shows in the ☀ Today strip and the
    calendar as its appointment, and those surfaces have their own ✓. Ticking there

@@ -80,6 +80,7 @@ function startApp(){
     if(typeof trainScreenOpen!=='undefined' && trainScreenOpen){ closeTrainScreen(); return; }
     if(typeof projScreenOpen!=='undefined' && projScreenOpen){ closeProjScreen(); return; }
     if(typeof mtgScreenOpen!=='undefined' && mtgScreenOpen){ closeMtgScreen(); return; }
+    if(typeof dayScreenOpen!=='undefined' && dayScreenOpen){ closeDayScreen(); return; }
     closeReset();
   });
   go('dashboard');

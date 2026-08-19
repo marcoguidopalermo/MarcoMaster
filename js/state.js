@@ -67,6 +67,10 @@ function seedDefaults(){
     // occurrence. The log fills from the next completion onward.
     if(!Array.isArray(m.log)) m.log=[];
   });
+  // Vision board: a URL string only — the image bytes live in Cloud Storage (see
+  // js/vision.js). Non-destructive: existing accounts get null and nothing else
+  // changes. Invisible to stateCount(), so the shrink-guard is unaffected.
+  if(S.visionBoard===undefined) S.visionBoard=null;
   if(!S.theme) S.theme='dark';
   if(!S.recurringDone) S.recurringDone = {};   // legacy; kept for back-compat
   if(!S.days) S.days = {};        // per-day "today" data

@@ -36,6 +36,8 @@ function renderSettings(){
     </div>
   </div>
 
+  ${renderVisionSettings()}
+
   <div class="card">
     <div class="card-h"><h3>Preferences</h3></div>
     <div class="set-row">
@@ -291,6 +293,7 @@ function bindSettings(){
   // Future Self Narrative editors — autosave through the normal save() path, no
   // re-render (keep the caret where it is while typing).
   q('[data-fsn]','all').forEach(el=>el.oninput=()=>{ if(!S.narrative) S.narrative={full:'',condensed:'',principles:''}; S.narrative[el.dataset.fsn]=el.value; save(); });
+  bindVisionSettings();   // the vision board image (Cloud Storage; state holds only a URL)
 
   // Notifications: tap-gated enable (the only path that prompts). Re-render to
   // reflect the new state (enabled / blocked) after the browser resolves.

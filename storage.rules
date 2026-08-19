@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Vision board images — UID-scoped exactly like pushTokens/{uid} in
+    // firestore.rules. Nothing here is public: a download URL is a capability,
+    // not an authorisation, so the rule still gates every read.
+    //
+    // read/delete are split from create/update deliberately: request.resource is
+    // null on a delete, so folding the size check into a blanket `write` would
+    // make deletion impossible. The size and content-type checks below are the
+    // REAL limit — the client resizes for speed and a good error message, but
+    // this is what actually cannot be bypassed.
+    match /visionBoards/{uid}/{allPaths=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+                            && request.auth.uid == uid
+                            && request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+    }
+
+    // Everything else stays deny-by-default.
+  }
+}

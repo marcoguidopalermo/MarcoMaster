@@ -1961,6 +1961,16 @@ body.pick-open{overflow:hidden}
 .cap-prio.on span{filter:none;opacity:1}
 @media(max-width:600px){ .cap-prio{padding:0 8px} }
 
+/* ---- vision board (Settings) ---- */
+.vb-preview{margin-top:12px;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:420px}
+.vb-preview img{display:block;width:100%;max-height:220px;object-fit:cover}
+.vb-preview.is-broken{display:none}
+.vb-pick{position:relative;cursor:pointer;display:inline-flex;align-items:center}
+.vb-progress{margin-top:14px;height:6px;border-radius:4px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.vb-bar{height:100%;background:var(--accent);transition:width .18s}
+.vb-pct{margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--txt-dim)}
+.vb-err{margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--red)}
+
 /* ---- editable library categories (Settings) ---- */
 .tl-head{gap:6px;align-items:center}
 .tl-cat-name{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;

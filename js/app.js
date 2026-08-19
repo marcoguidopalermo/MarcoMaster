@@ -306,6 +306,12 @@ async function init(){
     FB.app=firebase.initializeApp(FIREBASE_CONFIG);
     FB.auth=firebase.auth();
     FB.db=firebase.firestore();
+    // Cloud Storage — images only, and ONLY images. It is a separate service from
+    // the Firestore state document and never touches it (see js/vision.js).
+    // Optional by design: an older cached SDK without the storage bundle leaves
+    // FB.storage null and the vision board simply isn't offered.
+    try{ FB.storage = firebase.storage ? firebase.storage() : null; }
+    catch(e){ FB.storage=null; console.warn('storage init failed', e); }
     FB.ready=true;
     try{ await FB.auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
     FB.auth.onAuthStateChanged(async(user)=>{

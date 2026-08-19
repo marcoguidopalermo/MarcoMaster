@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ---------- Firebase handles (set up in init) ---------- */
-let FB={ app:null, auth:null, db:null, user:null, ready:false };
+let FB={ app:null, auth:null, db:null, storage:null, user:null, ready:false };
 
 /* ---------- storage layer ----------
    - localStorage = instant local cache (per device)

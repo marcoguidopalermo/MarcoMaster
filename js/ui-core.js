@@ -21,6 +21,26 @@ function floorEvidenceLine(done, floor){
 function floorEvidenceClass(done, floor){ return (done||0)>=(floor>=1?floor:1)?'met':''; }
 function toggleTheme(){ S.theme=(S.theme==='light')?'dark':'light'; applyTheme(); save(false); }
 
+/* ---------- clipboard ----------
+   navigator.clipboard needs a secure context and isn't in older iOS Safari, so
+   fall back to a throwaway textarea + execCommand. Resolves true only when the
+   copy actually happened, so callers can tell you the truth either way. */
+async function copyToClipboard(txt){
+  try{
+    if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(txt); return true; }
+  }catch(e){ /* fall through to the legacy path */ }
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=txt; ta.setAttribute('readonly','');
+    ta.style.position='fixed'; ta.style.top='-1000px'; ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.select(); ta.setSelectionRange(0, ta.value.length);
+    const ok=document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  }catch(e){ return false; }
+}
+
 /* ---------- generic drag-reorder (mouse + touch long-press), no library ----------
    Drag an item by its handle to reorder a vertical list. Uses Pointer Events so
    mouse, touch and pen are handled uniformly; touch needs a brief long-press so a

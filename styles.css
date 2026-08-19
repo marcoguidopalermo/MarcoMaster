@@ -1224,6 +1224,34 @@ input[type=color].proj-color{width:28px;height:28px;padding:0;border:1px solid v
 .mrn-toggle{margin-bottom:26px}
 .mrn-inner .fsn-reader{max-width:none}
 .mrn-foot{margin-top:44px;font-family:var(--mono);font-size:11px;color:var(--txt-faint)}
+.mrn-block{margin-bottom:26px}
+.mrn-rows{display:flex;flex-direction:column;gap:4px}
+.mrn-row{display:flex;align-items:baseline;gap:11px;font-size:15px;line-height:1.5;color:var(--txt)}
+.mrn-t{flex:none;font-family:var(--mono);font-size:11px;color:var(--txt-faint);min-width:58px}
+/* the vision board — capped so a tall image can never push the narrative away */
+.mrn-vision{margin-bottom:30px;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.mrn-vision img{display:block;width:100%;max-height:38vh;object-fit:cover}
+/* the one line the gate asks for */
+.mrn-intent{margin:34px 0 8px;padding:20px;border:1px solid var(--accent);border-radius:14px;
+  background:var(--accent-soft)}
+.mrn-intent .mrn-lbl{color:var(--accent);margin-bottom:10px;display:block}
+.mrn-intent input{width:100%;font-size:17px;padding:13px 15px;font-family:var(--sans)}
+.mrn-intent input:focus{border-color:var(--accent)}
+.mrn-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+.mrn-actions .btn[disabled]{opacity:.4;cursor:not-allowed}
+.mrn-actions .btn[disabled]:hover{transform:none;background:var(--accent)}
+.mrn-actions .btn.ghost[disabled]:hover{background:none;border-color:var(--line);color:var(--txt-dim)}
+/* gated: no way out but the line — so no close affordance is drawn at all */
+.mrn-inner.is-gated{padding-top:44px}
+/* the dashboard CTA once the intent is set */
+.fsn-cta.has-intent .fsn-cta-txt span{color:var(--txt);font-size:14px;font-style:italic}
+@media(max-width:600px){
+  .mrn-intent{padding:15px;margin-top:26px}
+  .mrn-intent input{font-size:16px}
+  .mrn-row{font-size:14px}
+  .mrn-t{min-width:50px}
+  .mrn-vision img{max-height:30vh}
+}
 @media(max-width:600px){
   .mrn-inner{padding-top:48px;padding-bottom:60px}
   .mrn-date{font-size:24px}

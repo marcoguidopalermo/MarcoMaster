@@ -84,6 +84,10 @@ function startApp(){
     closeReset();
   });
   go('dashboard');
+  // FIRST open of the day lands on the morning screen, rendered over the finished
+  // dashboard so closing it reveals a live page rather than a flash of nothing.
+  // Every later open today goes straight through — see morningDone().
+  try{ maybeOpenMorning(); }catch(e){ console.warn('maybeOpenMorning failed', e); }
   bindFlushHandlers();
   registerServiceWorker();
   // Push (Phase 2): bind the foreground→toast handler, and refresh a rotated token
@@ -207,6 +211,9 @@ function subscribeCloud(){
       try{ syncRecurringIntoToday(); }catch(e){ console.warn('syncRecurringIntoToday failed', e); }
       try{ syncMeetingRecurrences(); }catch(e){ console.warn('syncMeetingRecurrences failed', e); }
       renderNav(); rerender();
+      // adopted state may already have this morning done (written on another
+      // device) — drop an untouched gate rather than asking for it twice
+      try{ morningReconcile(); }catch(e){ console.warn('morningReconcile failed', e); }
     }else{
       // HOOK B — local wins (newer/equal, or adoption deferred by a pending save):
       // fold the incoming CLOUD journal into local. forceBaseNewer pins local as the

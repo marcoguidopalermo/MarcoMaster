@@ -488,7 +488,10 @@ function blankDay(){
     skipped:{},        // {recurringId:true} skipped this cycle
     dayStart:8,        // first hour shown on the Plan grid (24h)
     dayEnd:21,         // last hour shown
-    shutdown:{ well:'',drift:'',avoid:'',trained:false,health:false,time:false,firstMove:'',clear:'' }
+    shutdown:{ well:'',drift:'',avoid:'',trained:false,health:false,time:false,firstMove:'',clear:'' },
+    // the morning screen has been passed for this day (see morningDone). Purely a
+    // per-day boolean: nothing counts, totals or remembers days it wasn't set.
+    morningSeen:false
   };
 }
 /* ============================================================
@@ -587,6 +590,7 @@ function day(){
   if(d.fulfillment==null) d.fulfillment='';
   migrateJournalV2(d);   // ensure morning/evening exist + one-time legacy → stars migration
   migrateJournalCalm(d); // anxiety/stress → single calm rating (gated)
+  if(d.morningSeen==null) d.morningSeen=false;   // migration: days created before the morning screen
   if(d.dayStart==null) d.dayStart=(S.settings&&S.settings.dayStart)||8;
   if(d.dayEnd==null) d.dayEnd=(S.settings&&S.settings.dayEnd)||21;
   // migrate: a task that had a start hour but no schedDate was scheduled for its own day

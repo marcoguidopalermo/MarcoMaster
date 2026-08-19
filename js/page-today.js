@@ -38,11 +38,7 @@ function renderDashboard(){
     <h2>Dashboard</h2>
   </div>
 
-  <button class="fsn-cta" id="startDayCta">
-    <span class="fsn-cta-ic">☼</span>
-    <span class="fsn-cta-txt"><b>Start your day</b><span>Your narrative, and what today actually holds</span></span>
-    <span class="fsn-cta-go">→</span>
-  </button>
+  ${renderStartDayCta()}
 
   ${renderCapture()}
 
@@ -67,6 +63,20 @@ function renderDashboard(){
 
   ${renderFollowups()}
   `;
+}
+
+/* The morning CTA. Once today's intent is written it becomes the thing the button
+   says — so the line you set at 7am is still in front of you at 4pm, without
+   costing the dashboard a card. */
+function renderStartDayCta(){
+  const intent=String((day().morning&&day().morning.intentions)||'').trim();
+  return `
+  <button class="fsn-cta ${intent?'has-intent':''}" id="startDayCta">
+    <span class="fsn-cta-ic">☼</span>
+    <span class="fsn-cta-txt"><b>${intent?'Today’s intent':'Start your day'}</b><span>${
+      intent?esc(intent):'Your narrative, and what today actually holds'}</span></span>
+    <span class="fsn-cta-go">→</span>
+  </button>`;
 }
 
 /* ---------- THE THREE HUB CARDS ----------

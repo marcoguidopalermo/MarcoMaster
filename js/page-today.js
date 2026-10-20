@@ -774,21 +774,9 @@ function atDelete(key){
     leakSyncWatching(k.leakId);
     save(); rerender(); return;
   }
-  if(k.src==='project'){
-    const p=(S.projects||[]).find(x=>x.id===k.projId); if(!p) return;
-    p.tasks=(p.tasks||[]).filter(x=>x.id!==k.id);
-    // sweep any linked day-task blocks + pipeline references so nothing dangles
-    const linkedIds=new Set();
-    Object.keys(S.days||{}).forEach(dk=>{ (S.days[dk].tasks||[]).forEach(t=>{ if(t.projectId===k.projId && t.projTaskId===k.id) linkedIds.add(t.id); }); });
-    Object.keys(S.days||{}).forEach(dk=>{
-      const d=S.days[dk];
-      if(d.tasks) d.tasks=d.tasks.filter(t=>!(t.projectId===k.projId && t.projTaskId===k.id));
-      if(d.pipeline) d.pipeline=d.pipeline.filter(it=>!(it.projectId===k.projId && it.projTaskId===k.id) && !linkedIds.has(it.taskId));
-    });
-  }else{
-    Object.keys(S.days||{}).forEach(dk=>{ const d=S.days[dk]; if(d.pipeline) d.pipeline=d.pipeline.filter(it=>it.taskId!==k.id); });
-    day().tasks=day().tasks.filter(x=>x.id!==k.id);
-  }
+  // project / standalone: the task plus its linked blocks and pipeline references, so
+  // nothing dangles — removeTaskEverywhere (state-core.js), shared with the MCP connector
+  removeTaskEverywhere(S, k.src==='project' ? 'P|'+k.projId+'|'+k.id : 'S|'+k.id);
   save(); rerender();
 }
 /* Unschedule a project task: drop its non-done linked time-block(s) from the

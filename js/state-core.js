@@ -127,6 +127,73 @@ function followupAgeLabel(f, now){
   if(h>=1) return h+'h open';
   return 'today';
 }
+/* ---------- projects ---------- */
+const PROJ_COLORS=['#58a6ff','#3fb950','#e3b341','#14b8a6','#bc8cff','#f778ba','#56d4dd'];
+/* the colour the next project gets: the palette in order, by how many exist */
+function nextProjectColor(state){ return PROJ_COLORS[((state.projects||[]).length) % PROJ_COLORS.length]; }
+/* project: { id, name, color, done:false, tasks:[] }. Used by createProject(). */
+function appendProject(state, p){
+  if(!state.projects) state.projects=[];
+  state.projects.push(p);
+  return p;
+}
+
+/* ---------- deleting a task, and everything that points at it ----------
+   The app's atDelete() for standalone ('S|id') and project ('P|pid|tid') tasks, so
+   nothing dangles: a project task takes its linked calendar blocks and every
+   pipeline item that references it (by project link, or by one of those blocks'
+   ids) with it; a standalone task takes the pipeline items linked to it.
+   Leak tasks are not handled here (their delete also re-derives the leak's status).
+   Returns how many records it removed (task + blocks + pipeline items). */
+function removeTaskEverywhere(state, key){
+  const [src, a, b2]=String(key).split('|');
+  const days=state.days||{};
+  let n=0;
+  if(src==='P'){
+    const p=(state.projects||[]).find(x=>x && x.id===a); if(!p) return 0;
+    const before=(p.tasks||[]).length;
+    p.tasks=(p.tasks||[]).filter(x=>x.id!==b2);
+    n+=before-p.tasks.length;
+    if(!n) return 0;
+    const linkedIds=new Set();
+    Object.keys(days).forEach(dk=>{ (days[dk].tasks||[]).forEach(t=>{ if(t.projectId===a && t.projTaskId===b2) linkedIds.add(t.id); }); });
+    Object.keys(days).forEach(dk=>{
+      const d=days[dk];
+      if(d.tasks){ const l=d.tasks.length; d.tasks=d.tasks.filter(t=>!(t.projectId===a && t.projTaskId===b2)); n+=l-d.tasks.length; }
+      if(d.pipeline){ const l=d.pipeline.length; d.pipeline=d.pipeline.filter(it=>!(it.projectId===a && it.projTaskId===b2) && !linkedIds.has(it.taskId)); n+=l-d.pipeline.length; }
+    });
+    return n;
+  }
+  if(src==='S'){
+    Object.keys(days).forEach(dk=>{
+      const d=days[dk];
+      if(d.tasks){ const l=d.tasks.length; d.tasks=d.tasks.filter(x=>x.id!==a); n+=l-d.tasks.length; }
+    });
+    if(!n) return 0;
+    Object.keys(days).forEach(dk=>{ const d=days[dk]; if(d.pipeline){ const l=d.pipeline.length; d.pipeline=d.pipeline.filter(it=>it.taskId!==a); n+=l-d.pipeline.length; } });
+    return n;
+  }
+  return 0;
+}
+
+/* ---------- compare-and-set, for replaying edits ----------
+   An edit op carries the values it saw (from) and the ones it sets (to; a field
+   listed in unset is removed). The server applies it to exactly the state it read.
+   A device replays it only if each field still holds `from` — if the app changed
+   that field since, the app's later edit wins and the op is skipped. Already at
+   `to` → nothing to do. Returns true if it changed the record. */
+function casApply(obj, from, to, unset){
+  if(!obj) return false;
+  const want=Object.assign({}, to||{});
+  (unset||[]).forEach(k=>{ want[k]=undefined; });
+  const keys=Object.keys(want);
+  const same=(x,y)=>JSON.stringify(x===undefined?null:x)===JSON.stringify(y===undefined?null:y);
+  if(keys.every(k=>same(obj[k], want[k]))) return false;
+  if(!keys.every(k=>same(obj[k], (from||{})[k]))) return false;
+  keys.forEach(k=>{ if(want[k]===undefined) delete obj[k]; else obj[k]=want[k]; });
+  return true;
+}
+
 /* the task a pipeline item is linked to, as a row key ('S|…', 'P|…|…', 'L|…|…'); null for free text */
 function pipelineLinkKey(it){
   if(!it) return null;
@@ -195,6 +262,19 @@ function pendingPipelineCarry(state, todayKey){
      appt     — appt: a complete appointment record (appendAppointment)
      mpoint   — meetingId, point: a complete talking point (appendMeetingPoint)
      followup — followup: a complete follow-up record (appendFollowup)
+     add      — also logs a task already done (task.done true, doneAt set), as Capture's tick does
+     fu_touch — followupId, ts, note?: lastTouched moves forward to ts; note (if any)
+                is appended — CAS on the note the server saw
+     fu_resolve — followupId, ts: resolved (CAS false → true), lastTouched forward
+     prio     — key, from/to {priority}; a project task's linked blocks follow it
+     edit     — key, from/to/unset over txt / kind / mins / schedDate / start / dueDate;
+                a project task's linked blocks follow its text and priority
+     del      — key: removeTaskEverywhere; n = records the server removed
+     move     — key 'S|id', projectId: the standalone task becomes a task of that
+                project (same id); pipeline items re-point to the project task
+     project  — project: a complete project record (appendProject)
+     appt_edit   — apptId, from/to over title / date / time (CAS)
+     appt_cancel — apptId: removed, if no meeting or training session links it
      pipe     — item: a complete pipeline item linked to a task; task?: a new quick
                 task to create first (the "new task + promote" case). Never displaces:
                 if the pipeline filled up meanwhile, the task is kept, the item isn't.
@@ -286,6 +366,71 @@ function applyExtOp(state, op, ctx){
     appendAppointment(state, JSON.parse(JSON.stringify(a)));
     return true;
   }
+  if(op.type==='fu_touch' || op.type==='fu_resolve'){
+    const f=(state.followups||[]).find(x=>x && x.id===op.followupId); if(!f) return false;
+    let changed=false;
+    if(op.type==='fu_resolve') changed=casApply(f, {resolved:false}, {resolved:true});
+    if(op.note!=null) changed=casApply(f, {note:op.noteFrom}, {note:op.note}) || changed;
+    if(changed || op.type==='fu_touch'){
+      const lt=Math.max(+f.lastTouched||0, +op.ts||0);
+      if(lt!==f.lastTouched){ f.lastTouched=lt; changed=true; }
+    }
+    return changed;
+  }
+  if(op.type==='prio' || op.type==='edit'){
+    let t=null;
+    if(parts[0]==='S') t=extFindStandalone(state, parts[1], ctx);
+    else if(parts[0]==='P') t=extFindProjectTask(state, parts[1], parts[2]);
+    else if(parts[0]==='L') t=extFindLeakTask(state, parts[1], parts[2]);
+    if(!casApply(t, op.from, op.to, op.unset)) return false;
+    if(parts[0]==='P'){
+      // the app keeps a project task's linked calendar blocks in step (atEdit / atPriority)
+      const days=state.days||{};
+      Object.keys(days).forEach(dk=>{ ((days[dk]||{}).tasks||[]).forEach(b=>{
+        if(b && b.projectId===parts[1] && b.projTaskId===parts[2]){ if('txt' in op.to) b.txt=t.txt; if('priority' in op.to) b.priority=t.priority; } }); });
+    }
+    return true;
+  }
+  if(op.type==='del') return removeTaskEverywhere(state, op.key)>0;
+  if(op.type==='move'){
+    if(parts[0]!=='S') return false;
+    const p=(state.projects||[]).find(x=>x && x.id===op.projectId && !x.done); if(!p) return false;
+    const days=state.days||{};
+    let t=null;
+    Object.keys(days).forEach(dk=>{ const d=days[dk]; const i=(d.tasks||[]).findIndex(x=>x && x.id===parts[1]);
+      if(i>=0 && !t){
+        const x=d.tasks[i];
+        // the same tasks the server will move: open, unscheduled, not a recurring /
+        // training / meeting / project-linked block — if that changed meanwhile, skip
+        if(!x.done && x.schedDate==null && !x.recurringId && !x.workoutId && !x.meetingId && !x.projectId){ t=x; d.tasks.splice(i,1); }
+        else t=false;
+      } });
+    if(!t) return false;
+    // a project task's own shape (addUnifiedTask): mins only on a time block
+    const pt={id:t.id, txt:t.txt, done:false, priority:!!t.priority, kind:t.kind==='project'?'project':'quick'};
+    if(pt.kind==='project') pt.mins=t.mins||60;
+    if(t.dueDate) pt.dueDate=t.dueDate;
+    if(!p.tasks) p.tasks=[];
+    p.tasks.push(pt);
+    Object.keys(days).forEach(dk=>{ (days[dk].pipeline||[]).forEach(it=>{
+      if(it && it.taskId===t.id){ delete it.taskId; it.projectId=p.id; it.projTaskId=t.id; } }); });
+    return true;
+  }
+  if(op.type==='project'){
+    const p=op.project;
+    if(!p || !p.id || (state.projects||[]).some(x=>x && x.id===p.id)) return false;
+    appendProject(state, JSON.parse(JSON.stringify(p)));
+    return true;
+  }
+  if(op.type==='appt_edit'){
+    return casApply((state.appointments||[]).find(x=>x && x.id===op.apptId), op.from, op.to);
+  }
+  if(op.type==='appt_cancel'){
+    if(apptIsLinked(state, op.apptId)) return false;
+    const l=(state.appointments||[]).length;
+    state.appointments=(state.appointments||[]).filter(x=>!(x && x.id===op.apptId));
+    return state.appointments.length!==l;
+  }
   if(op.type==='followup'){
     const f=op.followup;
     if(!f || !f.id || (state.followups||[]).some(x=>x && x.id===f.id)) return false;
@@ -336,6 +481,13 @@ function applyExtOp(state, op, ctx){
 }
 
 /* the applied-op markers as a list of {id, ts} (tolerates a missing/garbled field) */
+/* is an appointment tied to a meeting (m.apptId) or a training session (s.apptId)?
+   Rescheduling or removing those has to go through their own screens. */
+function apptIsLinked(state, id){
+  if((state.meetings||[]).some(m=>m && m.apptId===id)) return true;
+  const days=((state.training||{}).days)||{};
+  return Object.keys(days).some(k=>(((days[k]||{}).sessions)||[]).some(s=>s && s.apptId===id));
+}
 function extAppliedList(state){
   const v=state && state.extApplied;
   return Array.isArray(v) ? v.filter(x=>x && typeof x.id==='string') : [];
@@ -347,5 +499,6 @@ if(typeof module!=='undefined' && module.exports){
   module.exports={ PROTECT_FLOOR, NEAR_EMPTY, trainingSessionCount, stateCount, isCatastrophicShrink,
                    nextVersion, blankDay, applyExtOp, extAppliedList,
                    PIPELINE_SLOTS, appendAppointment, appendMeetingPoint, pipelineLinkKey, appendPipelineItem,
-                   pipelineItemDone, pendingPipelineCarry, appendFollowup, followupAgeLabel };
+                   pipelineItemDone, pendingPipelineCarry, appendFollowup, followupAgeLabel,
+                   PROJ_COLORS, nextProjectColor, appendProject, removeTaskEverywhere, casApply, apptIsLinked };
 }

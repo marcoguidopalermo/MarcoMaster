@@ -188,6 +188,62 @@ function clockLabel(hhmm){
 const dateLabel = (k) => DateTime.fromISO(k, { zone: TZ }).toFormat('ccc LLL d');
 const describeAppt = (a) => `- ${dateLabel(a.date)} ${clockLabel(a.time)} — ${a.title}`;
 
+/* ---------- generic "id or words" resolution (follow-ups, appointments, projects) ----------
+   Same tiers as resolveTask: exact id, exact text, contains, every word present.
+   One match → {item}; several → {ambiguous}; none → {none}. Never guesses. */
+function resolveBy(list, ref, textOf){
+  const raw = String(ref || '').trim();
+  const byId = list.filter(x => x.id === raw);
+  if (byId.length === 1) return { item: byId[0] };
+  const q = norm(raw);
+  if (!q) return { none: true };
+  for (const test of [
+    x => norm(textOf(x)) === q,
+    x => norm(textOf(x)).includes(q),
+    x => q.split(' ').every(w => norm(textOf(x)).split(' ').includes(w)),
+  ]) {
+    const hit = list.filter(test);
+    if (hit.length === 1) return { item: hit[0] };
+    if (hit.length > 1) return { ambiguous: hit.slice(0, 8) };
+  }
+  return { none: true };
+}
+const resolveOpenFollowup = (state, ref) => resolveBy((state.followups || []).filter(f => f && f.id && !f.resolved), ref, f => f.txt);
+const resolveActiveAppt = (state, ref) => resolveBy((state.appointments || []).filter(a => a && a.id && !a.done), ref, a => a.title);
+const resolveActiveProject = (state, ref) => resolveBy((state.projects || []).filter(p => p && p.id && !p.done), ref, p => p.name);
+
+/* What delete_task will remove, counted independently of the code that removes it
+   (the guard then checks the two agree): the task, a project task's linked calendar
+   blocks, and every pipeline item pointing at either. */
+function deleteFootprint(state, key){
+  const [src, a, b] = String(key).split('|');
+  const days = state.days || {};
+  const all = (f) => Object.keys(days).reduce((n, dk) => n + f(days[dk] || {}), 0);
+  if (src === 'S') {
+    const n = all(d => (d.tasks || []).filter(t => t && t.id === a).length);
+    return n ? { total: n + all(d => (d.pipeline || []).filter(it => it && it.taskId === a).length), blocks: 0 } : { total: 0, blocks: 0 };
+  }
+  if (src === 'P') {
+    const p = (state.projects || []).find(x => x && x.id === a);
+    if (!p || !(p.tasks || []).some(t => t && t.id === b)) return { total: 0, blocks: 0 };
+    const blockIds = new Set();
+    Object.keys(days).forEach(dk => (days[dk].tasks || []).forEach(t => { if (t && t.projectId === a && t.projTaskId === b) blockIds.add(t.id); }));
+    const pipe = all(d => (d.pipeline || []).filter(it => it && ((it.projectId === a && it.projTaskId === b) || blockIds.has(it.taskId))).length);
+    return { total: 1 + blockIds.size + pipe, blocks: blockIds.size };
+  }
+  return { total: 0, blocks: 0 };
+}
+/* the raw task object behind a row key (read-only lookups for from-values) */
+function taskByKey(state, key){
+  const [src, a, b] = String(key).split('|');
+  if (src === 'S') { for (const d of Object.values(state.days || {})) { const t = (d.tasks || []).find(x => x && x.id === a); if (t) return t; } return null; }
+  if (src === 'P') { const p = (state.projects || []).find(x => x && x.id === a); return p ? (p.tasks || []).find(x => x && x.id === b) || null : null; }
+  if (src === 'L') { const l = (state.leaks || []).find(x => x && x.id === a); return l ? (l.tasks || []).find(x => x && x.id === b) || null : null; }
+  return null;
+}
+/* does a project task have a calendar block (a linked day-task) anywhere? */
+const projTaskHasBlock = (state, pid, tid) => Object.values(state.days || {}).some(d => (d.tasks || []).some(t => t && t.projectId === pid && t.projTaskId === tid));
+
 /* ---------- follow-ups ----------
    open ones, longest-untouched first; age by the app's rule (followupAgeLabel) */
 function followupsView(state, nowMs){
@@ -206,5 +262,6 @@ function describeFollowup(f, nowMs){
   return `- ${f.txt}${f.note ? ` (${f.note})` : ''} — ${bits.join(', ')}`;
 }
 
-module.exports = { followupsView, describeFollowup, resolveMeeting, pipelineView, describePipeline, appointmentsView, apptOverdue, clockLabel, dateLabel, describeAppt,
+module.exports = { resolveBy, resolveOpenFollowup, resolveActiveAppt, resolveActiveProject, deleteFootprint, taskByKey, projTaskHasBlock,
+  followupsView, describeFollowup, resolveMeeting, pipelineView, describePipeline, appointmentsView, apptOverdue, clockLabel, dateLabel, describeAppt,
   TZ, torontoNow, pendingCarryKey, taskRows, isOverdue, completedToday, resolveTask, describeRow };

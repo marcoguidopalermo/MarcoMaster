@@ -5,7 +5,7 @@
    each project's progress (done / total) which rolls up from its
    task list in S.projects[*].tasks.
    ============================================================ */
-const PROJ_COLORS=['#58a6ff','#3fb950','#e3b341','#14b8a6','#bc8cff','#f778ba','#56d4dd'];
+/* PROJ_COLORS lives in state-core.js (shared with the MCP connector) */
 let newProjName='';
 
 function projectStats(p){
@@ -91,9 +91,8 @@ function bindProjects(){
 function createProject(name){
   const v=(name||'').trim(); if(!v) return null;
   if(!S.projects) S.projects=[];
-  const color=PROJ_COLORS[(S.projects||[]).length % PROJ_COLORS.length];
-  const p={id:b(),name:v,color,done:false,tasks:[]};
-  S.projects.push(p);
+  // the record and its colour come from state-core.js — shared with the MCP connector
+  const p=appendProject(S, {id:b(), name:v, color:nextProjectColor(S), done:false, tasks:[]});
   save(); return p;
 }
 /* remove everything linked to a project across all days, so deleting it leaves

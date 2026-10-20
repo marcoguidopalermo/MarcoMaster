@@ -57,11 +57,13 @@ test.before(async () => {
 });
 test.after(async () => { if (srv) await srv.close(); });
 
-test('tools/list has all 10 tools', async () => {
+test('tools/list has all 20 tools', async () => {
   const list = await H.rpc(srv.base, token, 'tools/list', {});
   assert.deepEqual(list.json.result.tools.map(t => t.name).sort(),
-    ['add_appointment', 'add_followup', 'add_meeting_point', 'add_task', 'add_to_pipeline', 'complete_task',
-     'list_appointments', 'list_followups', 'list_tasks', 'set_due_date']);
+    ['add_appointment', 'add_completed_task', 'add_followup', 'add_meeting_point', 'add_task', 'add_to_pipeline',
+     'cancel_appointment', 'complete_task', 'create_project', 'delete_task', 'edit_appointment', 'edit_task',
+     'list_appointments', 'list_followups', 'list_tasks', 'move_task_to_project', 'resolve_followup',
+     'set_due_date', 'set_priority', 'update_followup']);
 });
 
 /* ================= appointments ================= */

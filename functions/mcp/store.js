@@ -54,31 +54,38 @@ function changedPaths(before, after){
 }
 
 /* the paths an op of this type is allowed to change (before the stamp fields) */
-const TASK_OPS = ['add', 'complete', 'due', 'pipe'];
+const TODAY_TASK_OPS = ['add', 'complete', 'due', 'pipe', 'prio', 'edit'];   // may pull a task into today's record
 function pathAllowed(p, op, before, todayKey){
   const t = op.type;
   const src = String(op.key || '').split('|')[0];
   if (p[0] === 'days' && p.length === 2) {                                      // creating TODAY's record, nothing else
-    return TASK_OPS.includes(t) && p[1] === todayKey && !(before.days || {})[todayKey];
+    return TODAY_TASK_OPS.includes(t) && p[1] === todayKey && !(before.days || {})[todayKey];
   }
   if (p[0] === 'days' && p.length === 3) {
-    if (p[2] === 'tasks') return TASK_OPS.includes(t);                          // a day's task list (incl. a rollover move)
-    if (p[2] === 'pipeline') return t === 'pipe' && p[1] === todayKey;          // only today's pipeline
+    if (p[2] === 'tasks') return TODAY_TASK_OPS.includes(t) || t === 'del' || t === 'move';
+    if (p[2] === 'pipeline') return (t === 'pipe' && p[1] === todayKey) || t === 'del' || t === 'move';
     return false;
   }
   if (p.length !== 1) return false;
-  if (p[0] === 'projects') return (t === 'complete' || t === 'due') && src === 'P';
-  if (p[0] === 'leaks') return t === 'due' && src === 'L';
-  if (p[0] === 'appointments') return t === 'appt';
-  if (p[0] === 'meetings') return t === 'mpoint';
-  if (p[0] === 'followups') return t === 'followup';
-  return false;
+  switch (p[0]) {
+    case 'projects': return (['complete', 'due', 'prio', 'edit', 'del'].includes(t) && src === 'P') || t === 'move' || t === 'project';
+    case 'leaks': return ['due', 'prio', 'edit'].includes(t) && src === 'L';
+    case 'appointments': return ['appt', 'appt_edit', 'appt_cancel'].includes(t);
+    case 'meetings': return t === 'mpoint';
+    case 'followups': return ['followup', 'fu_touch', 'fu_resolve'].includes(t);
+    default: return false;
+  }
 }
-/* exactly how many items (stateCount) an op adds — talking points aren't counted */
+/* exactly how many items (stateCount) an op adds (negative: removes) — talking points aren't counted */
+const MAX_DELETE = 25;   // one task + its blocks + pipeline links; anything bigger is a bug, not a delete
 function expectedDelta(op){
-  if (op.type === 'add' || op.type === 'appt' || op.type === 'followup') return 1;
-  if (op.type === 'pipe') return 1 + (op.task ? 1 : 0);
-  return 0;
+  switch (op.type) {
+    case 'add': case 'appt': case 'followup': case 'project': return 1;
+    case 'pipe': return 1 + (op.task ? 1 : 0);
+    case 'del': return -op.n;
+    case 'appt_cancel': return -1;
+    default: return 0;
+  }
 }
 
 /* applied-op markers, pruned to the last APPLIED_TTL_MS (an array — see state-core.js) */
@@ -114,6 +121,9 @@ async function runOp(db, uid, now, decide, hooks = {}){
     if (!decision.op) return { wrote: false, reply: decision.reply, state: before };
 
     const op = { ...decision.op, id: newOpId(), ts: Date.now(), dayKey: now.dayKey, hm: now.hm };
+    if (op.type === 'del' && !(Number.isInteger(op.n) && op.n >= 1 && op.n <= MAX_DELETE)) {
+      throw new GuardError(`Guard: a delete must remove 1–${MAX_DELETE} records (planned ${op.n}). Nothing was written.`);
+    }
     const changed = core.applyExtOp(next, op, ctx);
     if (!changed) return { wrote: false, reply: decision.noChangeReply || 'Nothing to change.', state: before };
 

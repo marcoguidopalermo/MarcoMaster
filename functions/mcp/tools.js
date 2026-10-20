@@ -9,6 +9,7 @@ const logger = require('firebase-functions/logger');
 const { runOp, GuardError, newTaskId } = require('./store');
 const T = require('./tasks');
 const core = require('../shared/state-core.js');
+const { registerManageTools } = require('./manage-tools');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -37,7 +38,10 @@ function buildServer({ db, uid }){
       `if a tool says the reference is ambiguous, ask the user which one and retry with the id. Never guess. ` +
       `Appointments take a date and a 24h time (HH:MM) in Toronto time. Meetings are named after a person or group ` +
       `("my meeting with William" → meeting "William"). The pipeline is today's top 3 focuses. ` +
-      `Follow-ups are open loops (waiting on someone, chase something) that stay until resolved.` }
+      `Follow-ups are open loops (waiting on someone, chase something) that stay until resolved. ` +
+      `Pick the narrowest tool: complete_task for finishing a task, delete_task only to remove one that should never have existed ` +
+      `(ask the user before confirming), cancel_appointment likewise only after the user confirms which one, add_completed_task for something already done, update_followup when they chased an open loop, ` +
+      `resolve_followup when the loop is closed, edit_appointment to move one, cancel_appointment when it is called off.` }
   );
 
   const exec = async (name, decide) => {
@@ -265,6 +269,8 @@ function buildServer({ db, uid }){
       return { op: { type: 'pipe', key: r.key, item }, reply: `Put "${r.txt}" in the pipeline (${view.length + 1} of 3 slots taken).` };
     });
   });
+
+  registerManageTools(server, { exec, fail, now });
 
   return server;
 }

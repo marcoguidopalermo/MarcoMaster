@@ -255,7 +255,7 @@ function buildTaskRows(){
       const kind=t.kind||'project';          // legacy project tasks default to time-block
       const row={key:'P|'+p.id+'|'+t.id, source:'project', projId:p.id, id:t.id,
                  txt:t.txt, done:t.done, kind, recurringId:null, priority:!!t.priority,
-                 projName:p.name, projColor:p.color};
+                 dueDate:t.dueDate||null, projName:p.name, projColor:p.color};
       if(kind==='project'){
         const st=projTaskState(p.id,t); const tb=st.tb||null;
         row.scheduled=st.state==='scheduled';
@@ -273,7 +273,7 @@ function buildTaskRows(){
     (l.tasks||[]).forEach(t=>{
       rows.push({key:'L|'+l.id+'|'+t.id, source:'leak', leakId:l.id, id:t.id,
                  txt:t.txt, done:t.done, kind:'quick', recurringId:null, priority:!!t.priority,
-                 leakText:l.text, projName:null, projColor:null});
+                 dueDate:t.dueDate||null, leakText:l.text, projName:null, projColor:null});
     });
   });
   // standalone day-tasks — exclude project-linked blocks (surfaced via their
@@ -281,7 +281,7 @@ function buildTaskRows(){
   day().tasks.filter(t=>!t.projectId && !t.meetingId).forEach(t=>{
     const row={key:'S|'+t.id, source:'standalone', id:t.id, txt:t.txt, done:t.done,
                kind:t.kind, recurringId:t.recurringId, priority:!!t.priority,
-               workoutId:t.workoutId||null, projName:null, projColor:null};
+               dueDate:t.dueDate||null, workoutId:t.workoutId||null, projName:null, projColor:null};
     if(t.kind==='project'){
       row.scheduled=t.schedDate!=null; row.schedDate=t.schedDate; row.start=t.start;
       row.mins=t.mins; row.overdue=t.schedDate!=null && t.schedDate<tk && !t.done;
@@ -488,6 +488,17 @@ function taskLabelChip(r){
   if(r.workoutId) return `<span class="type-chip w">⌁ Training</span>`;
   return `<span class="type-chip ${r.kind==='quick'?'q':'s'}">${r.kind==='quick'?'⚡ Quick':'▣ Time block'}</span>`;
 }
+/* a task's DUE date (t.dueDate, 'YYYY-MM-DD') — a deadline, not a time block. Set by
+   voice through the MCP connector; carried forward with the task untouched. Shown on
+   any open row that has one; red once the date has passed. */
+function dueTag(r){
+  if(!r.dueDate || r.done) return '';
+  const tk=todayKey();
+  const label = r.dueDate===tk ? 'Today' : shortDate(r.dueDate);
+  return r.dueDate<tk
+    ? `<span class="due-tag overdue" title="Past its due date">⚑ Was due ${label}</span>`
+    : `<span class="due-tag" title="Due date">⚑ Due ${label}</span>`;
+}
 function renderTaskRow(r){
   let tag='';
   if(r.kind==='project' && !r.done){
@@ -509,6 +520,7 @@ function renderTaskRow(r){
     <div class="box" data-atcheck="${r.key}">✓</div>
     <span class="at-txt">${r.recurringId?'<span class="rec-badge">↻</span> ':''}${esc(r.txt)}</span>
     ${taskLabelChip(r)}
+    ${dueTag(r)}
     ${tag}
     ${mins}
     <span class="at-act prio ${r.priority?'on':''}" data-atprio="${r.key}" title="${r.priority?'Priority — click to unflag':'Flag as priority'}">🔥</span>

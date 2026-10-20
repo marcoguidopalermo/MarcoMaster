@@ -137,3 +137,28 @@ function week(){
   return S.weeks[k];
 }
 
+
+/* ---------- external ops (voice / MCP connector) ----------
+   The MCP server writes a task change into the state inside a transaction AND logs
+   it to users/{uid}.extOps — a sibling field this app's own writes never touch. If
+   this device's whole-state write landed on top of the server's (its save was
+   already queued), the change is gone from the state but still in the log, so
+   every cloud snapshot replays what this state hasn't recorded in S.extApplied.
+   applyExtOp is the SAME function the server ran (state-core.js), so replay can't
+   disagree with it; S.extApplied (a list of {id, ts}) makes it once-only, so a
+   voice task you later delete is never resurrected. Returns true if S changed. */
+function replayExtOps(ops){
+  if(!Array.isArray(ops) || !ops.length) return false;
+  const applied=extAppliedList(S);                 // state-core.js — an ARRAY, see why there
+  const seen=new Set(applied.map(x=>x.id));
+  const todo=ops.filter(op=>op && op.id && !seen.has(op.id))
+                .sort((a,b)=>(+a.ts||0)-(+b.ts||0));
+  if(!todo.length) return false;
+  todo.forEach(op=>{
+    try{ applyExtOp(S, op, {todayKey:todayKey(), today:day}); }
+    catch(e){ console.warn('external op failed to apply', op.id, e); }
+    applied.push({id:op.id, ts:+op.ts||Date.now()});   // recorded either way: an op is tried once
+  });
+  S.extApplied=applied;
+  return true;
+}

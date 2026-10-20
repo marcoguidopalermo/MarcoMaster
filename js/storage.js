@@ -85,7 +85,7 @@ const Store = {
     // advance the durable version only for real, committing writes (or forced ones)
     if(v && typeof v==='object' && (force || willCommit)){
       const prev=+v.updatedAt||0;
-      if(bump || v.updatedAt==null) v.updatedAt=Math.max(Date.now(), prev+1);
+      if(bump || v.updatedAt==null) v.updatedAt=nextVersion(prev);   // state-core.js — same rule as the MCP server
     }
     this._lsSet(k,v);                       // localStorage cache — ALWAYS (never lose local work)
 
@@ -139,49 +139,13 @@ const Store = {
    These guard against the failure mode where an empty/stale device
    silently overwrites good cloud data and propagates the emptiness.
    ============================================================ */
-const PROTECT_FLOOR = 8;   // only guard once there's real data to protect
-const NEAR_EMPTY    = 3;   // <=3 meaningful items ≈ just the default seed
+/* PROTECT_FLOOR / NEAR_EMPTY live in state-core.js (shared with the MCP server) */
 const AB_SLOTS      = 7;   // number of rolling auto-backup slots
 const AB_MIN_GAP_MS = 15*60*1000;   // advance to a NEW slot at most this often
 
-/* Total planned training sessions across every day. A day holds a LIST of sessions
-   (v2), so this counts sessions, not days — and it reads only the live structure,
-   never the legacy tr.sessions map the v2 fold leaves behind, so nothing is
-   double-counted during the transition. */
-function trainingSessionCount(s){
-  const days=((s||{}).training||{}).days||{};
-  let n=0;
-  Object.keys(days).forEach(k=>{ n+=(((days[k]||{}).sessions)||[]).length; });
-  return n;
-}
-/* A single "how much real data is here" magnitude. Used by both the shrink guard
-   and the reconciler. The default seeded state scores ~2. */
-function stateCount(s){
-  if(!s || typeof s!=='object') return 0;
-  let n=0;
-  (s.projects||[]).forEach(p=>{ n+=1; n+=((p&&p.tasks)||[]).length; });
-  n+=(s.followups||[]).length;
-  n+=(s.meetings||[]).length;
-  n+=(s.appointments||[]).length;
-  n+=(s.leaks||[]).length;
-  const days=s.days||{};
-  Object.keys(days).forEach(k=>{ const d=days[k]||{};
-    n+=(d.tasks||[]).length + (d.pipeline||[]).length + (d.archive||[]).length + (d.checkins||[]).length + (d.spotlogs||[]).length; });
-  if(s.board){ ['mustwin','scheduled','parking'].forEach(k=>{ n+=((s.board[k]||[]).length); }); }
-  // Training SESSIONS only — deliberately not the exercise library. The library is
-  // seeded on first run, so counting it would push a brand-new state well above
-  // NEAR_EMPTY and blind the "cloud looks emptied" protection to a real wipe.
-  n+=trainingSessionCount(s);
-  // content IDEAS only, not pillars — seeded data must never inflate the count (see above)
-  n+=((s.content||{}).ideas||[]).length;
-  return n;
-}
-/* TRUE only for a catastrophic collapse — substantial data dropping to near-zero
-   or losing >=75%. A single deletion (−1) or removing one project never trips it. */
-function isCatastrophicShrink(from, to){
-  if(from < PROTECT_FLOOR) return false;        // nothing substantial to protect yet
-  return to <= NEAR_EMPTY || to <= from*0.25;
-}
+/* trainingSessionCount / stateCount / isCatastrophicShrink live in state-core.js —
+   ONE definition shared with the MCP Cloud Function, so an external writer applies
+   exactly the guard the app does. */
 function _lsRaw(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function _parse(s){ try{ return s?JSON.parse(s):null; }catch(e){ return null; } }
 function backupSummary(s){

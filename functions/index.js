@@ -11,17 +11,23 @@
    users/{uid}.marcomaster field, stateCount, the shrink-guard, or the journal
    merge. The scheduled function READS users/{uid}.marcomaster.appointments but
    never writes the users doc, so it cannot trip any client-side guard.
+
+   • mcp — the Claude connector (MCP over HTTP + OAuth), in ./mcp. It is the ONE
+     function that writes users/{uid}.marcomaster, and only through
+     mcp/store.js runOp: transactional, guard-checked with the client's own
+     state-core.js, version-stamped, op-logged for device replay.
    ============================================================ */
 
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 // firebase-admin v14 dropped the `admin.firestore()/admin.messaging()` namespace
 // helpers — use the modular subpath imports instead.
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
+const { getAuth } = require('firebase-admin/auth');
 const { DateTime } = require('luxon');
 
 initializeApp();
@@ -302,3 +308,28 @@ exports.sendTestNotification = onCall(async (request) => {
   logger.info('test push', { uid, ...result });
   return result;   // { tokens, sent, failed }
 });
+
+/* ---------- MCP connector (Claude) ----------
+   Served at the root of the function's Cloud Run URL — OAuth discovery needs
+   /.well-known/ at the origin root, which the cloudfunctions.net/mcp path can't
+   give. The issuer/resource URLs are built from that host, so the app is created
+   lazily per host (one host in practice). */
+const mcpApps = new Map();
+exports.mcp = onRequest(
+  { invoker: 'public', timeoutSeconds: 60, memory: '256MiB', maxInstances: 3, concurrency: 20 },
+  (req, res) => {
+    const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+    if (!/^[a-z0-9-]+\.a\.run\.app$/.test(host)) {
+      res.status(404).send('Use this function\'s Cloud Run URL (https://mcp-….a.run.app/mcp).');
+      return;
+    }
+    const baseUrl = 'https://' + host;
+    let app = mcpApps.get(baseUrl);
+    if (!app) {
+      const { createApp } = require('./mcp/app');
+      app = createApp({ db, auth: getAuth(), uid: USER_UID, baseUrl });
+      mcpApps.set(baseUrl, app);
+    }
+    app(req, res);
+  }
+);

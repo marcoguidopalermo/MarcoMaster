@@ -8,7 +8,10 @@
   "functions": {
     "source": "functions",
     "codebase": "default",
-    "runtime": "nodejs22"
+    "runtime": "nodejs22",
+    "predeploy": [
+      "mkdir -p \"$RESOURCE_DIR/shared\" && cp \"$PROJECT_DIR/js/state-core.js\" \"$RESOURCE_DIR/shared/state-core.js\""
+    ]
   },
   "hosting": {
     "public": ".",
@@ -69,5 +72,17 @@
         ]
       }
     ]
+  },
+  "emulators": {
+    "firestore": {
+      "port": 8080
+    },
+    "auth": {
+      "port": 9099
+    },
+    "ui": {
+      "enabled": false
+    },
+    "singleProjectMode": true
   }
 }

@@ -1,1 +1,3 @@
 node_modules/
+# copied from ../js/state-core.js by predeploy / npm run sync-shared — never edit here
+shared/

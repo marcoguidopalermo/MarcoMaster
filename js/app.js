@@ -228,11 +228,21 @@ function subscribeCloud(){
       }
     }
 
-    // ---- gate-open + push decision (loop-safe: push only on a real journal delta) ----
+    // ---- external ops (voice / MCP): replay any this state hasn't applied ----
+    // Runs on BOTH branches: a device that adopted a cloud copy someone's blind write
+    // had already stripped needs it as much as a device whose local copy won.
+    let extChanged=false;
+    try{ extChanged=replayExtOps(data.extOps); }catch(e){ console.warn('replayExtOps failed', e); }
+    if(extChanged){
+      Store._lsSet('marcomaster', S);
+      if(!saveTimer && !textInputFocused()) rerender();
+    }
+
+    // ---- gate-open + push decision (loop-safe: push only on a real journal/op delta) ----
     Store._gateOpen=true;
-    if(mergedChanged && !saveTimer){
-      persist({bump:true});                              // propagate the grown journal superset so others adopt it directly
-    }else if(!mergedChanged && firstReconcile && !adoptedFinal && !saveTimer){
+    if((mergedChanged || extChanged) && !saveTimer){
+      persist({bump:true});                              // propagate the grown superset so others adopt it directly
+    }else if(!mergedChanged && !extChanged && firstReconcile && !adoptedFinal && !saveTimer){
       persist({bump: Store._gateDirty ? true : false});  // first-connect mirror; bump if real gate-window edits are pending
     }
     // if a save is pending, the debounced writer carries the already-merged S — no push here

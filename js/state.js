@@ -25,6 +25,11 @@ function seedDefaults(){
   // Treat it as version 0 (the oldest possible) so any real edit — local or from
   // the cloud — out-ranks it, and the first save() bumps it to a live timestamp.
   if(S.updatedAt==null) S.updatedAt=0;
+  // applied external (voice/MCP) ops — ALWAYS present, so every save sends it. The
+  // cloud write is a merge, which leaves a field this copy doesn't send untouched:
+  // without it, a save landing on a voice write would drop the task but keep the
+  // server's "applied" marker, and no device would ever replay it (state-core.js).
+  if(!Array.isArray(S.extApplied)) S.extApplied=[];
   // seed defaults once
   if(!S.recurring){
     S.recurring = JSON.parse(JSON.stringify(DEFAULT_RECURRING));
@@ -471,33 +476,8 @@ function toast(msg='Saved ✓'){
   clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('show'),1400);
 }
 
-/* a fresh, empty day record (shared by day() and dayFor()) */
-function blankDay(){
-  return {
-    reset:{}, focus:{biz:'',health:'',lev:'',content:'',not:''},
-    workout:'', shutdownTime:'', energy:'', mood:'', sleep:'', stress:'',
-    meds:'', feelings:'', fulfillment:'',   // legacy flat journal fields (kept for Insights/Shutdown)
-    // Journal v2 — morning/evening 1-5 star ratings + new text. _jrnlV2 marks a record
-    // as already in the new shape so the one-time migration never re-runs on it.
-    _jrnlV2:true, _jrnlCalm:true,
-    morning:{ energy:null, mood:null, calm:null, intentions:'' },
-    evening:{ mood:null, energy:null, calm:null, fulfillment:null, trained:null, trainNote:'', diet:'' },
-    tasks:[],          // {id, txt, kind:'quick'|'project', done, mins, start:null, recurringId?}
-    pipeline:[],       // top-3 for today: {id, txt, done, taskId?|projectId?+projTaskId?}; unfinished carry over to the next day (see _seeded bridge)
-    archive:[],        // completed tasks swept here: {id, txt, kind, mins, doneAt}
-    checkins:[],       // legacy throughout-day log {t, ts, energy:'Med', mood:'word'} — kept for Insights/Shutdown
-    spotlogs:[],       // optional timestamped check-ins {id, time:'HH:MM', ts, mood, energy, calm, focus, note} (1-5 stars)
-    tomorrow:[],       // top-3 picked at shutdown for next day  (strings)
-    recurringAdded:{}, // {recurringId:true} injected into today already
-    skipped:{},        // {recurringId:true} skipped this cycle
-    dayStart:8,        // first hour shown on the Plan grid (24h)
-    dayEnd:21,         // last hour shown
-    shutdown:{ well:'',drift:'',avoid:'',trained:false,health:false,time:false,firstMove:'',clear:'' },
-    // the morning screen has been passed for this day (see morningDone). Purely a
-    // per-day boolean: nothing counts, totals or remembers days it wasn't set.
-    morningSeen:false
-  };
-}
+/* blankDay() lives in state-core.js (shared with the MCP server, which may create
+   today's record when a task is added by voice before any device has opened today) */
 /* ============================================================
    JOURNAL-AWARE MERGE — used by the cloud reconciler (app.js) so a whole-state
    swap in EITHER direction never drops journal data. Whole-document last-writer-

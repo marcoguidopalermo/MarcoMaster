@@ -71,11 +71,12 @@ function pathAllowed(p, op, before, todayKey){
   if (p[0] === 'leaks') return t === 'due' && src === 'L';
   if (p[0] === 'appointments') return t === 'appt';
   if (p[0] === 'meetings') return t === 'mpoint';
+  if (p[0] === 'followups') return t === 'followup';
   return false;
 }
 /* exactly how many items (stateCount) an op adds — talking points aren't counted */
 function expectedDelta(op){
-  if (op.type === 'add' || op.type === 'appt') return 1;
+  if (op.type === 'add' || op.type === 'appt' || op.type === 'followup') return 1;
   if (op.type === 'pipe') return 1 + (op.task ? 1 : 0);
   return 0;
 }

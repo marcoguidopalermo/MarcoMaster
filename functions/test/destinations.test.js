@@ -57,10 +57,11 @@ test.before(async () => {
 });
 test.after(async () => { if (srv) await srv.close(); });
 
-test('tools/list now has 8 tools', async () => {
+test('tools/list has all 10 tools', async () => {
   const list = await H.rpc(srv.base, token, 'tools/list', {});
   assert.deepEqual(list.json.result.tools.map(t => t.name).sort(),
-    ['add_appointment', 'add_meeting_point', 'add_task', 'add_to_pipeline', 'complete_task', 'list_appointments', 'list_tasks', 'set_due_date']);
+    ['add_appointment', 'add_followup', 'add_meeting_point', 'add_task', 'add_to_pipeline', 'complete_task',
+     'list_appointments', 'list_followups', 'list_tasks', 'set_due_date']);
 });
 
 /* ================= appointments ================= */

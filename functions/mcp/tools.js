@@ -36,7 +36,8 @@ function buildServer({ db, uid }){
       `To complete or date a task, pass its id from list_tasks when you have it, otherwise words from its title; ` +
       `if a tool says the reference is ambiguous, ask the user which one and retry with the id. Never guess. ` +
       `Appointments take a date and a 24h time (HH:MM) in Toronto time. Meetings are named after a person or group ` +
-      `("my meeting with William" → meeting "William"). The pipeline is today's top 3 focuses.` }
+      `("my meeting with William" → meeting "William"). The pipeline is today's top 3 focuses. ` +
+      `Follow-ups are open loops (waiting on someone, chase something) that stay until resolved.` }
   );
 
   const exec = async (name, decide) => {
@@ -159,6 +160,37 @@ function buildServer({ db, uid }){
       logger.error('list_appointments failed', { err: e && (e.stack || e.message) });
       return fail('Could not read appointments.');
     }
+  });
+
+  server.registerTool('list_followups', {
+    title: 'List follow-ups',
+    description: 'Outstanding follow-ups (open loops), longest-untouched first, with how long each has been open — as the Follow-ups section shows it.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async () => {
+    try {
+      const state = ((await db.collection('users').doc(uid).get()).data() || {}).marcomaster || {};
+      const nowMs = Date.now();
+      const v = T.followupsView(state, nowMs);
+      if (!v.open.length) return text('No open follow-ups — all loops closed.' + (v.resolvedCount ? ` (${v.resolvedCount} resolved)` : ''));
+      return text(`${v.open.length} open follow-up${v.open.length === 1 ? '' : 's'}, longest-untouched first:\n` +
+        v.open.map(f => T.describeFollowup(f, nowMs)).join('\n'));
+    } catch (e) {
+      logger.error('list_followups failed', { err: e && (e.stack || e.message) });
+      return fail('Could not read follow-ups.');
+    }
+  });
+
+  server.registerTool('add_followup', {
+    title: 'Add a follow-up',
+    description: 'Add an open loop to Follow-ups (e.g. "Chase invoice with Acme"). It stays until resolved in the app, and ages from today.',
+    inputSchema: { text: z.string().trim().min(1).max(300).describe('The follow-up') },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  }, async ({ text: txt }) => {
+    const nowMs = Date.now();
+    // exactly addFollowup()'s record (js/page-followups.js → appendFollowup)
+    const followup = { id: newTaskId(), txt, note: '', createdAt: nowMs, lastTouched: nowMs, resolved: false };
+    return exec('add_followup', () => ({ op: { type: 'followup', followup }, reply: `Added follow-up: "${txt}".` }));
   });
 
   server.registerTool('add_appointment', {

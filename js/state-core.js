@@ -109,6 +109,24 @@ function appendMeetingPoint(state, mid, point){
   m.points.push(point);
   return true;
 }
+/* follow-up: { id, txt, note, createdAt, lastTouched, resolved } — a new one starts
+   untouched (lastTouched = createdAt), open, with no note. Used by addFollowup(). */
+function appendFollowup(state, f){
+  if(!state.followups) state.followups=[];
+  state.followups.push(f);
+  return f;
+}
+/* how long a follow-up has been open, from lastTouched (falling back to createdAt):
+   'Nd open' / 'Nh open' / 'today'. The app's followupAge() is this at Date.now(). */
+function followupAgeLabel(f, now){
+  const since=f.lastTouched||f.createdAt||now;
+  const ms=Math.max(0, now-since);
+  const d=Math.floor(ms/86400000);
+  if(d>=1) return d+'d open';
+  const h=Math.floor(ms/3600000);
+  if(h>=1) return h+'h open';
+  return 'today';
+}
 /* the task a pipeline item is linked to, as a row key ('S|…', 'P|…|…', 'L|…|…'); null for free text */
 function pipelineLinkKey(it){
   if(!it) return null;
@@ -176,6 +194,7 @@ function pendingPipelineCarry(state, todayKey){
      due      — key: 'S|…', 'P|…' or 'L|leakId|taskId'; dueDate 'YYYY-MM-DD' or null
      appt     — appt: a complete appointment record (appendAppointment)
      mpoint   — meetingId, point: a complete talking point (appendMeetingPoint)
+     followup — followup: a complete follow-up record (appendFollowup)
      pipe     — item: a complete pipeline item linked to a task; task?: a new quick
                 task to create first (the "new task + promote" case). Never displaces:
                 if the pipeline filled up meanwhile, the task is kept, the item isn't.
@@ -267,6 +286,12 @@ function applyExtOp(state, op, ctx){
     appendAppointment(state, JSON.parse(JSON.stringify(a)));
     return true;
   }
+  if(op.type==='followup'){
+    const f=op.followup;
+    if(!f || !f.id || (state.followups||[]).some(x=>x && x.id===f.id)) return false;
+    appendFollowup(state, JSON.parse(JSON.stringify(f)));
+    return true;
+  }
   if(op.type==='mpoint'){
     const p=op.point;
     if(!p || !p.id || (state.meetings||[]).some(m=>m && (m.points||[]).some(x=>x && x.id===p.id))) return false;
@@ -322,5 +347,5 @@ if(typeof module!=='undefined' && module.exports){
   module.exports={ PROTECT_FLOOR, NEAR_EMPTY, trainingSessionCount, stateCount, isCatastrophicShrink,
                    nextVersion, blankDay, applyExtOp, extAppliedList,
                    PIPELINE_SLOTS, appendAppointment, appendMeetingPoint, pipelineLinkKey, appendPipelineItem,
-                   pipelineItemDone, pendingPipelineCarry };
+                   pipelineItemDone, pendingPipelineCarry, appendFollowup, followupAgeLabel };
 }

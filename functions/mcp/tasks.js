@@ -188,5 +188,23 @@ function clockLabel(hhmm){
 const dateLabel = (k) => DateTime.fromISO(k, { zone: TZ }).toFormat('ccc LLL d');
 const describeAppt = (a) => `- ${dateLabel(a.date)} ${clockLabel(a.time)} — ${a.title}`;
 
-module.exports = { resolveMeeting, pipelineView, describePipeline, appointmentsView, apptOverdue, clockLabel, dateLabel, describeAppt,
+/* ---------- follow-ups ----------
+   open ones, longest-untouched first; age by the app's rule (followupAgeLabel) */
+function followupsView(state, nowMs){
+  const all = (state.followups || []).filter(f => f && f.id);
+  const since = f => f.lastTouched || f.createdAt || nowMs;
+  return {
+    open: all.filter(f => !f.resolved).sort((a, b) => since(a) - since(b)),
+    resolvedCount: all.filter(f => f.resolved).length,
+  };
+}
+const msDate = (ms) => DateTime.fromMillis(ms, { zone: TZ }).toFormat('LLL d');
+function describeFollowup(f, nowMs){
+  const bits = [core.followupAgeLabel(f, nowMs)];
+  if (f.createdAt && f.lastTouched && f.lastTouched - f.createdAt > 60000) bits.push(`opened ${msDate(f.createdAt)}, last followed up ${msDate(f.lastTouched)}`);
+  else if (f.createdAt) bits.push(`opened ${msDate(f.createdAt)}`);
+  return `- ${f.txt}${f.note ? ` (${f.note})` : ''} — ${bits.join(', ')}`;
+}
+
+module.exports = { followupsView, describeFollowup, resolveMeeting, pipelineView, describePipeline, appointmentsView, apptOverdue, clockLabel, dateLabel, describeAppt,
   TZ, torontoNow, pendingCarryKey, taskRows, isOverdue, completedToday, resolveTask, describeRow };

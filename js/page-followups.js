@@ -8,15 +8,7 @@ let newFollowupText='';
 let followupsResolvedOpen=false;
 
 /* how long it's been open, from lastTouched (falling back to createdAt) */
-function followupAge(f){
-  const since=f.lastTouched||f.createdAt||Date.now();
-  const ms=Math.max(0, Date.now()-since);
-  const d=Math.floor(ms/86400000);
-  if(d>=1) return d+'d open';
-  const h=Math.floor(ms/3600000);
-  if(h>=1) return h+'h open';
-  return 'today';
-}
+function followupAge(f){ return followupAgeLabel(f, Date.now()); }   // state-core.js — shared with the MCP connector
 /* count of open follow-ups — reused by the Today reminder */
 function openFollowupCount(){ return (S.followups||[]).filter(f=>!f.resolved).length; }
 
@@ -91,7 +83,7 @@ function bindFollowups(){
 function addFollowup(){
   const v=(newFollowupText||'').trim(); if(!v) return;
   const now=Date.now();
-  if(!S.followups) S.followups=[];
-  S.followups.push({ id:b(), txt:v, note:'', createdAt:now, lastTouched:now, resolved:false });
+  // the record itself is built by state-core.js — shared with the MCP connector
+  appendFollowup(S, { id:b(), txt:v, note:'', createdAt:now, lastTouched:now, resolved:false });
   newFollowupText=''; save(); rerender();
 }

@@ -87,6 +87,72 @@ function blankDay(){
 }
 
 /* ============================================================
+   SHARED RECORD WRITERS — the app's own create/promote functions wrap these, and
+   the MCP server + every device's op replay call them, so a record has exactly one
+   shape wherever it is made. The caller supplies ids and timestamps (the app: b()
+   and Date.now(); the server: values fixed in the op, so replay is deterministic).
+   ============================================================ */
+const PIPELINE_SLOTS = 3;
+
+/* Item: { id, title, date (YYYY-MM-DD), time (HH:MM), createdAt } — the shape the
+   reminder Cloud Function reads. Used by createAppointment(). */
+function appendAppointment(state, appt){
+  if(!state.appointments) state.appointments=[];
+  state.appointments.push(appt);
+  return appt;
+}
+/* point: { id, txt, done:false }. Used by createMeetingPoint(). False if the meeting is gone. */
+function appendMeetingPoint(state, mid, point){
+  const m=(state.meetings||[]).find(x=>x && x.id===mid);
+  if(!m) return false;
+  if(!m.points) m.points=[];
+  m.points.push(point);
+  return true;
+}
+/* the task a pipeline item is linked to, as a row key ('S|…', 'P|…|…', 'L|…|…'); null for free text */
+function pipelineLinkKey(it){
+  if(!it) return null;
+  if(it.taskId) return 'S|'+it.taskId;
+  if(it.projectId) return 'P|'+it.projectId+'|'+it.projTaskId;
+  if(it.leakId) return 'L|'+it.leakId+'|'+it.leakTaskId;
+  return null;
+}
+/* Append to a day's pipeline. Never displaces: 'full' when every slot is taken (done
+   items still hold their slot until cleared), 'dup' when that task is already in it,
+   'ok' when added. Used by the promote*ToPipeline functions. */
+function appendPipelineItem(d, item){
+  if(!d.pipeline) d.pipeline=[];
+  if(d.pipeline.length>=PIPELINE_SLOTS) return 'full';
+  const k=pipelineLinkKey(item);
+  if(k && d.pipeline.some(x=>pipelineLinkKey(x)===k)) return 'dup';
+  d.pipeline.push(item);
+  return 'ok';
+}
+/* live done-state of a pipeline item, judged in the context of the day record it sits
+   in: follow the linked task if it still exists, else the item's own flag. The app's
+   pipelineDone() is this with today's record; the rollover bridge judges yesterday's
+   items the same way. */
+function pipelineItemDone(state, dayRec, it){
+  if(it.taskId){ const t=((dayRec||{}).tasks||[]).find(x=>x && x.id===it.taskId); return t?!!t.done:!!it.done; }
+  if(it.projectId){ const t=extFindProjectTask(state, it.projectId, it.projTaskId); return t?!!t.done:!!it.done; }
+  if(it.leakId){ const t=extFindLeakTask(state, it.leakId, it.leakTaskId); return t?!!t.done:!!it.done; }
+  return !!it.done;
+}
+/* Yesterday's unfinished pipeline items that day()'s rollover bridge WILL append to
+   today's pipeline the next time a device opens — but only while today's bridge
+   hasn't run. The bridge appends without checking the cap, so anything that fills
+   today's pipeline before it runs must count these, or the day could open with 4+. */
+function pendingPipelineCarry(state, todayKey){
+  const days=state.days||{};
+  const rec=days[todayKey];
+  if(rec && rec._seeded) return [];
+  const prevKey=Object.keys(days).filter(k=>k<todayKey).sort().pop();
+  if(!prevKey) return [];
+  const prev=days[prevKey]||{};
+  return (prev.pipeline||[]).filter(it=>it && !pipelineItemDone(state, prev, it));
+}
+
+/* ============================================================
    EXTERNAL OPS — task changes made OUTSIDE the app (the MCP connector / voice).
    The server applies an op to the state inside a Firestore transaction AND appends
    it to users/{uid}.extOps, a sibling field the app's own writes never touch. A
@@ -108,6 +174,11 @@ function blankDay(){
                 dayKey/hm: when it happened (Toronto) — stamped as doneAt exactly
                 like the app does (day key on project tasks, HH:MM on standalone)
      due      — key: 'S|…', 'P|…' or 'L|leakId|taskId'; dueDate 'YYYY-MM-DD' or null
+     appt     — appt: a complete appointment record (appendAppointment)
+     mpoint   — meetingId, point: a complete talking point (appendMeetingPoint)
+     pipe     — item: a complete pipeline item linked to a task; task?: a new quick
+                task to create first (the "new task + promote" case). Never displaces:
+                if the pipeline filled up meanwhile, the task is kept, the item isn't.
    ctx = { todayKey, today:()=>today's day record (created if missing) }
    Idempotent: re-applying an op that is already reflected changes nothing.
    Returns true if the state changed.
@@ -190,6 +261,41 @@ function applyExtOp(state, op, ctx){
     }
     return false;
   }
+  if(op.type==='appt'){
+    const a=op.appt;
+    if(!a || !a.id || (state.appointments||[]).some(x=>x && x.id===a.id)) return false;
+    appendAppointment(state, JSON.parse(JSON.stringify(a)));
+    return true;
+  }
+  if(op.type==='mpoint'){
+    const p=op.point;
+    if(!p || !p.id || (state.meetings||[]).some(m=>m && (m.points||[]).some(x=>x && x.id===p.id))) return false;
+    return appendMeetingPoint(state, op.meetingId, JSON.parse(JSON.stringify(p)));   // false if the meeting is gone
+  }
+  if(op.type==='pipe'){
+    const it=op.item; if(!it || !it.id) return false;
+    let changed=false;
+    if(op.task && op.task.id && !extTaskIdExists(state, op.task.id)){
+      const d=ctx.today(); if(!d.tasks) d.tasks=[];
+      d.tasks.push(JSON.parse(JSON.stringify(op.task)));
+      changed=true;
+    }else if(it.taskId){
+      // the linked task must sit in TODAY's record for pipelineDone() to follow it;
+      // pull it across if the rollover hasn't (same move the bridge makes)
+      const before=JSON.stringify(((state.days||{})[ctx.todayKey]||{}).tasks||null);
+      extFindStandalone(state, it.taskId, ctx);
+      if(JSON.stringify(((state.days||{})[ctx.todayKey]||{}).tasks||null)!==before) changed=true;
+    }
+    // the app only ever promotes a task that exists — so does replay (deleted meanwhile → skip)
+    const linked = it.taskId ? extTaskIdExists(state, it.taskId)
+                 : it.projectId ? !!extFindProjectTask(state, it.projectId, it.projTaskId)
+                 : it.leakId ? !!extFindLeakTask(state, it.leakId, it.leakTaskId) : true;
+    if(!linked) return changed;
+    const d=ctx.today();
+    if((d.pipeline||[]).some(x=>x && x.id===it.id)) return changed;
+    if(appendPipelineItem(d, JSON.parse(JSON.stringify(it)))==='ok') changed=true;
+    return changed;
+  }
   if(op.type==='due'){
     let t=null;
     if(parts[0]==='S') t=extFindStandalone(state, parts[1], ctx);
@@ -214,5 +320,7 @@ function extAppliedList(state){
    declarations above are plain globals. */
 if(typeof module!=='undefined' && module.exports){
   module.exports={ PROTECT_FLOOR, NEAR_EMPTY, trainingSessionCount, stateCount, isCatastrophicShrink,
-                   nextVersion, blankDay, applyExtOp, extAppliedList };
+                   nextVersion, blankDay, applyExtOp, extAppliedList,
+                   PIPELINE_SLOTS, appendAppointment, appendMeetingPoint, pipelineLinkKey, appendPipelineItem,
+                   pipelineItemDone, pendingPipelineCarry };
 }

@@ -11,7 +11,7 @@
      3. resolve the request against THAT read and turn it into an op;
      4. apply the op to a clone with applyExtOp — the same function every device
         uses to replay it (state-core.js);
-     5. verify: item count moves by exactly what the op implies (+1 add, 0 otherwise),
+     5. verify: item count moves by exactly what the op implies (expectedDelta),
         the client's own isCatastrophicShrink still says no, and only the paths this
         op may touch differ;
      6. stamp the version with the client's rule (nextVersion) and record the op in
@@ -54,15 +54,30 @@ function changedPaths(before, after){
 }
 
 /* the paths an op of this type is allowed to change (before the stamp fields) */
+const TASK_OPS = ['add', 'complete', 'due', 'pipe'];
 function pathAllowed(p, op, before, todayKey){
-  if (p[0] === 'days' && p.length === 3 && p[2] === 'tasks') return true;      // a day's task list
-  if (p[0] === 'days' && p.length === 2) {                                      // creating TODAY's record, nothing else
-    return p[1] === todayKey && !(before.days || {})[todayKey];
-  }
+  const t = op.type;
   const src = String(op.key || '').split('|')[0];
-  if (p.length === 1 && p[0] === 'projects') return src === 'P';
-  if (p.length === 1 && p[0] === 'leaks') return op.type === 'due' && src === 'L';
+  if (p[0] === 'days' && p.length === 2) {                                      // creating TODAY's record, nothing else
+    return TASK_OPS.includes(t) && p[1] === todayKey && !(before.days || {})[todayKey];
+  }
+  if (p[0] === 'days' && p.length === 3) {
+    if (p[2] === 'tasks') return TASK_OPS.includes(t);                          // a day's task list (incl. a rollover move)
+    if (p[2] === 'pipeline') return t === 'pipe' && p[1] === todayKey;          // only today's pipeline
+    return false;
+  }
+  if (p.length !== 1) return false;
+  if (p[0] === 'projects') return (t === 'complete' || t === 'due') && src === 'P';
+  if (p[0] === 'leaks') return t === 'due' && src === 'L';
+  if (p[0] === 'appointments') return t === 'appt';
+  if (p[0] === 'meetings') return t === 'mpoint';
   return false;
+}
+/* exactly how many items (stateCount) an op adds — talking points aren't counted */
+function expectedDelta(op){
+  if (op.type === 'add' || op.type === 'appt') return 1;
+  if (op.type === 'pipe') return 1 + (op.task ? 1 : 0);
+  return 0;
 }
 
 /* applied-op markers, pruned to the last APPLIED_TTL_MS (an array — see state-core.js) */
@@ -103,7 +118,7 @@ async function runOp(db, uid, now, decide, hooks = {}){
 
     // ---- guards: the same magnitude + shrink rule the app enforces, then stricter ----
     const afterCount = core.stateCount(next);
-    const expected = beforeCount + (op.type === 'add' ? 1 : 0);
+    const expected = beforeCount + expectedDelta(op);
     if (afterCount !== expected) throw new GuardError(`Guard: item count would go ${beforeCount} → ${afterCount} (expected ${expected}). Nothing was written.`);
     if (core.isCatastrophicShrink(beforeCount, afterCount)) throw new GuardError('Guard: catastrophic shrink. Nothing was written.');
     const paths = changedPaths(before, next);

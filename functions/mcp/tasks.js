@@ -6,6 +6,7 @@
    the app excludes them). Nothing here writes — mutations go through store.js.
    ============================================================ */
 const { DateTime } = require('luxon');
+const core = require('../shared/state-core.js');
 
 const TZ = 'America/Toronto';
 
@@ -123,4 +124,69 @@ function describeRow(r, todayKey){
   return `- ${bits.join(' ')} — ${meta.join(', ')} [id: ${r.key}]`;
 }
 
-module.exports = { TZ, torontoNow, pendingCarryKey, taskRows, isOverdue, completedToday, resolveTask, describeRow };
+/* ---------- meetings ----------
+   Resolve a spoken meeting name ("William", "the Friday sync") against S.meetings,
+   same tiers as tasks: exact name, then contains, then every word present.
+   Never guesses between two. */
+function resolveMeeting(state, ref){
+  const ms = (state.meetings || []).filter(m => m && m.id);
+  const q = norm(ref);
+  if (!q) return { none: true, all: ms };
+  for (const test of [
+    m => norm(m.name) === q,
+    m => norm(m.name).includes(q),
+    m => q.split(' ').every(w => norm(m.name).split(' ').includes(w)),
+  ]) {
+    const hit = ms.filter(test);
+    if (hit.length === 1) return { meeting: hit[0] };
+    if (hit.length > 1) return { ambiguous: hit };
+  }
+  return { none: true, all: ms };
+}
+
+/* ---------- the pipeline, as the app will show it today ----------
+   today's items, plus — if no device has run today's rollover yet — yesterday's
+   unfinished ones the rollover will append. Each with its live done-state. */
+function pipelineView(state, todayKey){
+  const rec = (state.days || {})[todayKey] || { tasks: [], pipeline: [] };
+  const items = (rec.pipeline || []).filter(Boolean).map(it => ({ it, done: core.pipelineItemDone(state, rec, it), carried: false }));
+  core.pendingPipelineCarry(state, todayKey).forEach(it => items.push({ it, done: false, carried: true }));
+  return items;
+}
+function describePipeline(items){
+  if (!items.length) return 'The pipeline is empty — 3 free slots.';
+  const lines = items.map((x, i) => `${i + 1}. ${x.done ? '✓ ' : ''}${x.it.txt}${x.done ? ' (done)' : ''}${x.carried ? ' (rolling over from yesterday)' : ''}`);
+  const free = Math.max(0, 3 - items.length);
+  return lines.join('\n') + (free ? `\n${free} free slot${free === 1 ? '' : 's'}.` : '');
+}
+
+/* ---------- appointments ---------- */
+/* has it passed? With a time, the exact moment (Toronto); without, the end of its day — apptOverdue's rule */
+function apptOverdue(a, nowDt){
+  if (!a || !a.date || a.done) return false;
+  const dt = DateTime.fromISO(a.time ? `${a.date}T${a.time}` : `${a.date}T23:59:59`, { zone: TZ });
+  return dt.isValid && dt.toMillis() < nowDt.toMillis();
+}
+/* overdue ones first (they never scroll away in the app either), then the next `days` days */
+function appointmentsView(state, days){
+  const now = DateTime.now().setZone(TZ);
+  const end = now.plus({ days: days - 1 }).toFormat('yyyy-LL-dd');
+  const today = now.toFormat('yyyy-LL-dd');
+  const all = (state.appointments || []).filter(a => a && a.date && !a.done);
+  const key = a => a.date + (a.time || '');
+  return {
+    overdue: all.filter(a => apptOverdue(a, now)).sort((a, b) => key(a).localeCompare(key(b))),
+    upcoming: all.filter(a => !apptOverdue(a, now) && a.date >= today && a.date <= end).sort((a, b) => key(a).localeCompare(key(b))),
+  };
+}
+function clockLabel(hhmm){
+  if (!hhmm) return 'no time';
+  const [h, m] = String(hhmm).split(':').map(Number);
+  let d = h % 12; if (d === 0) d = 12;
+  return d + ':' + String(m || 0).padStart(2, '0') + (h >= 12 ? 'pm' : 'am');
+}
+const dateLabel = (k) => DateTime.fromISO(k, { zone: TZ }).toFormat('ccc LLL d');
+const describeAppt = (a) => `- ${dateLabel(a.date)} ${clockLabel(a.time)} — ${a.title}`;
+
+module.exports = { resolveMeeting, pipelineView, describePipeline, appointmentsView, apptOverdue, clockLabel, dateLabel, describeAppt,
+  TZ, torontoNow, pendingCarryKey, taskRows, isOverdue, completedToday, resolveTask, describeRow };

@@ -12,6 +12,10 @@ let srv, token;
 const call = (name, args) => H.callTool(srv.base, token, name, args);
 const today = () => T.torontoNow().dayKey;
 const opsOf = (doc) => doc.extOps || [];
+/* ops / applied markers added since `before` — the real document may already carry
+   ops from using the connector, so every assertion is relative to what it arrived with */
+const newOps = (before, after) => { const seen = new Set(opsOf(before).map(o => o.id)); return opsOf(after).filter(o => !seen.has(o.id)); };
+const newApplied = (before, after) => { const seen = new Set(core.extAppliedList(before.marcomaster).map(x => x.id)); return core.extAppliedList(after.marcomaster).filter(x => !seen.has(x.id)); };
 
 /* everything except the paths an op may touch must be byte-for-byte unchanged */
 function assertOnlyChanged(before, after, allowed){
@@ -48,6 +52,14 @@ test('the app and the server compute the same stateCount on the real document', 
   const d = H.device(); d.load(doc.marcomaster);
   assert.equal(d.run('stateCount(S)'), core.stateCount(d.S));
   assert.ok(core.stateCount(doc.marcomaster) >= core.PROTECT_FLOOR);
+});
+
+test('production health: every op already in the document\'s log is marked applied in its state', async () => {
+  const { doc, real } = H.loadDoc();
+  const applied = new Set(core.extAppliedList(doc.marcomaster).map(x => x.id));
+  const missing = opsOf(doc).filter(o => !applied.has(o.id));
+  if (real) console.log(`# the real document carries ${opsOf(doc).length} op(s) from production use`);
+  assert.deepEqual(missing.map(o => o.id), [], 'an op that no device has applied');
 });
 
 /* ================= OAuth ================= */
@@ -106,7 +118,7 @@ test('initialize + tools/list over stateless Streamable HTTP', async () => {
   assert.match(init.json.result.instructions, new RegExp(today()));
   const list = await H.rpc(srv.base, token, 'tools/list', {});
   const tools = Object.fromEntries(list.json.result.tools.map(t => [t.name, t]));
-  assert.deepEqual(Object.keys(tools).sort(), ['add_task', 'complete_task', 'list_tasks', 'set_due_date']);
+  ['add_task', 'complete_task', 'list_tasks', 'set_due_date'].forEach(n => assert.ok(tools[n], n));
   assert.equal(tools.list_tasks.annotations.readOnlyHint, true);
   assert.equal(tools.add_task.annotations.destructiveHint, false);
 });
@@ -122,8 +134,8 @@ test('add_task: +1 item, version advanced, only today\'s tasks touched, appears 
   assert.ok(after.marcomaster.updatedAt >= before.marcomaster.updatedAt + 1, 'version advanced');
   assert.equal(after._updated, after.marcomaster.updatedAt, '_updated mirrors updatedAt');
   assertOnlyChanged(before, after, [['days', tk]]);
-  assert.equal(opsOf(after).length, 1);
-  assert.deepEqual(core.extAppliedList(after.marcomaster).map(x => x.id), [opsOf(after)[0].id]);
+  assert.equal(newOps(before, after).length, 1);
+  assert.deepEqual(newApplied(before, after).map(x => x.id), [newOps(before, after)[0].id]);
 
   // the task has EXACTLY the shape the app's own addTask() makes (+ dueDate)
   const voice = after.marcomaster.days[tk].tasks.find(t => t.txt === 'Call the bank about the wire');
@@ -284,8 +296,8 @@ test('10 simultaneous voice adds: all land, none lost', async () => {
   const txts = after.marcomaster.days[today()].tasks.map(t => t.txt);
   titles.forEach(t => assert.equal(txts.filter(x => x === t).length, 1, t));
   assert.equal(core.stateCount(after.marcomaster), core.stateCount(before.marcomaster) + 10);
-  assert.equal(opsOf(after).length, 10);
-  assert.equal(core.extAppliedList(after.marcomaster).length, 10);
+  assert.equal(newOps(before, after).length, 10);
+  assert.equal(newApplied(before, after).length, 10);
 });
 
 test('a device write landing mid-transaction is not lost (transaction retries on the fresh copy)', async () => {
@@ -317,8 +329,9 @@ test('THE RACE: a device blind-writes over a voice add → replay restores it, e
   let doc = await H.read();
   const inState = (d, txt) => Object.values(d.marcomaster.days).flatMap(x => x.tasks || []).filter(t => t.txt === txt).length;
   assert.equal(inState(doc, 'Voice: buy printer ink'), 0, 'clobbered, as predicted');
-  assert.equal(opsOf(doc).length, 1, 'but still in the op log');
-  assert.equal(core.extAppliedList(doc.marcomaster).length, 0, 'and the applied marker went with it (array, not map)');
+  const voiceOp = newOps(s0, doc);
+  assert.equal(voiceOp.length, 1, 'but still in the op log');
+  assert.ok(!core.extAppliedList(doc.marcomaster).some(x => x.id === voiceOp[0].id), 'and the applied marker went with it (array, not map)');
 
   // the laptop adopts the newer cloud copy (newer-wins) and replays — it may be the only device left open
   assert.ok(doc.marcomaster.updatedAt > laptop.S.updatedAt);

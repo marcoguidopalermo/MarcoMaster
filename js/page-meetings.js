@@ -126,10 +126,9 @@ function createMeeting(name){
    Meetings card input, the meeting modal, and unified Capture, so the point shape
    lives in exactly one place. Returns true if it was added. */
 function createMeetingPoint(mid, txt){
-  const m=(S.meetings||[]).find(x=>x.id===mid); if(!m) return false;
   const v=(txt||'').trim(); if(!v) return false;
-  if(!m.points) m.points=[];
-  m.points.push({id:b(), txt:v, done:false});
+  // appendMeetingPoint (state-core.js) is shared with the MCP connector; false if the meeting is gone
+  if(!appendMeetingPoint(S, mid, {id:b(), txt:v, done:false})) return false;
   save();
   return true;
 }

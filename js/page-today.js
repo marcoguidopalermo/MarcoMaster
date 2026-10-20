@@ -113,12 +113,7 @@ function projHubStat(){
 let pipelineAdding=false;   // true while typing into an empty slot
 
 /* live done-state of a pipeline item: follow the linked task if any, else the item flag */
-function pipelineDone(it){
-  if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); return t?t.done:!!it.done; }
-  if(it.projectId){ const p=(S.projects||[]).find(x=>x.id===it.projectId); const t=p&&p.tasks.find(x=>x.id===it.projTaskId); return t?t.done:!!it.done; }
-  if(it.leakId){ const t=leakTask(it.leakId,it.leakTaskId); return t?t.done:!!it.done; }
-  return !!it.done;
-}
+function pipelineDone(it){ return pipelineItemDone(S, day(), it); }   // state-core.js — shared with the MCP connector
 /* 🔥 priority of the task behind a pipeline item (for the marker only) */
 function pipelinePriority(it){
   if(it.taskId){ const t=day().tasks.find(x=>x.id===it.taskId); return !!(t&&t.priority); }
@@ -179,7 +174,7 @@ function promoteTaskToPipeline(taskId){
   if(d.pipeline.length>=3){ toast('Pipeline is full (3)'); return; }
   if(d.pipeline.some(it=>it.taskId===taskId)){ toast('Already in pipeline'); return; }
   const t=d.tasks.find(x=>x.id===taskId); if(!t) return;
-  d.pipeline.push({id:b(), txt:t.txt, taskId:t.id, done:t.done});
+  appendPipelineItem(d, {id:b(), txt:t.txt, taskId:t.id, done:t.done});   // state-core.js
   save(); toast('↑ Pipeline'); rerender();
 }
 function promoteProjToPipeline(pid, ptId){
@@ -187,7 +182,7 @@ function promoteProjToPipeline(pid, ptId){
   if(d.pipeline.length>=3){ toast('Pipeline is full (3)'); return; }
   if(d.pipeline.some(it=>it.projectId===pid && it.projTaskId===ptId)){ toast('Already in pipeline'); return; }
   const p=(S.projects||[]).find(x=>x.id===pid); const t=p&&p.tasks.find(x=>x.id===ptId); if(!t) return;
-  d.pipeline.push({id:b(), txt:t.txt, projectId:pid, projTaskId:ptId, done:t.done});
+  appendPipelineItem(d, {id:b(), txt:t.txt, projectId:pid, projTaskId:ptId, done:t.done});   // state-core.js
   save(); toast('↑ Pipeline'); rerender();
 }
 function addPipelineText(v){
@@ -732,7 +727,7 @@ function promoteLeakToPipeline(leakId, ltId){
   if(d.pipeline.length>=3){ toast('Pipeline is full (3)'); return; }
   if(d.pipeline.some(it=>it.leakId===leakId && it.leakTaskId===ltId)){ toast('Already in pipeline'); return; }
   const t=leakTask(leakId,ltId); if(!t) return;
-  d.pipeline.push({id:b(), txt:t.txt, leakId, leakTaskId:ltId, done:t.done});
+  appendPipelineItem(d, {id:b(), txt:t.txt, leakId, leakTaskId:ltId, done:t.done});   // state-core.js
   save(); toast('↑ Pipeline'); rerender();
 }
 /* toggle the 🔥 priority flag on the underlying task (project task or day-task) */

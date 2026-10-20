@@ -164,10 +164,8 @@ function apptHubStat(){
 /* create an appointment and return it. Shared by the manual add-input and by
    meeting scheduling, so meetings reuse the exact appointment shape/flow. */
 function createAppointment(title, date, time){
-  if(!S.appointments) S.appointments=[];
-  const appt={ id:b(), title, date, time, createdAt:Date.now() };
-  S.appointments.push(appt);
-  return appt;
+  // the record itself is built by state-core.js — shared with the MCP connector
+  return appendAppointment(S, { id:b(), title, date, time, createdAt:Date.now() });
 }
 /* THE single delete path for appointments, used by the card, the Today strip and
    every view of the overlay.
